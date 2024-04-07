@@ -7,6 +7,16 @@
 #include "client.h"
 #include "utils.h"
 
+const std::string HttpServer::version = "HTTP/1.1";
+const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST", "PUT"};
+const std::unordered_map<int, std::string> HttpServer::response_codes = {
+    {200, "OK"},
+    {400, "Bad Request"},
+    {404, "Not Found"},
+    {501, "Not Implemented"},
+    {505, "HTTP Version Not Supported"}
+};
+
 void HttpServer::run()
 {
     if (bind_server_socket() < 0) {
@@ -51,26 +61,27 @@ int HttpServer::bind_server_socket()
         return -1;
     }
 
-    std::cout << "Server listening for connections on port " << m_port << std::endl;
+    std::cout << "HTTP server listening for connections on port " << m_port << std::endl;
     return 0;
 }
 
 
 void HttpServer::accept_and_handle_clients()
 {
-  while (true) {
-    // accept client connection, which returns a different fd for the client connection
-    int client_fd;
-    struct sockaddr_in client_addr;
-    socklen_t client_addr_size = sizeof(client_addr);
-    if ((client_fd = accept(m_server_sock_fd, (sockaddr*) &client_addr, &client_addr_size)) < 0) {
-        Utils::error("Unable to accept incoming connection from client. Skipping.");
-        // error with incoming connection should NOT break the server loop
-        continue;
-    }
+    while (true) {
+        // accept client connection, which returns a fd for the client
+        int client_fd;
+        struct sockaddr_in client_addr;
+        socklen_t client_addr_size = sizeof(client_addr);
+        if ((client_fd = accept(m_server_sock_fd, (sockaddr*) &client_addr, &client_addr_size)) < 0) {
+            Utils::error("Unable to accept incoming connection from client. Skipping.");
+            // error with incoming connection should NOT break the server loop
+            continue;
+        }
 
-    Client client(client_fd);
-    // launch thread to handle client
-    std::thread client_thread(&Client::read_from_network, &client);
-  }
+        std::cout << "Accepted connection from client __________" << std::endl;
+        Client client(client_fd);
+        // launch thread to handle client
+        std::thread client_thread(&Client::read_from_network, &client);
+    }
 }
