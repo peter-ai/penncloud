@@ -132,6 +132,11 @@ void Client::validate_request()
 
 void Client::construct_error_response(int err_code)
 {
+    m_res.code = err_code;
+    m_res.reason = HttpServer::response_codes.at(err_code);
+
+    // ! add headers
+
     // response is ready to send back to client
     response_ready = true;
 }
