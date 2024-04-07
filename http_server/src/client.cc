@@ -41,16 +41,16 @@ void Client::handle_req(std::string& client_stream) {
     parse_headers(msg_lines);
     validate_request();
 
-    // check if the request has a body
-    // if so, set the remaining body length value for the client
-
-    auto content_len_it = m_req.headers.find("content_length");
-    if (content_len_it != m_req.headers.end()) {
-        if ((content_len_it->second).size() > 1) {
+    // check if http message has a body
+    if (m_req.headers.count("content-length") != 0) {
+        std::vector<std::string>& content_len_values = m_req.headers["content-length"];
+        // multiple content length values are stored
+        if (content_len_values.size() > 1) {
             construct_error_response(400);
-        } else if ((content_len_it->second).size() == 1) {
+        } else if (content_len_values.size() == 1) {
+            // content length value is not a valid integer
             try {
-                remaining_body_len = std::stoi((content_len_it->second).at(0));
+                remaining_body_len = std::stoi(content_len_values.at(0));
             } catch (const std::exception& e) {
                 construct_error_response(400);
             }
@@ -61,13 +61,13 @@ void Client::handle_req(std::string& client_stream) {
 
 
 
-    // check if the client requested to close the connection
-    // if so, set close_connection to true
-    auto connection_it = m_req.headers.find("connection");
-    if (connection_it != m_req.headers.end()) {
-        if ((connection_it->second).size() > 1) {
+    // check if the client requested to close the persistent connection
+    if (m_req.headers.count("connection") != 0) {
+        std::vector<std::string>& connection_values = m_req.headers["connection"];  
+        // multiple connection values are stored
+        if (connection_values.size() > 1) {
             construct_error_response(400);
-        } else if ((connection_it->second).size() == 1 && (connection_it->second).at(0) == "close") {
+        } else if (connection_values.size() == 1 && connection_values.at(0) == "close") {
             close_connection = true;
         }
     }
