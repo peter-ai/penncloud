@@ -10,6 +10,7 @@ struct HttpRequest {
     std::string version;            // HTTP version (HTTP/1.1)
 
     // Headers
+    std::unordered_map<std::string, std::vector<std::string>> headers;
 
     // Body
     std::string body;
