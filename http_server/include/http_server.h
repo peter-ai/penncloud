@@ -13,17 +13,20 @@ public:
     static const std::unordered_map<int, std::string> response_codes;   // Response codes and associated message (Ex. 200 OK)
 
     // instance fields
-    int m_port;     // port server runs on
+    int port;                   // port server runs on
+    std::string static_dir;     // location of static files that server may wish to serve
 
 private:
-    int m_server_sock_fd;                           // bound server socket's fd
+    int server_sock_fd;                           // bound server socket's fd
     std::vector<RouteTableEntry> routing_table;     // routing table entries for server - order in which routes are registered matters
 
 // methods
 public:
     // constructors
-    // initialize server with port
-    HttpServer(int port) : m_port(port),m_server_sock_fd(-1) {}
+    // initialize server with port and default static directory
+    HttpServer(int port) : port(port),server_sock_fd(-1),static_dir("static") {}
+    // initialize server with port and user-specified static directory
+    HttpServer(int port, std::string static_dir) : port(port),server_sock_fd(-1),static_dir(static_dir) {}
     // disable default constructor - HttpServer must be initialized with a port
     HttpServer() = delete; 
 
@@ -36,8 +39,8 @@ public:
     void post(std::string path, std::function<void(const HttpRequest&, HttpResponse&)>);    // register POST route with handler
 
 private:
-    int bind_server_socket();         // bind port to socket
-    void accept_and_handle_clients(); // main server loop to accept and handle clients
+    int bind_server_socket();           // bind port to socket
+    void accept_and_handle_clients();   // main server loop to accept and handle clients
 };
 
 
