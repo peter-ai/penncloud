@@ -1,19 +1,19 @@
 #ifndef HTTP_SERVER_H
 #define HTTP_SERVER_H
 
-#include <iostream>
-
 class HttpServer 
 {
 // fields
 private:
     int m_port;           // port server runs on
     int m_server_sock_fd; // bound server socket's fd 
+    int m_running;          // 
 
 // methods
 public:
     // server initialized with a port
-    HttpServer(int port) : m_port(port) {}
+    // note that server is NOT running on initialization - run() must be called to run the server
+    HttpServer(int port) : m_port(port),m_server_sock_fd(-1),m_running(false) {}
     // disable default constructor - HttpServer must be initialized with a port
     HttpServer() = delete; 
 
