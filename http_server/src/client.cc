@@ -76,7 +76,7 @@ void Client::handle_req(std::string& client_stream) {
 
 void Client::parse_req_line(std::string& req_line)
 {
-    // verify req_line has 3 values
+    // preliminary validation - request line does NOT have 3 components
     if (req_line.size() != 3) {
         construct_error_response(400);
     }
@@ -89,15 +89,21 @@ void Client::parse_req_line(std::string& req_line)
 void Client::parse_headers(std::vector<std::string> headers)
 {
     for (std::string header : headers) {
-        // split header
         std::vector<std::string> header_components = Utils::split_on_first_delim(header, ":");
+        // malformed header - header type and value(s) are not separated by ":"
         if (header_components.size() != 2) {
             construct_error_response(400);
+            break;
         }
         std::string header_key = Utils::to_lowercase(header_components.at(0));
         std::string header_values = Utils::trim(header_components.at(1));
 
-        // ! store headers in m_req
+        // split header_values on ",", trim each value, and add it to the vector for the header_key
+        std::vector<std::string> header_values_vec = Utils::split(header_values, ",");
+        for (std::string& value : header_values_vec) {
+            value = Utils::trim(value);
+            m_req.headers[header_key].push_back(value);
+        }
     }
 }
 
