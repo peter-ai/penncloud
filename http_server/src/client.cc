@@ -108,25 +108,30 @@ void Client::parse_headers(std::vector<std::string> headers)
 }
 
 
+void Client::validate_request()
+{
+    // host headers not present
+    if (m_req.headers.count("host") == 0) {
+        construct_error_response(400);
+        return;
+    }
+
+    // unsupported http version
+    if (m_req.version != HttpServer::version) {
+        construct_error_response(505);
+        return;
+    }
+
+    // unsupported method
+    if (HttpServer::supported_methods.count(m_req.req_method) == 0) {
+        construct_error_response(501);
+        return;    
+    }
+}
+
+
 void Client::construct_error_response(int err_code)
 {
     // response is ready to send back to client
     response_ready = true;
 }
-
-
-// void Client::validate_request()
-// {
-//     // host headers not present in parsed headers
-
-
-//     // unsupported http version
-//     if (m_req.version != HttpServer::version) {
-
-//     }
-
-//     // unsupported method
-//     if (m_req.version != HttpServer::version) {
-
-//     }
-// }
