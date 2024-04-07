@@ -17,14 +17,38 @@ const std::unordered_map<int, std::string> HttpServer::response_codes = {
     {505, "HTTP Version Not Supported"}
 };
 
+
 void HttpServer::run()
 {
     if (bind_server_socket() < 0) {
         Utils::error("Failed to run server. Exiting.");
         return;
     }
-    m_running = true;
     accept_and_handle_clients();
+}
+
+
+void HttpServer::get(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
+{
+    // every GET request is also a valid HEAD request
+    RouteTableEntry get_entry("GET", path, route);
+    RouteTableEntry head_entry("HEAD", path, route);
+    routing_table.push_back(get_entry);
+    routing_table.push_back(head_entry);
+}
+
+
+void HttpServer::put(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
+{
+    RouteTableEntry entry("PUT", path, route);
+    routing_table.push_back(entry);
+}
+
+
+void HttpServer::post(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
+{
+    RouteTableEntry entry("POST", path, route);
+    routing_table.push_back(entry);
 }
 
 
