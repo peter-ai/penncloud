@@ -149,5 +149,7 @@ void HttpServer::accept_and_handle_clients()
 
         // launch thread to handle client
         std::thread client_thread(&Client::read_from_network, &client);
+        // ! fix this after everything works (manage multithreading)
+        client_thread.detach();
     }
 }

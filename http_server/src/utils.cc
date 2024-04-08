@@ -63,7 +63,7 @@ std::string Utils::l_trim(std::string s)
 
 std::string Utils::r_trim(std::string s)
 {
-    size_t i = s.length() - 1;
+    int i = s.length() - 1;
     while (i >= 0 && std::isspace(s[i])) {
         i--;
     }
