@@ -12,7 +12,9 @@ const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "H
 const std::unordered_map<int, std::string> HttpServer::response_codes = {
     {200, "OK"},
     {400, "Bad Request"},
+    {403, "Forbidden"},
     {404, "Not Found"},
+    {405, "Method Not Allowed"},
     {501, "Not Implemented"},
     {505, "HTTP Version Not Supported"}
 };

@@ -15,6 +15,10 @@ struct HttpRequest {
     // Body
     std::string body;
 
+    // Metadata
+    bool is_static = true;
+    std::string static_resource_path;
+
     // TODO add field for session
 
     // TODO add method to clear request fields
