@@ -2,6 +2,7 @@
 #define CLIENT_H
 
 #include <string>
+#include <vector>
 
 #include "http_request.h"
 #include "http_response.h"
@@ -17,7 +18,7 @@ public:
     HttpResponse res;   // response for current request
     bool response_ready;   // tracks if a response was sent
     int remaining_body_len;
-    bool close_connection = false; // ! make sure you're handling this properly everywhere
+    bool close_connection; // ! make sure you're handling this properly everywhere
 
 private:
     int client_fd;        // client's bound fd
@@ -25,7 +26,8 @@ private:
 // methods
 public:
     // client initialized with an associated file descriptor
-    Client(int client_fd) : client_fd(client_fd) {}
+    Client(int client_fd) : response_ready(false), remaining_body_len(0), 
+                            close_connection(false), client_fd(client_fd) {}
     // disable default constructor - Client should only be created with an associated fd
     Client() = delete; 
 

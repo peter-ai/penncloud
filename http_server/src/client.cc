@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 
+#include "http_server.h"
 #include "client.h"
 #include "http_request.h"
-#include "http_server.h"
 #include "utils.h"
 
 const std::string Client::CRLF = "\r\n";
@@ -14,14 +14,26 @@ const std::string Client::DOUBLE_CRLF = "\r\n\r\n";
 
 void Client::read_from_network()
 {
+    std::cout << "Reading data from client" << std::endl;
+
     std::string client_stream;
     int bytes_recvd;
-
     while (true) {
         char buf[4096];
         // ! error check recv function
         bytes_recvd = recv(client_fd, buf, 4096, 0);
 
+        // error while reading from client
+        if (bytes_recvd < 0) {
+            Utils::error("Unable to receive message from client.");
+            break;
+        }
+        // client likely closed connection
+        else if (bytes_recvd == 0) {
+            break;
+        }
+
+        std::cout << "Successfully read data from client" << std::endl;
         for (int i = 0 ; i < bytes_recvd ; i++) {
             // byte is part of request body
             if (remaining_body_len > 0) {
@@ -63,6 +75,8 @@ void Client::read_from_network()
 
 
 void Client::handle_req(std::string& client_stream) {
+    std::cout << client_stream << std::endl;
+
     std::vector<std::string> msg_lines = Utils::split(client_stream, CRLF);
     parse_req_line(msg_lines.at(0));
     msg_lines.erase(msg_lines.begin());
