@@ -3,6 +3,8 @@
 
 #include "utils.h"
 
+// ! test this for something like GET   some_path HTTP/1.1 (with trailing spaces)  
+// ! maybe add a method for single delimiter split and repeat delimiter
 std::vector<std::string> Utils::split(std::string s, std::string delimiter) 
 {
     std::vector<std::string> lines;
@@ -12,7 +14,10 @@ std::vector<std::string> Utils::split(std::string s, std::string delimiter)
     // process lines according to delimiter 
     while ((pos = s.find(delimiter)) != std::string::npos) {
         line = s.substr(0, pos);
-        lines.push_back(line);
+        // should handle consecutive delimiters
+        if (line.length() != 0) {
+            lines.push_back(line);
+        }
         s.erase(0, pos + delimiter.length());
     }
 
@@ -22,6 +27,27 @@ std::vector<std::string> Utils::split(std::string s, std::string delimiter)
     }
 
     return lines;
+}
+
+std::vector<std::string> Utils::split_on_first_delim(std::string s, std::string delimiter) 
+{
+    std::vector<std::string> tokens;
+
+    size_t pos = s.find(delimiter);
+    if (pos != std::string::npos) {
+        std::string token = s.substr(0, pos);
+        if (token.empty()) {
+            tokens.push_back(token);
+        }
+        s.erase(0, pos + delimiter.length());
+    }
+
+    // Push the remaining part of the string as the last element
+    if (!s.empty()) {
+        tokens.push_back(s);
+    }
+
+    return tokens;
 }
 
 
@@ -51,7 +77,7 @@ std::string Utils::trim(std::string s)
 }
 
 
-std::string to_uppercase(std::string s) 
+std::string Utils::to_uppercase(std::string s) 
 {   
     for (char& c : s) {
         c = std::toupper(c);
@@ -60,7 +86,7 @@ std::string to_uppercase(std::string s)
 }
 
 
-std::string to_lowercase(std::string s)
+std::string Utils::to_lowercase(std::string s)
 {
     for (char& c : s) {
         c = std::tolower(c);

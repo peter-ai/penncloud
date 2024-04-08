@@ -6,8 +6,11 @@
 
 namespace Utils
 {
-    // split string by delimiter
+    // split string on all occurrences of delimiter, with repeated instances of delimiter
     std::vector<std::string> split(std::string s, std::string delimiter);
+
+    // split string only on first occurrence of delimiter
+    std::vector<std::string> split_on_first_delim(std::string s, std::string delimiter);
 
     // trim whitespace from left side of string
     std::string l_trim(std::string s);
