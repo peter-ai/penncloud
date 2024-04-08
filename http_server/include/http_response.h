@@ -1,11 +1,13 @@
 #ifndef HTTP_RESPONSE_H
 #define HTTP_RESPONSE_H
 
-#include "http_server.h"
+#include <string>
+#include <unordered_map>
+#include <vector>
 
 struct HttpResponse {
     // Response line
-    std::string version = HttpServer::version;         
+    std::string version = "HTTP/1.1";
     int code;
     std::string reason;            
 
