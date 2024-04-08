@@ -18,9 +18,10 @@ const std::unordered_map<int, std::string> HttpServer::response_codes = {
 };
 
 
-void HttpServer::run(int port)
+void HttpServer::run(int port, std::string static_dir)
 {
     HttpServer::port = port;
+    HttpServer::static_dir = static_dir;
     if (bind_server_socket() < 0) {
         Utils::error("Failed to run server. Exiting.");
         return;
@@ -28,9 +29,10 @@ void HttpServer::run(int port)
     accept_and_handle_clients();
 }
 
-void HttpServer::set_static_dir(std::string static_dir) 
+
+void HttpServer::run(int port)
 {
-    HttpServer::static_dir = static_dir;
+    HttpServer::run(port, "static");
 }
 
 

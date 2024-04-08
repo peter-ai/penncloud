@@ -26,8 +26,8 @@ public:
     HttpServer() = delete; 
 
     // methods
-    static void run(int port);   // run server (server does NOT run on initialization, server instance must explicitly call this method)
-    static void set_static_dir(std::string static_dir);   // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static void run(int port);                           // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static void run(int port, std::string static_dir);   // overload run if user wants to run server with custom static file dir
 
     // route handlers
     static void get(std::string path, std::function<void(const HttpRequest&, HttpResponse&)>);     // register GET route with handler
