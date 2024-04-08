@@ -16,8 +16,8 @@ public:
     HttpRequest req;    // current request 
     HttpResponse res;   // response for current request
     bool response_ready;   // tracks if a response was sent
-    bool remaining_body_len;
-    bool close_connection = false;
+    int remaining_body_len;
+    bool close_connection = false; // ! make sure you're handling this properly everywhere
 
 private:
     int client_fd;        // client's bound fd
@@ -37,6 +37,8 @@ private:
     void parse_headers(std::vector<std::string> headers);
     void set_request_type();
     void construct_error_response(int err_code);
+    void construct_response();
+    void send_response();
 };
 
 #endif

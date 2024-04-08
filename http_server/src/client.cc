@@ -2,6 +2,7 @@
 #include <sys/socket.h>   // recv
 #include <unistd.h>       // close
 #include <fstream>
+#include <sstream>
 
 #include "client.h"
 #include "http_request.h"
@@ -22,12 +23,38 @@ void Client::read_from_network()
         bytes_recvd = recv(client_fd, buf, 4096, 0);
 
         for (int i = 0 ; i < bytes_recvd ; i++) {
-            client_stream += buf[i];
-            // double CRLF indicates a full http request WITHOUT the body (if present)
-            if (client_stream.length() >= 4 && client_stream.substr(client_stream.length() - 4) == DOUBLE_CRLF) {
-                // build http request from client stream and then clear current stream
-                handle_req(client_stream);
-                client_stream.clear(); // ! not sure if we should be clearing the stream
+            // byte is part of request body
+            if (remaining_body_len > 0) {
+                req.body.push_back(buf[i]);
+                remaining_body_len--;
+
+                // prev req is complete - prepare and send response
+                if (remaining_body_len == 0) {
+                    construct_response();
+                    send_response();
+                }
+            } 
+            // byte is part of client_stream (building request)            
+            else {
+                client_stream += buf[i];
+                // double CRLF indicates a full http request WITHOUT the body (if present)
+                if (client_stream.length() >= 4 && client_stream.substr(client_stream.length() - 4) == DOUBLE_CRLF) {
+                    // build http request from client stream and then clear current stream
+                    handle_req(client_stream);
+                    client_stream.clear();
+
+                    // error occurred while parsing
+                    if (response_ready) {
+                        send_response();
+                        continue;
+                    }
+
+                    // request had content-length of 0
+                    if (remaining_body_len == 0) {
+                        construct_response();
+                        send_response();
+                    }
+                }
             }
         }
     }
@@ -50,12 +77,14 @@ void Client::handle_req(std::string& client_stream) {
         // multiple content length values are stored
         if (content_len_values.size() > 1) {
             construct_error_response(400);
+            return;
         } else if (content_len_values.size() == 1) {
             // content length value is not a valid integer
             try {
                 remaining_body_len = std::stoi(content_len_values.at(0));
             } catch (const std::exception& e) {
                 construct_error_response(400);
+                return;
             }
         }
     }
@@ -70,6 +99,7 @@ void Client::handle_req(std::string& client_stream) {
         // multiple connection values are stored
         if (connection_values.size() > 1) {
             construct_error_response(400);
+            return;
         } else if (connection_values.size() == 1 && connection_values.at(0) == "close") {
             close_connection = true;
         }
@@ -134,6 +164,7 @@ void Client::set_request_type()
 {
     // loop through server's routing table and check if the method + route matches any of the entries
     // if so, set is_static to false
+    // ! implement this loop for dynamic requests
 
     // Additional error handling if request is static
     if (req.is_static) {
@@ -170,8 +201,68 @@ void Client::construct_error_response(int err_code)
     res.code = err_code;
     res.reason = HttpServer::response_codes.at(err_code);
 
-    // ! add headers
+
 
     // response is ready to send back to client
     response_ready = true;
+}
+
+
+void Client::construct_response()
+{
+    res.code = 200;
+    res.reason = HttpServer::response_codes.at(200);
+
+    res.headers["Server"] = {"5050-Web-Server/1.0"};
+
+    // static response
+    if (req.is_static) {
+        // set content-type header
+
+        // set content-length header
+
+
+        // write body if NOT a head request
+        if (req.req_method != "HEAD") {
+
+        }
+    } 
+    // dynamic response
+    else {
+
+    }
+
+    // response is ready to send back to client
+    response_ready = true;
+}
+
+
+void Client::send_response()
+{
+    std::ostringstream response_msg;
+    response_msg << res.version << " " << std::to_string(res.code) << " " << res.reason << CRLF;
+    for (const auto& entry : res.headers) {
+        for (std::string value : entry.second) {
+            response_msg << entry.first << ":" << value << CRLF;
+        }
+    }
+
+    // Write body if present
+    if (!res.body.empty()) {
+        response_msg.write(res.body.data(), res.body.size());
+        response_msg << CRLF;
+    }
+
+    response_msg << CRLF;
+
+    int response_msg_len = response_msg.str().length();
+    int total_bytes_sent = 0;
+    while (total_bytes_sent < response_msg_len) {
+        int bytes_sent = send(client_fd, response_msg.str().c_str(), response_msg_len, 0);
+        if (bytes_sent == -1) {
+            Utils::error("Unable to send response");
+            continue;
+        }
+        total_bytes_sent += bytes_sent;
+    }
 }

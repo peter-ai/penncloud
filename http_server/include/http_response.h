@@ -13,7 +13,7 @@ struct HttpResponse {
     std::unordered_map<std::string, std::vector<std::string>> headers;
 
     // Body
-    std::string body;
+    std::vector<char> body; // store data directly as bytes
 };
 
 #endif
