@@ -4,10 +4,10 @@
 #include <fstream>
 #include <sstream>
 
-#include "http_server.h"
-#include "client.h"
-#include "http_request.h"
-#include "utils.h"
+#include "../include/http_server.h"
+#include "../include/client.h"
+#include "../include/http_request.h"
+#include "../../utils/include/utils.h"
 
 const std::string Client::CRLF = "\r\n";
 const std::string Client::DOUBLE_CRLF = "\r\n\r\n";
@@ -25,7 +25,7 @@ void Client::read_from_network()
 
         // error while reading from client
         if (bytes_recvd < 0) {
-            Utils::error("Unable to receive message from client.");
+            // // Utils::error("Unable to receive message from client.");
             break;
         }
         // client likely closed connection
@@ -274,7 +274,7 @@ void Client::send_response()
     while (total_bytes_sent < response_msg_len) {
         int bytes_sent = send(client_fd, response_msg.str().c_str(), response_msg_len, 0);
         if (bytes_sent == -1) {
-            Utils::error("Unable to send response");
+            // // Utils::error("Unable to send response");
             continue;
         }
         total_bytes_sent += bytes_sent;

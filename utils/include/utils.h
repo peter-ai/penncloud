@@ -4,6 +4,13 @@
 #include <vector>
 #include <string>
 
+// logger levels
+constexpr int LOGGER_DEBUG=10;
+constexpr int LOGGER_INFO=20;
+constexpr int LOGGER_WARN=30;
+constexpr int LOGGER_ERROR=40;
+constexpr int LOGGER_CRITICAL=50;
+
 namespace Utils
 {
     // split string on all occurrences of delimiter, with repeated instances of delimiter
@@ -27,8 +34,32 @@ namespace Utils
     // convert string to lowercase
     std::string to_lowercase(std::string s);
 
-    // ! this will be replaced by logger
-    void error(std::string msg);
+    // convert and return the current utc time
+    std::string get_utc_time();
 }
+
+// class that logs messages at various levels
+class Logger
+{
+// fields
+public:
+    // name of this logger instance
+    std::string name; 
+
+// methods
+public:
+    // logger initialized with an associated name
+    Logger(std::string name);
+
+    // disable default constructor - Logger should only be created with an associated fd
+    Logger() = delete;
+
+    ~Logger()
+    {
+    }  
+
+    // output logging message
+    void log(std::string message, int level); 
+};
 
 #endif
