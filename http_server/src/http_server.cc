@@ -5,7 +5,7 @@
 
 #include "http_server.h"
 #include "client.h"
-#include "utils.h"
+#include "../utils/include/utils.h"
 
 // initialize constant members
 const std::string HttpServer::version = "HTTP/1.1";
@@ -26,17 +26,19 @@ int HttpServer::server_sock_fd = -1;
 std::string HttpServer::static_dir = "";
 std::vector<RouteTableEntry> HttpServer::routing_table;
 
+// http server logger
+Logger http_logger("HTTP Server");
 
 void HttpServer::run(int port, std::string static_dir)
 {
     HttpServer::port = port;
     HttpServer::static_dir = static_dir;
     if (bind_server_socket() < 0) {
-        Utils::error("Failed to run server. Exiting.");
+        http_logger.log("Failed to initialize server. Exiting.", 40);
         return;
     }
-    std::cout << "HTTP server listening for connections on port " << std::to_string(HttpServer::port) << std::endl;
-    std::cout << "Serving static files from " << HttpServer::static_dir << "/" << std::endl;    
+    http_logger.log("HTTP server listening for connections on port " + std::to_string(HttpServer::port), 20);
+    http_logger.log("Serving static files from " + HttpServer::static_dir + "/", 20);
     accept_and_handle_clients();
 }
 
@@ -98,7 +100,7 @@ int HttpServer::bind_server_socket()
 {
     // create server socket
     if ((HttpServer::server_sock_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0) {
-        Utils::error("Unable to create server socket.");
+        http_logger.log("Unable to create server socket.", 40);
         return -1;
     }
 
@@ -110,12 +112,12 @@ int HttpServer::bind_server_socket()
 
     int opt = 1;
     if ((setsockopt(HttpServer::server_sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0) {
-        Utils::error("Unable to reuse port to bind server socket.");
+        http_logger.log("Unable to reuse port to bind server socket.", 40);
         return -1;
     }
 
     if ((bind(HttpServer::server_sock_fd, (const sockaddr*) &server_addr, sizeof(server_addr))) < 0) {
-        Utils::error("Unable to bind server socket to port.");
+        http_logger.log("Unable to bind server socket to port.", 40);
         return -1;
     }
 
@@ -123,7 +125,7 @@ int HttpServer::bind_server_socket()
     // ! check if this value is okay
     const int BACKLOG = 20;
     if ((listen(HttpServer::server_sock_fd, BACKLOG)) < 0) {
-        Utils::error("Unable to listen for connections.");
+        http_logger.log("Unable to listen for client connections.", 40);
         return -1;
     }
     return 0;
@@ -138,14 +140,13 @@ void HttpServer::accept_and_handle_clients()
         struct sockaddr_in client_addr;
         socklen_t client_addr_size = sizeof(client_addr);
         if ((client_fd = accept(HttpServer::server_sock_fd, (sockaddr*) &client_addr, &client_addr_size)) < 0) {
-            Utils::error("Unable to accept incoming connection from client. Skipping.");
+            http_logger.log("Unable to accept incoming connection from client. Skipping.", 30);
             // error with incoming connection should NOT break the server loop
             continue;
         }
 
         Client client(client_fd);
-        
-        std::cout << "Accepted connection from client __________" << std::endl;
+        http_logger.log("Accepted connection from client __________", 20);
 
         // launch thread to handle client
         std::thread client_thread(&Client::read_from_network, &client);
