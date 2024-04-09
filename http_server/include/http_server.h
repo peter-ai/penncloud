@@ -6,9 +6,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "http_request.h"
-#include "http_response.h"
-
 struct RouteTableEntry {
     std::string method;
     std::string path;
@@ -38,8 +35,9 @@ public:
     static std::string static_dir;     // location of static files that server may wish to serve
 
 private:
-    static int server_sock_fd;                           // bound server socket's fd
-    static std::vector<RouteTableEntry> routing_table;     // routing table entries for server - order in which routes are registered matters
+    static int server_sock_fd;                             // bound server socket's fd
+    static std::vector<RouteTableEntry> routing_table;     // routing table entries for server - order in which routes are registered matters when matching routes
+
 
 // methods
 public:    

@@ -4,9 +4,9 @@
 #include <fstream>
 #include <sstream>
 
-#include "../include/http_server.h"
-#include "../include/client.h"
-#include "../include/http_request.h"
+#include "http_server.h"
+#include "client.h"
+#include "http_request.h"
 #include "../../utils/include/utils.h"
 
 const std::string Client::CRLF = "\r\n";
