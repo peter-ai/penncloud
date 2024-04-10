@@ -36,7 +36,7 @@ public:
 private:
     void handle_req(std::string& client_stream);
     void parse_req_line(std::string& req_line);
-    void parse_headers(std::vector<std::string> headers);
+    void parse_headers(std::vector<std::string>& headers);
     void set_request_type();
     void construct_error_response(int err_code);
     void construct_response();

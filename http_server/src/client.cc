@@ -12,10 +12,10 @@
 const std::string Client::CRLF = "\r\n";
 const std::string Client::DOUBLE_CRLF = "\r\n\r\n";
 
+Logger http_client_logger("HTTP Client");
+
 void Client::read_from_network()
 {
-    std::cout << "Reading data from client" << std::endl;
-
     std::string client_stream;
     int bytes_recvd;
     while (true) {
@@ -33,7 +33,6 @@ void Client::read_from_network()
             break;
         }
 
-        std::cout << "Successfully read data from client" << std::endl;
         for (int i = 0 ; i < bytes_recvd ; i++) {
             // byte is part of request body
             if (remaining_body_len > 0) {
@@ -74,13 +73,22 @@ void Client::read_from_network()
 }
 
 
-void Client::handle_req(std::string& client_stream) {
-    std::cout << client_stream << std::endl;
-
+void Client::handle_req(std::string& client_stream) 
+{
     std::vector<std::string> msg_lines = Utils::split(client_stream, CRLF);
+
     parse_req_line(msg_lines.at(0));
     msg_lines.erase(msg_lines.begin());
     parse_headers(msg_lines);
+
+    // log request metadata (reconstruct request line from parsed parameters to ensure correct parsing)
+    http_client_logger.log("Constructed req line - " + req.req_method + " " + req.path + " " + req.version, 20);
+    http_client_logger.log("Headers", 20);
+    for (auto header : req.headers) {
+        for (std::string value : header.second) {
+            http_client_logger.log(header.first + ":" + value, 20);
+        }
+    }
 
     // check if request is static or dynamic
     set_request_type();
@@ -123,37 +131,44 @@ void Client::handle_req(std::string& client_stream) {
 
 void Client::parse_req_line(std::string& req_line)
 {
+    std::vector<std::string> req_line_components = Utils::split(req_line, " ");
+
     // preliminary validation - request line does NOT have 3 components
-    if (req_line.size() != 3) {
+    if (req_line_components.size() != 3) {
+        http_client_logger.log("Malformed request line", 40);
         construct_error_response(400);
         return;
     }
-    req.req_method = req_line.at(0);
-    req.path = req_line.at(1);
-    req.version = req_line.at(2);
+    req.req_method = req_line_components.at(0);
+    req.path = req_line_components.at(1);
+    req.version = req_line_components.at(2);
 
     // unsupported http version
     if (req.version != HttpServer::version) {
+        http_client_logger.log("Unsupported HTTP version", 40);
         construct_error_response(505);
         return;
     }
 
     // unsupported method
     if (HttpServer::supported_methods.count(req.req_method) == 0) {
+        http_client_logger.log("Unsupported method", 40);
         construct_error_response(501);
         return;    
     }
 }
 
 
-void Client::parse_headers(std::vector<std::string> headers)
+void Client::parse_headers(std::vector<std::string>& headers)
 {
-    for (std::string header : headers) {
+    for (std::string& header : headers) {
         std::vector<std::string> header_components = Utils::split_on_first_delim(header, ":");
+
         // malformed header - header type and value(s) are not separated by ":"
         if (header_components.size() != 2) {
+            http_client_logger.log("Malformed header", 40);
             construct_error_response(400);
-            break;
+            return;
         }
         std::string header_key = Utils::to_lowercase(header_components.at(0));
         std::string header_values = Utils::trim(header_components.at(1));
@@ -168,6 +183,7 @@ void Client::parse_headers(std::vector<std::string> headers)
 
     // host header not present
     if (req.headers.count("host") == 0) {
+        http_client_logger.log("No host header", 40);
         construct_error_response(400);
         return;
     }
