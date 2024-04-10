@@ -10,3 +10,7 @@ all: libhttp_server.a
 
 libhttp_server.a: http_server.o client.o ../utils/utils.o
 	ar rcs $@ $^
+
+clean:
+	rm *.o
+	rm libhttp_server.a

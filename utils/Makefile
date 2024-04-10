@@ -8,6 +8,5 @@ all: utils.o
 %.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@
 
-# clean:
-# 	rm -fv $(TARGETS) *.o *~
-# 	rm -fv libhttp_server.a
+clean:
+	rm *.o
