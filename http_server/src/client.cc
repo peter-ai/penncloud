@@ -20,16 +20,12 @@ void Client::read_from_network()
     int bytes_recvd;
     while (true) {
         char buf[4096];
-        // ! error check recv function
         bytes_recvd = recv(client_fd, buf, 4096, 0);
-
-        // error while reading from client
         if (bytes_recvd < 0) {
-            // // Utils::error("Unable to receive message from client.");
+            http_client_logger.log("Error reading from client", 40);
             break;
-        }
-        // client likely closed connection
-        else if (bytes_recvd == 0) {
+        } else if (bytes_recvd == 0) {
+            http_client_logger.log("Client closed connection", 30);
             break;
         }
 
@@ -43,6 +39,9 @@ void Client::read_from_network()
                 if (remaining_body_len == 0) {
                     construct_response();
                     send_response();
+                    if (close_connection) {
+                        break;
+                    }
                 }
             } 
             // byte is part of client_stream (building request)            
@@ -57,6 +56,9 @@ void Client::read_from_network()
                     // error occurred while parsing
                     if (response_ready) {
                         send_response();
+                        if (close_connection) {
+                            break;
+                        }
                         continue;
                     }
 
@@ -64,9 +66,16 @@ void Client::read_from_network()
                     if (remaining_body_len == 0) {
                         construct_response();
                         send_response();
+                        if (close_connection) {
+                            break;
+                        }
                     }
                 }
             }
+        }
+
+        if (close_connection) {
+            break;
         }
     }
     close(client_fd);
@@ -133,10 +142,12 @@ void Client::handle_req(std::string& client_stream)
 
 
     // check if the client requested to close the persistent connection
+    // note that default behavior is a persistent connection, so Connection: close is the only header that will cause the server to explicitly terminate the connection
     if (req.headers.count("connection") != 0) {
         std::vector<std::string>& connection_values = req.headers["connection"];  
         // multiple connection values are stored
         if (connection_values.size() > 1) {
+            http_client_logger.log("Multiple values for connection header are not allowed", 40);
             construct_error_response(400);
             return;
         } else if (connection_values.size() == 1 && connection_values.at(0) == "close") {

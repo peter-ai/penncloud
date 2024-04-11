@@ -18,7 +18,7 @@ public:
     HttpResponse res;   // response for current request
     bool response_ready;   // tracks if a response was sent
     int remaining_body_len;
-    bool close_connection; // ! make sure you're handling this properly everywhere
+    bool close_connection;
 
 private:
     int client_fd;        // client's bound fd
