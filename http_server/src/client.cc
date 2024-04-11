@@ -78,12 +78,20 @@ void Client::handle_req(std::string& client_stream)
     std::vector<std::string> msg_lines = Utils::split(client_stream, CRLF);
 
     parse_req_line(msg_lines.at(0));
+    // Error occurred while parsing req line
+    if (response_ready) {
+        return;
+    }
     msg_lines.erase(msg_lines.begin());
     parse_headers(msg_lines);
+    // Error occurred while parsing headers
+    if (response_ready) {
+        return;
+    }
 
-    // log request metadata (reconstruct request line from parsed parameters to ensure correct parsing)
+    // log request (reconstruct request line from parsed parameters to ensure correct parsing)
     http_client_logger.log("Constructed req line - " + req.req_method + " " + req.path + " " + req.version, 20);
-    http_client_logger.log("Headers", 20);
+    http_client_logger.log("Headers:", 20);
     for (auto header : req.headers) {
         for (std::string value : header.second) {
             http_client_logger.log(header.first + ":" + value, 20);
@@ -92,6 +100,15 @@ void Client::handle_req(std::string& client_stream)
 
     // check if request is static or dynamic
     set_request_type();
+    // Error occurred while determining type of request
+    if (response_ready) {
+        return;
+    }
+    if (req.is_static) {
+        http_client_logger.log("Request type - static", 20);
+    } else {
+        http_client_logger.log("Request type - dynamic", 20);
+    }
 
     // check if http message has a body
     if (req.headers.count("content-length") != 0) {
@@ -135,7 +152,7 @@ void Client::parse_req_line(std::string& req_line)
 
     // preliminary validation - request line does NOT have 3 components
     if (req_line_components.size() != 3) {
-        http_client_logger.log("Malformed request line", 40);
+        http_client_logger.log("(400) Malformed request line", 40);
         construct_error_response(400);
         return;
     }
@@ -145,14 +162,14 @@ void Client::parse_req_line(std::string& req_line)
 
     // unsupported http version
     if (req.version != HttpServer::version) {
-        http_client_logger.log("Unsupported HTTP version", 40);
+        http_client_logger.log("(505) Unsupported HTTP version", 40);
         construct_error_response(505);
         return;
     }
 
     // unsupported method
     if (HttpServer::supported_methods.count(req.req_method) == 0) {
-        http_client_logger.log("Unsupported method", 40);
+        http_client_logger.log("(501) Unsupported method", 40);
         construct_error_response(501);
         return;    
     }
@@ -166,7 +183,7 @@ void Client::parse_headers(std::vector<std::string>& headers)
 
         // malformed header - header type and value(s) are not separated by ":"
         if (header_components.size() != 2) {
-            http_client_logger.log("Malformed header", 40);
+            http_client_logger.log("(400) Malformed header", 40);
             construct_error_response(400);
             return;
         }
@@ -183,7 +200,7 @@ void Client::parse_headers(std::vector<std::string>& headers)
 
     // host header not present
     if (req.headers.count("host") == 0) {
-        http_client_logger.log("No host header", 40);
+        http_client_logger.log("(400) No host header", 40);
         construct_error_response(400);
         return;
     }
@@ -198,12 +215,18 @@ void Client::set_request_type()
 
     // Additional error handling if request is static
     if (req.is_static) {
-        // set resource path for current request
-        req.static_resource_path = HttpServer::static_dir + "/" + req.path;
+        // standard size of path if necessary
+        if (req.path.front() != '/') {
+            req.path = "/" + req.path;
+        }
 
-        // verify that the file can be opened
+        // set resource path for current request
+        req.static_resource_path = HttpServer::static_dir + req.path;
+
+        // verify that the file can be opened (file exists)
         std::ifstream resource(req.static_resource_path);
-        if (resource.is_open()) {
+        if (!resource.is_open()) {
+            http_client_logger.log("(404) Failed to open static file", 40);
             construct_error_response(404);
             return;    
         }
@@ -211,12 +234,14 @@ void Client::set_request_type()
 
         // check if user is trying to access server files
         if (req.static_resource_path.find("..") != std::string::npos) {
+            http_client_logger.log("(403) Accessing forbidden files", 40);
             construct_error_response(403);
             return;    
         }
 
         // only GET or HEAD allowed for static requests
         if (req.req_method == "POST" || req.req_method == "PUT") {
+            http_client_logger.log("(405) POST or PUT used for static request", 40);
             construct_error_response(405);
             return;    
         }
@@ -230,8 +255,12 @@ void Client::construct_error_response(int err_code)
 {
     res.code = err_code;
     res.reason = HttpServer::response_codes.at(err_code);
+    res.set_header("Server", "5050-Web-Server/1.0");
 
+    std::string body = std::to_string(res.code) + " - " + res.reason;
+    res.append_body_str(body);
 
+    res.set_header("Content-Length", std::to_string(res.body.size()));
 
     // response is ready to send back to client
     response_ready = true;
@@ -242,19 +271,39 @@ void Client::construct_response()
 {
     res.code = 200;
     res.reason = HttpServer::response_codes.at(200);
-
-    res.headers["Server"] = {"5050-Web-Server/1.0"};
+    res.set_header("Server", "5050-Web-Server/1.0");
 
     // static response
     if (req.is_static) {
         // set content-type header
-
-        // set content-length header
-
-
+        std::string content_type = "application/octet-stream"; // default content type
+        size_t pos = req.path.find_last_of('.');
+        if (pos != std::string::npos) {
+            std::string extension = req.path.substr(pos + 1);
+            if (extension == "txt") {
+                content_type = "text/plain";
+            } else if (extension == "jpeg" || extension == "jpg") {
+                content_type = "image/jpeg";
+            } else if (extension == "html") {
+                content_type = "text/html";
+            }
+        }
+        res.set_header("Content-Type", content_type);
+        
         // write body if NOT a head request
-        if (req.req_method != "HEAD") {
+        if (req.req_method != "HEAD") {        
+            // open file in binary form and write bytes to body
+            std::ifstream resource(req.static_resource_path, std::ios::binary);
 
+            std::vector<char> buffer(1024);
+            while (resource.read(buffer.data(), 1024)) {
+                res.append_body_bytes(buffer.data(), resource.gcount());
+            }
+            res.append_body_bytes(buffer.data(), resource.gcount());
+            resource.close();
+
+            // set content-length header
+            res.set_header("Content-Length", std::to_string(res.body.size()));
         }
     } 
     // dynamic response
@@ -270,29 +319,29 @@ void Client::construct_response()
 void Client::send_response()
 {
     std::ostringstream response_msg;
+
+    // response line
     response_msg << res.version << " " << std::to_string(res.code) << " " << res.reason << CRLF;
+
+    // headers
     for (const auto& entry : res.headers) {
         for (std::string value : entry.second) {
-            response_msg << entry.first << ":" << value << CRLF;
+            response_msg << entry.first << ": " << value << CRLF;
         }
     }
-
-    // Write body if present
-    if (!res.body.empty()) {
-        response_msg.write(res.body.data(), res.body.size());
-        response_msg << CRLF;
-    }
-
     response_msg << CRLF;
 
-    int response_msg_len = response_msg.str().length();
-    int total_bytes_sent = 0;
-    while (total_bytes_sent < response_msg_len) {
-        int bytes_sent = send(client_fd, response_msg.str().c_str(), response_msg_len, 0);
-        if (bytes_sent == -1) {
-            // // Utils::error("Unable to send response");
-            continue;
-        }
+    // Allocate buffer for complete response
+    std::vector<char> response_buffer(response_msg.str().length() + res.body.size());
+    std::memcpy(response_buffer.data(), response_msg.str().c_str(), response_msg.str().length());
+    if (!res.body.empty()) {
+        std::memcpy(response_buffer.data() + response_msg.str().length(), res.body.data(), res.body.size());
+    }
+
+    // write response to client as bytes
+    size_t total_bytes_sent = 0;
+    while (total_bytes_sent < response_buffer.size()) {
+        int bytes_sent = send(client_fd, response_buffer.data() + total_bytes_sent, response_buffer.size() - total_bytes_sent, 0);
         total_bytes_sent += bytes_sent;
     }
 }
