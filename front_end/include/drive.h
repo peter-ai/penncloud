@@ -10,7 +10,7 @@
 
 #include "../../http_server/include/http_server.h"
 
-void open_folder(const HttpRequest& req, HttpResponse& res);
+void open_folder(const HttpRequest& req, HttpResponse& res, std::string ipaddr, int port);
 
 
 
