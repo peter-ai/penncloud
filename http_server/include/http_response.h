@@ -32,6 +32,12 @@ struct HttpResponse {
             body.push_back(c);
         }
     }
+
+    // clear data fields (headers and body)
+    void clear() {
+        headers.clear();
+        body.clear();
+    }
 };
 
 #endif

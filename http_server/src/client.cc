@@ -344,4 +344,9 @@ void Client::send_response()
         int bytes_sent = send(client_fd, response_buffer.data() + total_bytes_sent, response_buffer.size() - total_bytes_sent, 0);
         total_bytes_sent += bytes_sent;
     }
+
+    // clear all fields related to transaction
+    req.clear();
+    res.clear();
+    response_ready = false;
 }

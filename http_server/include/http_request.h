@@ -22,8 +22,11 @@ struct HttpRequest {
 
     // TODO add field for session
 
-    // TODO add method to clear request fields
-    // useful for after a transaction is complete 
+    // clear data fields after transaction is complete
+    void clear() {
+        headers.clear();
+        body.clear();
+    }
 };
 
 #endif
