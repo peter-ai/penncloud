@@ -49,49 +49,26 @@ void HttpServer::run(int port)
 }
 
 
-// void HttpServer::get(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
-// {
-//     // every GET request is also a valid HEAD request
-//     RouteTableEntry get_entry("GET", path, route);
-//     RouteTableEntry head_entry("HEAD", path, route);
-//     HttpServer::routing_table.push_back(get_entry);
-//     HttpServer::routing_table.push_back(head_entry);
-// }
-
-
-// void HttpServer::put(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
-// {
-//     RouteTableEntry entry("PUT", path, route);
-//     HttpServer::routing_table.push_back(entry);
-// }
-
-
-// void HttpServer::post(std::string path, std::function<void(const HttpRequest&, HttpResponse&)> route) 
-// {
-//     RouteTableEntry entry("POST", path, route);
-//     HttpServer::routing_table.push_back(entry);
-// }
-
-void HttpServer::get(std::string path) 
+void HttpServer::get(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
     // every GET request is also a valid HEAD request
-    RouteTableEntry get_entry("GET", path);
-    RouteTableEntry head_entry("HEAD", path);
+    RouteTableEntry get_entry("GET", path, route);
+    RouteTableEntry head_entry("HEAD", path, route);
     HttpServer::routing_table.push_back(get_entry);
     HttpServer::routing_table.push_back(head_entry);
 }
 
 
-void HttpServer::put(std::string path) 
+void HttpServer::put(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
-    RouteTableEntry entry("PUT", path);
+    RouteTableEntry entry("PUT", path, route);
     HttpServer::routing_table.push_back(entry);
 }
 
 
-void HttpServer::post(std::string path) 
+void HttpServer::post(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
-    RouteTableEntry entry("POST", path);
+    RouteTableEntry entry("POST", path, route);
     HttpServer::routing_table.push_back(entry);
 }
 

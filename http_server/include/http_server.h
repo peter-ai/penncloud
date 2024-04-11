@@ -6,17 +6,18 @@
 #include <unordered_map>
 #include <vector>
 
+#include "http_request.h"
+#include "http_response.h"
+
 struct RouteTableEntry {
     std::string method;
     std::string path;
-    // std::function<void(const HttpRequest&, HttpResponse&)> route;  // ! check if this field is okay
+    std::function<void(const HttpRequest&, HttpResponse&)> route;  // ! check if this field is okay
 
     // constructor
-    // RouteTableEntry(const std::string& method, const std::string& path,
-    //                 const std::function<void(const HttpRequest&, HttpResponse&)>& route)
-    //     : method(method), path(path), route(route) {}
-    RouteTableEntry(const std::string& method, const std::string& path)
-        : method(method), path(path) {}
+    RouteTableEntry(const std::string& method, const std::string& path,
+                    const std::function<void(const HttpRequest&, HttpResponse&)>& route)
+        : method(method), path(path), route(route) {}
     // delete default constructor
     RouteTableEntry() = delete;
 };
@@ -45,13 +46,9 @@ public:
     static void run(int port, std::string static_dir);   // overload run if user wants to run server with custom static file dir
 
     // route handlers
-    // static void get(std::string path, std::function<void(const HttpRequest&, HttpResponse&)>);     // register GET route with handler
-    // static void put(std::string path, std::function<void(const HttpRequest&, HttpResponse&)>);     // register PUT route with handler
-    // static void post(std::string path, std::function<void(const HttpRequest&, HttpResponse&)>);    // register POST route with handler
-    static void get(std::string path);     // register GET route with handler
-    static void put(std::string path);     // register PUT route with handler
-    static void post(std::string path);    // register POST route with handler
-
+    static void get(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route);     // register GET route with handler
+    static void put(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route);     // register PUT route with handler
+    static void post(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route);    // register POST route with handler
 private:
     // make default constructor private
     HttpServer() {}
