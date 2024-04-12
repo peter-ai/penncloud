@@ -30,6 +30,9 @@ void login_handler(const HttpRequest& req, HttpResponse& res);
 /// @param res HttpResponse object
 void logout_handler(const HttpRequest& req, HttpResponse& res);
 
+// function to handle password update requests
+void update_password_handler(const HttpRequest& req, HttpResponse& res);
+
 /// @brief handles password change requests on /api/pass_change route
 /// @param req HttpRequest object
 /// @param res HttpResponse object
