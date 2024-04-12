@@ -99,37 +99,26 @@ void Client::handle_req(std::string& client_stream)
     }
 
     // log request (reconstruct request line from parsed parameters to ensure correct parsing)
-    http_client_logger.log("Constructed req line - " + req.req_method + " " + req.path + " " + req.version, 20);
-    http_client_logger.log("Headers:", 20);
-    for (auto header : req.headers) {
-        for (std::string value : header.second) {
-            http_client_logger.log(header.first + ":" + value, 20);
-        }
-    }
+    http_client_logger.log("Constructed req line - " + req.method + " " + req.path + " " + req.version, 20);
 
-    // check if request is static or dynamic
+    // check if request is static or dynamic (along with associated validation for req type)
     set_request_type();
     // Error occurred while determining type of request
     if (response_ready) {
         return;
     }
-    if (req.is_static) {
-        http_client_logger.log("Request type - static", 20);
-    } else {
-        http_client_logger.log("Request type - dynamic", 20);
-    }
 
     // check if http message has a body
-    if (req.headers.count("content-length") != 0) {
-        std::vector<std::string>& content_len_values = req.headers["content-length"];
+    std::vector<std::string>& content_length_vals = req.get_header("content_length");
+    if (content_length_vals.size() != 0) {
         // multiple content length values are stored
-        if (content_len_values.size() > 1) {
+        if (content_length_vals.size() > 1) {
             construct_error_response(400);
             return;
-        } else if (content_len_values.size() == 1) {
+        } else if (content_length_vals.size() == 1) {
             // content length value is not a valid integer
             try {
-                remaining_body_len = std::stoi(content_len_values.at(0));
+                remaining_body_len = std::stoi(content_length_vals.at(0));
             } catch (const std::exception& e) {
                 construct_error_response(400);
                 return;
@@ -137,20 +126,20 @@ void Client::handle_req(std::string& client_stream)
         }
     }
 
-    // handle session related headers too i think
+    // ! (maybe not) handle session related headers too i think
 
 
 
     // check if the client requested to close the persistent connection
     // note that default behavior is a persistent connection, so Connection: close is the only header that will cause the server to explicitly terminate the connection
-    if (req.headers.count("connection") != 0) {
-        std::vector<std::string>& connection_values = req.headers["connection"];  
+    std::vector<std::string>& connection_vals = req.get_header("connection");
+    if (connection_vals.size() != 0) {
         // multiple connection values are stored
-        if (connection_values.size() > 1) {
+        if (connection_vals.size() > 1) {
             http_client_logger.log("Multiple values for connection header are not allowed", 40);
             construct_error_response(400);
             return;
-        } else if (connection_values.size() == 1 && connection_values.at(0) == "close") {
+        } else if (connection_vals.at(0) == "close") {
             close_connection = true;
         }
     }
@@ -167,7 +156,7 @@ void Client::parse_req_line(std::string& req_line)
         construct_error_response(400);
         return;
     }
-    req.req_method = req_line_components.at(0);
+    req.method = req_line_components.at(0);
     req.path = req_line_components.at(1);
     req.version = req_line_components.at(2);
 
@@ -179,7 +168,7 @@ void Client::parse_req_line(std::string& req_line)
     }
 
     // unsupported method
-    if (HttpServer::supported_methods.count(req.req_method) == 0) {
+    if (HttpServer::supported_methods.count(req.method) == 0) {
         http_client_logger.log("(501) Unsupported method", 40);
         construct_error_response(501);
         return;    
@@ -210,7 +199,7 @@ void Client::parse_headers(std::vector<std::string>& headers)
     }
 
     // host header not present
-    if (req.headers.count("host") == 0) {
+    if (req.get_header("host").size() == 0) {
         http_client_logger.log("(400) No host header", 40);
         construct_error_response(400);
         return;
@@ -220,11 +209,16 @@ void Client::parse_headers(std::vector<std::string>& headers)
 
 void Client::set_request_type()
 {
-    // loop through server's routing table and check if the method + route matches any of the entries
-    // if so, set is_static to false
-    // ! implement this loop for dynamic requests
+    // ! do something wit hthe routing table function after finding it
+    for (RouteTableEntry& route : HttpServer::routing_table) {
+        if (route.method == req.method && route.path == req.path) {
+            req.is_static = false;
+            break;
+            // need to do something here now that it's dynamic
+        }
+    }
 
-    // Additional error handling if request is static
+    // Error handling if request is static
     if (req.is_static) {
         // standard size of path if necessary
         if (req.path.front() != '/') {
@@ -251,27 +245,31 @@ void Client::set_request_type()
         }
 
         // only GET or HEAD allowed for static requests
-        if (req.req_method == "POST" || req.req_method == "PUT") {
+        if (req.method == "POST" || req.method == "PUT") {
             http_client_logger.log("(405) POST or PUT used for static request", 40);
             construct_error_response(405);
             return;    
         }
 
         // ! handle if modified since header
+    } 
+
+    if (req.is_static) {
+        http_client_logger.log("Request type - static", 20);
+    } else {
+        http_client_logger.log("Request type - dynamic", 20);
     }
 }
 
 
 void Client::construct_error_response(int err_code)
 {
-    res.code = err_code;
-    res.reason = HttpServer::response_codes.at(err_code);
+    res.set_code(err_code);
     res.set_header("Server", "5050-Web-Server/1.0");
 
-    std::string body = std::to_string(res.code) + " - " + res.reason;
+    std::string body = std::to_string(err_code) + " - " + HttpServer::response_codes.at(err_code);
     res.append_body_str(body);
-
-    res.set_header("Content-Length", std::to_string(res.body.size()));
+    res.set_header("Content-Length", std::to_string(body.size()));
 
     // response is ready to send back to client
     response_ready = true;
@@ -280,8 +278,9 @@ void Client::construct_error_response(int err_code)
 
 void Client::construct_response()
 {
-    res.code = 200;
-    res.reason = HttpServer::response_codes.at(200);
+    // it's not necessary that this occurs
+    // ! it's valid behavior to override the code (can't access anything else)
+    res.set_code(200);
     res.set_header("Server", "5050-Web-Server/1.0");
 
     // static response
@@ -302,7 +301,7 @@ void Client::construct_response()
         res.set_header("Content-Type", content_type);
         
         // write body if NOT a head request
-        if (req.req_method != "HEAD") {        
+        if (req.method != "HEAD") {        
             // open file in binary form and write bytes to body
             std::ifstream resource(req.static_resource_path, std::ios::binary);
 
@@ -319,7 +318,7 @@ void Client::construct_response()
     } 
     // dynamic response
     else {
-
+        // ! CALL HANDLER FOR DYNAMIC RESPONSE RIGHT HERE
     }
 
     // response is ready to send back to client
@@ -357,7 +356,7 @@ void Client::send_response()
     }
 
     // clear all fields related to transaction
-    req.clear();
-    res.clear();
+    req.reset();
+    res.reset();
     response_ready = false;
 }
