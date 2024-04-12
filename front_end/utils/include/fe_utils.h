@@ -23,19 +23,19 @@ namespace FeUtils
     // @note: don't need s_addr and s_port for now, but can have default and overloaded value for auth?
     int open_socket(const std::string s_addr = SERVADDR, const int s_port= SERVPORT);
 
-    // pass an fd and row, col values to perform GET(r,c), returns value
+    // pass a fd and row, col values to perform GET(r,c), returns value
     std::vector<char> kv_get(int fd, std::vector<char> row, std::vector<char> col);
 
-     // pass an fd and row to get all column values of row "RGET(r)"
+     // pass a fd and row to get all column values of row "RGET(r)"
     std::vector<char> kv_get_row(int fd, std::vector<char> row);
 
-     // pass an fd and row, col, value to perform PUT(r,c,v)
+     // pass a fd and row, col, value to perform PUT(r,c,v)
     std::vector<char> kv_put(int fd, std::vector<char> row, std::vector<char> col, std::vector<char> val);
 
-     // pass an fd and row, col, value1, value2 to perform CPUT(r,c,v1, v2)
+     // pass a fd and row, col, value1, value2 to perform CPUT(r,c,v1, v2)
     std::vector<char> kv_cput(int fd, std::vector<char> row, std::vector<char> col, std::vector<char> val1, std::vector<char> val2);
 
-     // pass an fd and row, col to perform DELETE(r,c)
+     // pass a fd and row, col to perform DELETE(r,c)
     std::vector<char> kv_del(int fd, std::vector<char> row, std::vector<char> col);
 
 }
