@@ -4,8 +4,8 @@
 #include <string>
 #include <vector>
 
-#include "http_request.h"
 #include "http_response.h"
+#include "http_request.h"
 
 class Client 
 {
@@ -18,7 +18,7 @@ public:
     HttpResponse res;   // response for current request
     bool response_ready;   // tracks if a response was sent
     int remaining_body_len;
-    bool close_connection; // ! make sure you're handling this properly everywhere
+    bool close_connection;
 
 private:
     int client_fd;        // client's bound fd
@@ -36,7 +36,7 @@ public:
 private:
     void handle_req(std::string& client_stream);
     void parse_req_line(std::string& req_line);
-    void parse_headers(std::vector<std::string> headers);
+    void parse_headers(std::vector<std::string>& headers);
     void set_request_type();
     void construct_error_response(int err_code);
     void construct_response();

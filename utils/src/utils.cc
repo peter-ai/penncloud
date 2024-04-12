@@ -37,7 +37,7 @@ std::vector<std::string> Utils::split_on_first_delim(std::string s, std::string 
     size_t pos = s.find(delimiter);
     if (pos != std::string::npos) {
         std::string token = s.substr(0, pos);
-        if (token.empty()) {
+        if (!token.empty()) {
             tokens.push_back(token);
         }
         s.erase(0, pos + delimiter.length());
