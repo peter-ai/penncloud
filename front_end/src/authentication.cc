@@ -7,7 +7,6 @@
 
 #include "../include/authentication.h"
 
-
 // function to handle signup requests
 void signup_handler(const HttpRequest& req, HttpResponse& res)
 {
@@ -17,32 +16,57 @@ void signup_handler(const HttpRequest& req, HttpResponse& res)
 // function to handle login requests
 void login_handler(const HttpRequest& req, HttpResponse& res)
 {
+    Logger logger("Login Handler");
+
     // if request is POST
-    if (req.req_method.compare("POST") == 0) 
+    if (req.method.compare("POST") == 0) 
     {
+        logger.log("Received POST request", LOGGER_INFO);
+
         // get request body
-        std::string req_body(req.body.begin(), req.body.end());
+        std::string req_body = req.body_as_string();
 
         // parse username and password from request body
         std::string username;    // username
         std::string password;    // password
+        std::vector<std::string> kvs_addr;
+        std::vector<std::string> req_headers;
 
-        // create socket with known coordinator ip:port
-            // return fd for socket
 
-        // send username to coordinator and find relevant tablet server
-            // return the ip:port of the tablet server
+        // check if we know already know the KVS server address for user
+        if (HttpServer::user_backend_address.count(username))
+        {
+            kvs_addr = HttpServer::user_backend_address.at(username);
+        }
+        // otherwise get KVS server address from coordinator
+        else
+        {
+            // // create socket with known coordinator ip:port
+            // // return fd for socket
 
-        // close coordinator socket 
-            // close(fd);
+            // // query the coordinator for the KVS server address
+            // kvs_addr = query_coordinator(username);
 
-        // create socket with known tablet server ip:port
-            // return fd for socket
+            // // close coordinator socket 
+        }
+
+        // create socket for communication with KVS server
+        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+        // get sid from 
+        std::vector<char> row_key(username.begin(), username.end());
+        std::string c_key_str = "pass";
+        std::vector<char> col_key(c_key_str.begin(), c_key_str.end());
+        std::vector<char> kvs_sid = FeUtils::kv_get(kvs_sock, row_key, col_key);
+        std::string sid(kvs_sid.begin(), kvs_sid.end());
+        
+        
+        req_headers = req.get_header("Cookie");
+
         
         // send GET(r,c) to kvs to retrieve user password
-        std::string r_key_str = "authentication";
-        std::vector<char> row_key(r_key_str.begin(), r_key_str.end());
-        std::vector<char> col_key(username.begin(), username.end());
+
+
         std::vector<char> kvs_res; // = kv_get(sock_fd, row_key, col_key);
 
         // if good response from KVS
@@ -101,7 +125,13 @@ void logout_handler(const HttpRequest& req, HttpResponse& res)
 }
 
 // helper function that validates sessionID of a user
-bool validate_session(std::string& username, int sid)
+bool validate_sessionID(std::string& username, int sid)
+{
+
+}
+
+// function to handle password update requests
+void update_password_handler(const HttpRequest& req, HttpResponse& res)
 {
 
 }

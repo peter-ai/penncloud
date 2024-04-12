@@ -16,6 +16,7 @@
 #include <openssl/sha.h>
 #include <string>
 #include <vector>
+#include "../utils/include/fe_utils.h"
 #include "../../http_server/include/http_server.h"
 #include "../../http_server/include/http_request.h"
 #include "../../http_server/include/http_response.h"
@@ -30,8 +31,11 @@ void login_handler(const HttpRequest& req, HttpResponse& res);
 // function to handle logout requests
 void logout_handler(const HttpRequest& req, HttpResponse& res);
 
+// function to handle password update requests
+void update_password_handler(const HttpRequest& req, HttpResponse& res);
+
 // helper function that validates sessionID of a user
-bool validate_session(std::string& username, int sid);
+bool validate_session_ID(std::string& username, int sid);
 
 // helper function for hashing using SHA256 algorithm
 void sha256(char *string, char outputBuffer[65]);

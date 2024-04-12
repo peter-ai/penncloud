@@ -53,7 +53,10 @@ struct HttpRequest {
                 std::vector<std::string> empty;
                 return empty;
             }
-            return headers.at(header_name);
+            std::string header_str = headers.at(header_name)[0];
+            std::vector<std::string> header_vec = Utils::split(header_str, "; ");
+
+            return header_vec;
         }
 
         // returns the response body represented as a string
