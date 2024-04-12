@@ -5,17 +5,7 @@
  *      Author: peter-ai
  */
 
-#include <cstring>
-#include <string>
-#include <vector>
-#include <iostream>
-#include <random>
-#include <openssl/sha.h>
 #include "../include/authentication.h"
-#include "../../http_server/include/http_server.h"
-#include "../../http_server/include/http_request.h"
-#include "../../http_server/include/http_response.h"
-
 
 
 // function to handle signup requests

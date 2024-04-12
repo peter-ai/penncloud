@@ -8,8 +8,15 @@
 #ifndef FRONT_END_INCLUDE_AUTHENTICATION_H_
 #define FRONT_END_INCLUDE_AUTHENTICATION_H_
 
+#include <cstring>
 #include <string>
 #include <vector>
+#include <iostream>
+#include <random>
+#include <openssl/sha.h>
+#include <string>
+#include <vector>
+#include "../../http_server/include/http_server.h"
 #include "../../http_server/include/http_request.h"
 #include "../../http_server/include/http_response.h"
 
