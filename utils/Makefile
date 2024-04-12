@@ -9,4 +9,4 @@ all: utils.o
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@
 
 clean:
-	rm *.o
+	rm -f *.o

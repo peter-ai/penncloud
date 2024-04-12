@@ -6,4 +6,4 @@ test: test.cc
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
-	rm test
+	rm -f test

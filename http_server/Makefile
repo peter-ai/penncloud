@@ -12,5 +12,5 @@ libhttp_server.a: http_server.o client.o ../utils/utils.o
 	ar rcs $@ $^
 
 clean:
-	rm *.o
-	rm libhttp_server.a
+	rm -f *.o
+	rm -f libhttp_server.a
