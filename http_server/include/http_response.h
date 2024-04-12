@@ -30,7 +30,6 @@ struct HttpResponse {
 
         friend class Client;
     public:
-
         // sets header and corresponding value in response
         // Please note that it's the responsibility of the route handler to ensure header names and values are set correctly
         void set_header(const std::string& header, const std::string& value) {
@@ -59,6 +58,11 @@ struct HttpResponse {
             set_header("Set-Cookie", key + "=" + value + "; Max-Age=1200");
         }
 
+        // clear body
+        void clear_body() {
+            body.clear();
+        }
+
         // append binary data to body - useful if you're writing the contents of a file to body since file may contain /0
         void append_body_bytes(const char* bytes, std::size_t size) {
             body.insert(body.end(), bytes, bytes + size);
@@ -69,11 +73,6 @@ struct HttpResponse {
             for (char c : s) {
                 body.push_back(c);
             }
-        }
-
-        // get the size of the body - you can call this when setting the content length header in your response
-        std::string body_size() {
-            return std::to_string(body.size());
         }
 };
 

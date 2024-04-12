@@ -11,7 +11,7 @@
 
 // initialize constant members
 const std::string HttpServer::version = "HTTP/1.1";
-const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST", "PUT"};
+const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST"};
 
 // initialize static members to dummy or default values
 int HttpServer::port = -1;
@@ -51,14 +51,6 @@ void HttpServer::get(const std::string& path, const std::function<void(const Htt
     HttpServer::routing_table.push_back(head_entry);
     http_logger.log("Registered GET route at " + path, 20);
     http_logger.log("Registered HEAD route at " + path, 20);
-}
-
-
-void HttpServer::put(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route) 
-{
-    RouteTableEntry entry("PUT", path, route);
-    HttpServer::routing_table.push_back(entry);
-    http_logger.log("Registered PUT route at " + path, 20);
 }
 
 
