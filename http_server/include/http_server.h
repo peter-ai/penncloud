@@ -48,7 +48,6 @@ public:
 
     // route handlers
     static void get(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route);     // register GET route with handler
-    static void put(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route);     // register PUT route with handler
     static void post(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route);    // register POST route with handler
 
     // ! add function to safely accesss user_backend_address map

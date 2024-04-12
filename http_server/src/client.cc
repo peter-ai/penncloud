@@ -38,7 +38,10 @@ void Client::read_from_network()
 
                 // prev req is complete - prepare and send response
                 if (remaining_body_len == 0) {
-                    construct_response();
+                    handle_req();
+                    if (!response_ready) {
+                        construct_response();
+                    }
                     send_response();
                     if (close_connection) {
                         break;
@@ -51,21 +54,15 @@ void Client::read_from_network()
                 // double CRLF indicates a full http request WITHOUT the body (if present)
                 if (client_stream.length() >= 4 && client_stream.substr(client_stream.length() - 4) == DOUBLE_CRLF) {
                     // build http request from client stream and then clear current stream
-                    handle_req(client_stream);
+                    parse_req(client_stream);
                     client_stream.clear();
-
-                    // error occurred while parsing
-                    if (response_ready) {
-                        send_response();
-                        if (close_connection) {
-                            break;
-                        }
-                        continue;
-                    }
 
                     // request had content-length of 0
                     if (remaining_body_len == 0) {
-                        construct_response();
+                        handle_req();
+                        if (!response_ready) {
+                            construct_response();
+                        }
                         send_response();
                         if (close_connection) {
                             break;
@@ -83,37 +80,25 @@ void Client::read_from_network()
 }
 
 
-void Client::handle_req(std::string& client_stream) 
+void Client::parse_req(std::string& client_stream) 
 {
     std::vector<std::string> msg_lines = Utils::split(client_stream, CRLF);
 
     parse_req_line(msg_lines.at(0));
-    // Error occurred while parsing req line
+    // Error occurred while parsing req line - this is the only acceptable early exit
     if (response_ready) {
         return;
     }
+
     msg_lines.erase(msg_lines.begin());
     parse_headers(msg_lines);
-    // Error occurred while parsing headers
-    if (response_ready) {
-        return;
-    }
-
-    // log request (reconstruct request line from parsed parameters to ensure correct parsing)
-    http_client_logger.log("Constructed req line - " + req.method + " " + req.path + " " + req.version, 20);
-
-    // check if request is static or dynamic (along with associated validation for req type)
-    set_request_type();
-    // Error occurred while determining type of request
-    if (response_ready) {
-        return;
-    }
 
     // check if http message has a body
-    std::vector<std::string> content_length_vals = req.get_header("content_length");
+    std::vector<std::string> content_length_vals = req.get_header("content-length");
     if (content_length_vals.size() != 0) {
         // multiple content length values are stored
         if (content_length_vals.size() > 1) {
+            http_client_logger.log("(400) Multiple values for content length are not allowed", 40);
             construct_error_response(400);
             return;
         } else if (content_length_vals.size() == 1) {
@@ -121,23 +106,10 @@ void Client::handle_req(std::string& client_stream)
             try {
                 remaining_body_len = std::stoi(content_length_vals.at(0));
             } catch (const std::exception& e) {
+                http_client_logger.log("(400) Non-numerical content length provided", 40);
                 construct_error_response(400);
                 return;
             }
-        }
-    }
-
-    // check if the client requested to close the persistent connection
-    // note that default behavior is a persistent connection, so Connection: close is the only header that will cause the server to explicitly terminate the connection
-    std::vector<std::string> connection_vals = req.get_header("connection");
-    if (connection_vals.size() != 0) {
-        // multiple connection values are stored
-        if (connection_vals.size() > 1) {
-            http_client_logger.log("Multiple values for connection header are not allowed", 40);
-            construct_error_response(400);
-            return;
-        } else if (connection_vals.at(0) == "close") {
-            close_connection = true;
         }
     }
 }
@@ -156,20 +128,6 @@ void Client::parse_req_line(std::string& req_line)
     req.method = req_line_components.at(0);
     req.path = req_line_components.at(1);
     req.version = req_line_components.at(2);
-
-    // unsupported http version
-    if (req.version != HttpServer::version) {
-        http_client_logger.log("(505) Unsupported HTTP version", 40);
-        construct_error_response(505);
-        return;
-    }
-
-    // unsupported method
-    if (HttpServer::supported_methods.count(req.method) == 0) {
-        http_client_logger.log("(501) Unsupported method", 40);
-        construct_error_response(501);
-        return;    
-    }
 }
 
 
@@ -182,7 +140,9 @@ void Client::parse_headers(std::vector<std::string>& headers)
         if (header_components.size() != 2) {
             http_client_logger.log("(400) Malformed header", 40);
             construct_error_response(400);
-            return;
+            // do not return, since content length header may still need to be parsed
+            // if content length header is not provided or malformed, then behavior is undefined
+            continue;
         }
         std::string header_key = Utils::to_lowercase(header_components.at(0));
         std::string header_values = Utils::trim(header_components.at(1));
@@ -199,12 +159,45 @@ void Client::parse_headers(std::vector<std::string>& headers)
     if (req.get_header("host").size() == 0) {
         http_client_logger.log("(400) No host header", 40);
         construct_error_response(400);
-        return;
     }
 }
 
 
-void Client::set_request_type()
+void Client::handle_req() {
+    // unsupported http version
+    if (req.version != HttpServer::version) {
+        http_client_logger.log("(505) Unsupported HTTP version", 40);
+        construct_error_response(505);
+        return;
+    }
+
+    // unsupported method
+    if (HttpServer::supported_methods.count(req.method) == 0) {
+        http_client_logger.log("(501) Unsupported method", 40);
+        construct_error_response(501);
+        return;    
+    }
+
+    // check if request is static or dynamic (along with associated validation for req type)
+    set_req_type();
+
+    // check if the client requested to close the persistent connection - should be checked even in bad request as long as req line + headers are valid
+    // note that default behavior is a persistent connection, so Connection: close is the only header that will cause the server to explicitly terminate the connection
+    std::vector<std::string> connection_vals = req.get_header("connection");
+    if (connection_vals.size() != 0) {
+        // multiple connection values are stored
+        if (connection_vals.size() > 1) {
+            http_client_logger.log("(400) Multiple values for connection header are not allowed", 40);
+            construct_error_response(400);
+            return;
+        } else if (connection_vals.at(0) == "close") {
+            close_connection = true;
+        }
+    }
+}
+
+
+void Client::set_req_type()
 {
     for (RouteTableEntry& route : HttpServer::routing_table) {
         if (route.method == req.method && route.path == req.path) {
@@ -241,31 +234,26 @@ void Client::set_request_type()
         }
 
         // only GET or HEAD allowed for static requests
-        if (req.method == "POST" || req.method == "PUT") {
-            http_client_logger.log("(405) POST or PUT used for static request", 40);
+        if (req.method == "POST") {
+            http_client_logger.log("(405) POST used for static request", 40);
             construct_error_response(405);
             return;    
         }
 
         // ! handle if modified since header
     } 
-
-    if (req.is_static) {
-        http_client_logger.log("Request type - static", 20);
-    } else {
-        http_client_logger.log("Request type - dynamic", 20);
-    }
 }
 
 
 void Client::construct_error_response(int err_code)
 {
+    // necessary in case multiple errors occurred (first error supersedes errors found later)
+    if (response_ready) {
+        return;
+    }
     res.set_code(err_code);
-    res.set_header("Server", "5050-Web-Server/1.0");
-
     std::string body = std::to_string(err_code) + " - " + res.reason;
     res.append_body_str(body);
-    res.set_header("Content-Length", std::to_string(body.size()));
 
     // response is ready to send back to client
     response_ready = true;
@@ -274,8 +262,9 @@ void Client::construct_error_response(int err_code)
 
 void Client::construct_response()
 {
+    // default response code indicating req is valid from server's end
+    // This can be overridden by a dynamic request's route handler
     res.set_code(200);
-    res.set_header("Server", "5050-Web-Server/1.0");
 
     // static response
     if (req.is_static) {
@@ -305,9 +294,6 @@ void Client::construct_response()
             }
             res.append_body_bytes(buffer.data(), resource.gcount());
             resource.close();
-
-            // set content-length header
-            res.set_header("Content-Length", std::to_string(res.body.size()));
         }
     } 
     // dynamic response
@@ -322,6 +308,18 @@ void Client::construct_response()
 
 void Client::send_response()
 {
+    // add standard headers to maintain consistent in responses
+    res.set_header("Server", "5050-Web-Server/1.0"); // server identity
+    res.set_header("Content-Length", std::to_string(res.body.size())); // content-length
+
+    // log request metadata (reconstruct request line from parsed parameters to ensure correct parsing)
+    std::string log_str = req.method + " " + req.path + " " + std::to_string(res.code) + " - " + std::to_string(res.body.size());
+    if (req.is_static) {
+        http_client_logger.log("[static] " + log_str, 20);
+    } else {
+        http_client_logger.log("[dynamic] " + log_str, 20);
+    }
+
     std::ostringstream response_msg;
 
     // response line
