@@ -10,10 +10,12 @@
 #include <thread>
 #include <map>
 #include <set>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
 
-using namespace std
-
-set<int> clientFDS;
+using namespace std;
 
 map<string, string> clientToBackendMap;
 
