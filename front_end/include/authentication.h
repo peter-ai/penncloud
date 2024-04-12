@@ -13,11 +13,18 @@
 #include "../../http_server/include/http_request.h"
 #include "../../http_server/include/http_response.h"
 
-// function to handle login requests
-void login_handler(const HttpRequest& req, HttpResponse& res);
 
 // function to handle signup requests
 void signup_handler(const HttpRequest& req, HttpResponse& res);
+
+// function to handle login requests
+void login_handler(const HttpRequest& req, HttpResponse& res);
+
+// function to handle logout requests
+void logout_handler(const HttpRequest& req, HttpResponse& res);
+
+// helper function that validates sessionID of a user
+bool validate_session(std::string& username, int sid);
 
 // helper function for hashing using SHA256 algorithm
 void sha256(char *string, char outputBuffer[65]);
