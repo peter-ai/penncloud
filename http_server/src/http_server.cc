@@ -4,21 +4,14 @@
 #include <thread>
 
 #include "http_server.h"
+#include "http_request.h"
+#include "http_response.h"
 #include "client.h"
 #include "../../utils/include/utils.h"
 
 // initialize constant members
 const std::string HttpServer::version = "HTTP/1.1";
 const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST", "PUT"};
-const std::unordered_map<int, std::string> HttpServer::response_codes = {
-    {200, "OK"},
-    {400, "Bad Request"},
-    {403, "Forbidden"},
-    {404, "Not Found"},
-    {405, "Method Not Allowed"},
-    {501, "Not Implemented"},
-    {505, "HTTP Version Not Supported"}
-};
 
 // initialize static members to dummy or default values
 int HttpServer::port = -1;
@@ -49,27 +42,31 @@ void HttpServer::run(int port)
 }
 
 
-void HttpServer::get(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
+void HttpServer::get(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
     // every GET request is also a valid HEAD request
     RouteTableEntry get_entry("GET", path, route);
     RouteTableEntry head_entry("HEAD", path, route);
     HttpServer::routing_table.push_back(get_entry);
     HttpServer::routing_table.push_back(head_entry);
+    http_logger.log("Registered GET route at " + path, 20);
+    http_logger.log("Registered HEAD route at " + path, 20);
 }
 
 
-void HttpServer::put(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
+void HttpServer::put(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
     RouteTableEntry entry("PUT", path, route);
     HttpServer::routing_table.push_back(entry);
+    http_logger.log("Registered PUT route at " + path, 20);
 }
 
 
-void HttpServer::post(const std::string& path, std::function<void(const HttpRequest&, HttpResponse&)>& route) 
+void HttpServer::post(const std::string& path, const std::function<void(const HttpRequest&, HttpResponse&)>& route) 
 {
     RouteTableEntry entry("POST", path, route);
     HttpServer::routing_table.push_back(entry);
+    http_logger.log("Registered POST route at " + path, 20);
 }
 
 

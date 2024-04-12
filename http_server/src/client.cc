@@ -4,9 +4,10 @@
 #include <fstream>
 #include <sstream>
 
-#include "http_server.h"
 #include "client.h"
 #include "http_request.h"
+#include "http_response.h"
+#include "http_server.h"
 #include "../../utils/include/utils.h"
 
 const std::string Client::CRLF = "\r\n";
@@ -109,7 +110,7 @@ void Client::handle_req(std::string& client_stream)
     }
 
     // check if http message has a body
-    std::vector<std::string>& content_length_vals = req.get_header("content_length");
+    std::vector<std::string> content_length_vals = req.get_header("content_length");
     if (content_length_vals.size() != 0) {
         // multiple content length values are stored
         if (content_length_vals.size() > 1) {
@@ -126,13 +127,9 @@ void Client::handle_req(std::string& client_stream)
         }
     }
 
-    // ! (maybe not) handle session related headers too i think
-
-
-
     // check if the client requested to close the persistent connection
     // note that default behavior is a persistent connection, so Connection: close is the only header that will cause the server to explicitly terminate the connection
-    std::vector<std::string>& connection_vals = req.get_header("connection");
+    std::vector<std::string> connection_vals = req.get_header("connection");
     if (connection_vals.size() != 0) {
         // multiple connection values are stored
         if (connection_vals.size() > 1) {
@@ -209,12 +206,11 @@ void Client::parse_headers(std::vector<std::string>& headers)
 
 void Client::set_request_type()
 {
-    // ! do something wit hthe routing table function after finding it
     for (RouteTableEntry& route : HttpServer::routing_table) {
         if (route.method == req.method && route.path == req.path) {
+            req.dynamic_route = route.route;
             req.is_static = false;
             break;
-            // need to do something here now that it's dynamic
         }
     }
 
@@ -267,7 +263,7 @@ void Client::construct_error_response(int err_code)
     res.set_code(err_code);
     res.set_header("Server", "5050-Web-Server/1.0");
 
-    std::string body = std::to_string(err_code) + " - " + HttpServer::response_codes.at(err_code);
+    std::string body = std::to_string(err_code) + " - " + res.reason;
     res.append_body_str(body);
     res.set_header("Content-Length", std::to_string(body.size()));
 
@@ -278,8 +274,6 @@ void Client::construct_error_response(int err_code)
 
 void Client::construct_response()
 {
-    // it's not necessary that this occurs
-    // ! it's valid behavior to override the code (can't access anything else)
     res.set_code(200);
     res.set_header("Server", "5050-Web-Server/1.0");
 
@@ -318,7 +312,7 @@ void Client::construct_response()
     } 
     // dynamic response
     else {
-        // ! CALL HANDLER FOR DYNAMIC RESPONSE RIGHT HERE
+        req.dynamic_route(req, res);
     }
 
     // response is ready to send back to client
