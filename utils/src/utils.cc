@@ -30,20 +30,26 @@ std::vector<std::string> Utils::split(std::string s, std::string delimiter)
     return lines;
 }
 
+
 std::vector<std::string> Utils::split_on_first_delim(std::string s, std::string delimiter) 
 {
     std::vector<std::string> tokens;
 
+    // find position of delimiter in string
     size_t pos = s.find(delimiter);
+    // delimiter not found in string
     if (pos != std::string::npos) {
         std::string token = s.substr(0, pos);
         if (!token.empty()) {
             tokens.push_back(token);
         }
+        // erase the portion of the string before the delimiter and the delimiter itself
         s.erase(0, pos + delimiter.length());
     }
 
     // Push the remaining part of the string as the last element
+    // if the delimiter was not found in the string, the string is just returned as the first index in the string
+    // If the delimiter was at the start or end, the string will be returned with the delimiter removed
     if (!s.empty()) {
         tokens.push_back(s);
     }

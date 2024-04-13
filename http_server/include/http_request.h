@@ -29,6 +29,7 @@ struct HttpRequest {
 
         std::unordered_map<std::string, std::vector<std::string>> headers;
         std::vector<char> body; // store data directly as bytes
+        std::unordered_map<std::string, std::string> query_params;
 
         // reset data fields after transaction is complete - for internal http server use only
         void reset() {
