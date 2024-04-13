@@ -9,10 +9,22 @@ void test_route(const HttpRequest& req, HttpResponse& res) {
     res.set_header("Content-Type", "image/jpeg");
 }
 
+
+void test_dynamic(const HttpRequest& req, HttpResponse& res) {
+    res.append_body_str("dynamic matching working!");
+    res.append_body_str(req.get_qparam("user"));
+    res.append_body_str(req.get_qparam("pw"));
+    res.set_header("Content-Type", "text/plain");
+}
+
 int main()
 {
+    auto test_dynamic_handler = std::bind(&test_dynamic, std::placeholders::_1, std::placeholders::_2);
+    HttpServer::get("/api/test?", test_dynamic_handler);
+
     auto test_route_handler = std::bind(&test_route, std::placeholders::_1, std::placeholders::_2);
     HttpServer::get("/api/test", test_route_handler);
+
     HttpServer::run(8000);
     return(0);
 }
