@@ -7,6 +7,8 @@
 
 #include "../include/authentication.h"
 
+// https://www.w3schools.com/tags/att_form_enctype.asp may be important once we are building upload fields for files
+
 // function to handle signup requests
 void signup_handler(const HttpRequest& req, HttpResponse& res)
 {
@@ -29,11 +31,11 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
         logger.log("Received POST request", LOGGER_INFO); // logging message
 
         // get request body
-        std::string req_body = req.body_as_string();
+        std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");;
 
         // parse username and password from request body
-        std::string username;    // username
-        std::string password;    // password
+        std::string username = Utils::trim(Utils::split(req_body[0], "=")[1]);;    // username
+        std::string password = Utils::trim(Utils::split(req_body[1], "=")[1]);;    // password
         std::vector<std::string> kvs_addr;
         
         // check if we know already know the KVS server address for user
@@ -88,7 +90,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
             // set response headers
             res.set_header("Content-Type", "text/html");
-            res.set_header("Content-Length", res.body_size());
         }
         // otherwise check password
         else
@@ -135,7 +136,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
                 // set response headers
                 res.set_header("Content-Type", "text/html");
-                res.set_header("Content-Length", res.body_size());
             }
         } 
 
@@ -164,7 +164,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
         // set response headers
         res.set_header("Content-Type", "text/html");
-        res.set_header("Content-Length", res.body_size());
     }
 }
 
