@@ -4,15 +4,25 @@
 
 
 void test_route(const HttpRequest& req, HttpResponse& res) {
-    std::vector<char> req_body = req.body_as_bytes();
-    res.append_body_bytes(req_body.data(), req_body.size());
-    res.set_header("Content-Type", "image/jpeg");
+  // std::vector<std::string> headers = req.get_header("Cookie");
+    // for (int i=0; i < headers.size(); i++) std::cerr << "Entry " << i << ": " << headers[i] << std::endl;
+
+    res.append_body_str("dynamic route working!");
+    res.set_header("Content-Type", "text/plain");
+    res.set_cookie("user", "me");
+    res.set_cookie("sid", "123");
+
+    // std::vector<std::string> cookies = req.get_header("Cookie"); 
+    // for (int i=0; i < cookies.size(); i++) std::cerr << "Entry #" << i+1 << " " << cookies[i] << std::endl;
+
+    // std::vector<std::string> encodings = req.get_header("Accept-Encoding"); 
+    // for (int i=0; i < encodings.size(); i++) std::cerr << "Entry #" << i+1 << " " << encodings[i] << std::endl;
 }
 
 int main()
 {
     auto test_route_handler = std::bind(&test_route, std::placeholders::_1, std::placeholders::_2);
-    HttpServer::post("/api/test", test_route_handler);
+    HttpServer::get("/api/test", test_route_handler);
     HttpServer::run(8000);
     return(0);
 }

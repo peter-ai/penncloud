@@ -143,7 +143,6 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     return sockfd;
 }
 
-
 // Function for KV GET(row, col). Returns value as vector<char> to user
 std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<char> col)
 {
@@ -250,7 +249,7 @@ std::vector<char> FeUtils::kv_cput(int fd, std::vector<char> row, std::vector<ch
 std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<char> col)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "CPUT";
+    std::string cmd = "DELETE";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     insert_arg(fn_string, col);
