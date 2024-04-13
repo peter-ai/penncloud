@@ -34,10 +34,10 @@ private:
     friend class Client;
 
 public:
-    // sets header and corresponding value in response
+
+    // setsheader and corresponding value in response
     // Please note that it's the responsibility of the route handler to ensure header names and values are set correctly
-    void set_header(const std::string &header, const std::string &value)
-    {
+    void set_header(const std::string& header, const std::string& value) {
         headers[header].push_back(value);
     }
 
@@ -60,8 +60,7 @@ public:
 
     // sets cookie in response
     // Note that cookies have a default expiry of 20 minutes (hard coded for convenience)
-    void set_cookie(std::string key, std::string value)
-    {
+    void set_cookie(const std::string& key, const std::string& value) {
         set_header("Set-Cookie", key + "=" + value + "; Max-Age=1200");
     }
 
