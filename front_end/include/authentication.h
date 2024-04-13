@@ -33,6 +33,10 @@ void logout_handler(const HttpRequest& req, HttpResponse& res);
 // function to handle password update requests
 void update_password_handler(const HttpRequest& req, HttpResponse& res);
 
+// helper function that validates the password of a user 
+// using a cryptographically secure challenge-response protocol
+bool validate_password(int kvs_fd, std::string& username, std::string& password);
+
 /// @brief handles password change requests on /api/pass_change route
 /// @param req HttpRequest object
 /// @param res HttpResponse object
