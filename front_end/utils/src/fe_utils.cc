@@ -249,7 +249,7 @@ std::vector<char> FeUtils::kv_cput(int fd, std::vector<char> row, std::vector<ch
 std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<char> col)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "CPUT";
+    std::string cmd = "DELETE";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     insert_arg(fn_string, col);
