@@ -199,6 +199,22 @@ void Client::handle_req() {
 
 void Client::set_req_type()
 {
+    // parse query parameters
+    size_t param_start = req.path.find_first_of('?');
+    if (param_start != std::string::npos) {
+        std::vector<std::string> split_params = Utils::split(req.path.substr(param_start + 1), "&");
+        for (std::string param : split_params) {
+            std::vector<std::string> query_key_val = Utils::split(param, "=");
+            if (query_key_val.size() == 2) {
+                req.query_params[query_key_val[0]] = query_key_val[1];
+            }
+        }
+        // update path if query parameters found in request
+        // if path was /some_path?abc=123, it'll now be /some_path? (which should match a dynamic route)
+        req.path = req.path.substr(0, param_start - 1);
+    }
+
+    // check for dynamic routes
     for (RouteTableEntry& route : HttpServer::routing_table) {
         if (route.method == req.method && route.path == req.path) {
             req.dynamic_route = route.route;
