@@ -470,6 +470,7 @@ void *client_thread(void *arg)
 
     if (rlen != -1)
     {
+        // TODO: Revisit kvs server selection logic??
         // assign appropriate kvs for given request
         std::string kvs_server = (kvs_responsibilities.count(request[0]) ? kvs_responsibilities[request[0]]["primary"] : "-ERR First character non-alphabetical");
         
