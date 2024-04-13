@@ -57,7 +57,11 @@ struct HttpRequest {
             if (header_name.compare("cookie") != 0) return headers.at(header_name);
             else
             {
-                std::string cookie_str = headers.at(header_name)[0];
+                std::string cookie_str;
+                for (int i=0; i < headers.at(header_name).size(); i++)
+                {
+                    cookie_str += (i==0 ? "" : "; ") + headers.at(header_name)[i];
+                }
                 std::vector<std::string> cookies = Utils::split(cookie_str, "; ");
                 return cookies;
             }
