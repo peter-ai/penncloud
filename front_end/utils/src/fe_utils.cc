@@ -143,7 +143,6 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     return sockfd;
 }
 
-
 // Function for KV GET(row, col). Returns value as vector<char> to user
 std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<char> col)
 {

@@ -49,11 +49,18 @@ struct HttpRequest {
         std::vector<std::string> get_header(const std::string& header) const {
             std::string header_name = Utils::to_lowercase(header);
             if (headers.count(header_name) == 0) {
-                std::cout << "should not be running" << std::endl;
                 std::vector<std::string> empty;
                 return empty;
             }
-            return headers.at(header_name);
+            
+            // process depending on whether cookies were requested or not
+            if (header_name.compare("cookie") != 0) return headers.at(header_name);
+            else
+            {
+                std::string cookie_str = headers.at(header_name)[0];
+                std::vector<std::string> cookies = Utils::split(cookie_str, "; ");
+                return cookies;
+            }
         }
 
         // returns the response body represented as a string
