@@ -45,10 +45,26 @@ std::string random_string(std::size_t length)
     return random_string;
 }
 
+std::string generate_sid()
+{
+    std::random_device random_device;
+    std::mt19937 generator(random_device());
+    std::uniform_int_distribution<> distribution(0, 9);
+
+    std::string sid;
+
+    for (int i=0; i < 64; i++)
+    {
+        sid += std::to_string(distribution(generator));
+    }    
+
+    return sid;
+}
+
 int main()
 {   
     std::string msg1 = "hi my name is P";
-    std::string msg2 = "hi my name is P";
+    std::string msg2 = "Hi my name is P";
     std::string msg3 = "hi my name is A";
     std::string msg4 = "hi my name is M";
     
@@ -80,6 +96,11 @@ int main()
     std::cout << std::endl << "Generate Random Strings" << std::endl;
     std::cout << random_string(64) << std::endl;
     std::cout << random_string(64) << std::endl;
-    // return 0;
+
+    std::cout << std::endl << "Generate Random SIDs" << std::endl;
+    std::cout << generate_sid() << std::endl;
+    std::cout << generate_sid() << std::endl;
+    std::cout << generate_sid() << std::endl;
+
     return 0;
 }
