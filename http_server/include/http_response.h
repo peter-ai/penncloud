@@ -42,7 +42,7 @@ struct HttpResponse {
             code = res_code;
             const std::unordered_map<int, std::string> response_codes = {
                 {200, "OK"},
-                {400, "Bad Request"},
+                {400, "Bad Request"}, 
                 {403, "Forbidden"},
                 {404, "Not Found"},
                 {405, "Method Not Allowed"},
@@ -54,7 +54,7 @@ struct HttpResponse {
 
         // sets cookie in response
         // Note that cookies have a default expiry of 20 minutes (hard coded for convenience)
-        void set_cookie(std::string& key, std::string& value) {
+        void set_cookie(std::string key, std::string value) {
             set_header("Set-Cookie", key + "=" + value + "; Max-Age=1200");
         }
 
