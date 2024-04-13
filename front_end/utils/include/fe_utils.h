@@ -38,6 +38,9 @@ namespace FeUtils
      // pass a fd and row, col to perform DELETE(r,c)
     std::vector<char> kv_del(int fd, std::vector<char> row, std::vector<char> col);
 
+    // checks if a char vector starts with +OK
+    bool kv_success(const std::vector<char>& vec);
+
 }
 
 #endif

@@ -269,3 +269,18 @@ std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<cha
     // return value
     return response;
 }
+
+
+// returns true is +OK at the start, else returns false
+bool FeUtils::kv_success(const std::vector<char>& vec){
+    // Check if the vector has at least 3 characters
+    if (vec.size() < 3) {
+        return false;
+    }
+
+    // Define the expected prefix
+    std::vector<char> prefix = {'+', 'O', 'K'};
+
+    // Check if the first three characters match the prefix
+    return std::equal(prefix.begin(), prefix.end(), vec.begin());
+}
