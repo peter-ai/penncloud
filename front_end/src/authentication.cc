@@ -88,7 +88,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
             // set response headers
             res.set_header("Content-Type", "text/html");
-            res.set_header("Content-Length", res.body_size());
         }
         // otherwise check password
         else
@@ -135,7 +134,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
                 // set response headers
                 res.set_header("Content-Type", "text/html");
-                res.set_header("Content-Length", res.body_size());
             }
         } 
 
@@ -164,7 +162,6 @@ void login_handler(const HttpRequest& req, HttpResponse& res)
 
         // set response headers
         res.set_header("Content-Type", "text/html");
-        res.set_header("Content-Length", res.body_size());
     }
 }
 
