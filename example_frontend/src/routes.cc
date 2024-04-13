@@ -5,6 +5,9 @@
 #
 
 void test_route(const HttpRequest& req, HttpResponse& res) {
+    // std::vector<std::string> headers = req.get_header("Cookie");
+    // for (int i=0; i < headers.size(); i++) std::cerr << "Entry " << i << ": " << headers[i] << std::endl;
+
     res.append_body_str("dynamic route working!");
     res.set_header("Content-Type", "text/plain");
     res.set_header("Content-Length", res.body_size());
