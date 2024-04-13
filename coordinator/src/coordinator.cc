@@ -171,7 +171,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    if (verbose)
+    if (VERBOSE)
     {
         logger.log("Server Groups: " + std::to_string(kvs_servers), LOGGER_INFO);
         logger.log("Backups/Server Group: " + std::to_string(kvs_backups), LOGGER_INFO);
