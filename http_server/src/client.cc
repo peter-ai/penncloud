@@ -211,12 +211,45 @@ void Client::set_req_type()
         }
         // update path if query parameters found in request
         // if path was /some_path?abc=123, it'll now be /some_path? (which should match a dynamic route)
-        req.path = req.path.substr(0, param_start - 1);
+        req.path = req.path.substr(0, param_start + 1);
     }
 
-    // check for dynamic routes
+    // match incoming request path to stored dynamic routes
+    std::vector<std::string> req_path_tokens = Utils::split(req.path, "/");
+
     for (RouteTableEntry& route : HttpServer::routing_table) {
-        if (route.method == req.method && route.path == req.path) {
+        // methods must match for the request to match the route
+        if (route.method != req.method) {
+            continue;
+        }
+
+        std::vector<std::string> route_path_tokens = Utils::split(route.path, "/");
+
+        // request path must be at least as long as the route path to match
+        if (req_path_tokens.size() < route_path_tokens.size()) {
+            continue;
+        }
+
+        // iterate route path tokens and check if there's a match for each token
+        bool dynamic_route_found = true;
+        for (size_t i = 0 ; i < route_path_tokens.size() ; i++) {
+            std::string req_token = req_path_tokens.at(i);
+            std::string route_token = route_path_tokens.at(i);
+
+            // tokens are a direct match OR
+            // route token starts with ":" which matches any value
+            if (req_token == route_token || route_token.front() == ':') {
+                continue;
+            } 
+            // route token is *, in which case we're done and we can break since * catches everything
+            else if (route_token == "*") {
+                break;
+            } else {
+                dynamic_route_found = false;
+            }
+        }
+
+        if (dynamic_route_found) {
             req.dynamic_route = route.route;
             req.is_static = false;
             break;

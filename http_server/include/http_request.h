@@ -38,6 +38,7 @@ struct HttpRequest {
             version.clear();
             headers.clear();
             body.clear();
+            query_params.clear();
             is_static = true;
             static_resource_path.clear();
             dynamic_route = nullptr;
@@ -47,6 +48,14 @@ struct HttpRequest {
     public:
         // get a vector of header values for a header
         // Note that this returns a vector because a header is allowed to have multiple associated values
+        std::string get_qparam(const std::string& q_param_key) const {
+            if (query_params.count(q_param_key) == 0) {
+                return "";
+            }
+            return query_params.at(q_param_key);
+        }
+
+        // get the value associated with a query parameter
         std::vector<std::string> get_header(const std::string& header) const {
             std::string header_name = Utils::to_lowercase(header);
             if (headers.count(header_name) == 0) {
