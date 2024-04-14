@@ -41,7 +41,7 @@ std::vector<char> readfrom_kvs(int fd)
 {
     std::string stringBuffer(1024, '\0'); // Start with a large initial size like 1MB
     size_t current_capacity = stringBuffer.size();
-    ssize_t total_bytes_received = 0;
+    size_t total_bytes_received = 0;
     ssize_t bytes_received = 0;
 
     // Prepare the poll structure
@@ -141,6 +141,35 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     }
 
     return sockfd;
+}
+
+/// @brief helper function that queries coordinator for KVS server address given a path
+/// @param path file/folder path for which the associated KVS server address should be retrieved
+/// @return returns the server address as a vector of strings <ip,port>
+std::vector<std::string> FeUtils::query_coordinator(std::string &path)
+{
+    // set ip:port for coordinator
+    std::string ip_addr = "127.0.0.1";
+    int port = 4999;
+
+    // open socket for coordinator
+    int coord_sock = FeUtils::open_socket(ip_addr, port);
+
+    // set buffer
+    std::string resp;
+    resp.resize(100);
+    int rlen = 0;
+
+    // send request and retrieve response
+    send(coord_sock, &path[0], path.size(), 0);
+    rlen = recv(coord_sock, &resp[0], resp.size(), 0);
+    resp.resize(rlen);
+    std::vector<std::string> kvs_addr = Utils::split(resp, ":");
+
+    // close socket for coordinator
+    close(coord_sock);
+
+    return kvs_addr;
 }
 
 // Function for KV GET(row, col). Returns value as vector<char> to user
@@ -270,11 +299,12 @@ std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<cha
     return response;
 }
 
-
 // returns true is +OK at the start, else returns false
-bool FeUtils::kv_success(const std::vector<char>& vec){
+bool FeUtils::kv_success(const std::vector<char> &vec)
+{
     // Check if the vector has at least 3 characters
-    if (vec.size() < 3) {
+    if (vec.size() < 3)
+    {
         return false;
     }
 
@@ -283,4 +313,81 @@ bool FeUtils::kv_success(const std::vector<char>& vec){
 
     // Check if the first three characters match the prefix
     return std::equal(prefix.begin(), prefix.end(), vec.begin());
+}
+
+/// @brief helper function that parses cookie header responses received in http requests
+/// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
+/// @return a map with keys and values from the cookie
+std::unordered_map<std::string, std::string> FeUtils::parse_cookies(std::vector<std::string> &cookie_vector)
+{
+    std::unordered_map<std::string, std::string> cookies;
+    for (unsigned long i = 0; i < cookie_vector.size(); i++)
+    {
+        std::vector<std::string> cookie = Utils::split(cookie_vector[i], "=");
+        cookies[Utils::trim(cookie[0])] = Utils::trim(cookie[1]);
+    }
+
+    return cookies;
+}
+
+/// @brief sets the cookies on the http response and resets the age of cookies
+/// @param res HttpResponse object
+/// @param username username associated with the current session
+/// @param sid session ID associated with the current session
+void FeUtils::set_cookies(HttpResponse &res, std::string username, std::string sid)
+{
+    const std::string key1 = "user";
+    const std::string key2 = "sid";
+    res.set_cookie(key1, username);
+    res.set_cookie(key2, sid);
+}
+
+/// @brief validates the session id of the current user
+/// @param kvs_fd file descriptor for KVS server
+/// @param username username associatd with the current session to be validated
+/// @param req HttpRequest object
+/// @return returns an empty string if the session is invalid, otherwise returns the user's session ID
+std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, const HttpRequest &req)
+{
+    // get sid from KVS
+    std::vector<char> row_key(username.begin(), username.end());
+    row_key.push_back('/');
+    std::string c_key_str = "sid";
+    std::vector<char> col_key(c_key_str.begin(), c_key_str.end());
+    std::vector<char> kvs_sid = FeUtils::kv_get(kvs_fd, row_key, col_key); // TODO: RETRY
+    std::string sid;
+
+    // check if response from KVS is OK
+    if ((kvs_sid[0] == '+') && (kvs_sid[1] == 'O') && (kvs_sid[2] == 'K'))
+    {
+        sid.assign(kvs_sid.begin() + 4, kvs_sid.end());
+    }
+    else
+    {
+        return ""; // TODO: RETRY ??
+    }
+
+    // if sid is empty, no active session
+    if (sid.empty())
+    {
+        return "";
+    }
+
+    // parse cookies sent with request
+    std::vector<std::string> cookie_vector = req.get_header("Cookie");
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(cookie_vector);
+
+    // check if cookie for sid was sent with request
+    if (cookies.count(c_key_str))
+    {
+        // if cookie matches the KVS, there is a valid session for the client
+        if (cookies[c_key_str].compare(sid) == 0)
+            return sid;
+        else
+            return "";
+    }
+    else
+    {
+        return "";
+    }
 }
