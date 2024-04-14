@@ -30,8 +30,7 @@ public:
     static const std::string version;                                   // HTTP version (HTTP/1.1)
     static const std::unordered_set<std::string> supported_methods;     // GET, HEAD, POST, PUT
     // static const std::mutex backend_mutex; // ! mutex for user_backend_address
-    static const std::unordered_map<std::string, std::vector<std::string> > user_backend_address;
-    static const std::unordered_map<int, std::string> response_codes;  // Response codes and associated message (Ex. 200 OK)
+    static std::unordered_map<std::string, std::vector<std::string>> user_backend_address;
 
     // server fields
     static int port;                   // port server runs on
@@ -53,9 +52,9 @@ public:
     // ! add function to safely accesss user_backend_address map
     // ! return an empty vector to frontend
     // ! make sure all of these are thread safe
-    // static void read_backend_ip(std::string& username); // ! check if user exists before 
-    // static void delete_backend_ip(std::string& username); // ! delete user
-    // static void add_backend_ip(std::string& username, std::string& backend_address);
+    // static std::string read_backend_ip(std::string& username); // ! check if user exists before 
+    // static bool delete_backend_ip(std::string& username); // ! delete user
+    // static bool add_backend_ip(std::string& username, std::string& backend_address);
     // ! within add, check if the user already exists in the map, if they do, replace their existing value. If not, add a new entry
 
 private:

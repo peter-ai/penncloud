@@ -3,15 +3,16 @@
 #include <netinet/in.h>   // sockaddr_in
 #include <thread>
 
-#include "http_server.h"
-#include "http_request.h"
-#include "http_response.h"
-#include "client.h"
+#include "../include/http_server.h"
+#include "../include/http_request.h"
+#include "../include/http_response.h"
+#include "../include/client.h"
 #include "../../utils/include/utils.h"
 
 // initialize constant members
 const std::string HttpServer::version = "HTTP/1.1";
 const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST"};
+std::unordered_map<std::string, std::vector<std::string>> HttpServer::user_backend_address;
 
 // initialize static members to dummy or default values
 int HttpServer::port = -1;

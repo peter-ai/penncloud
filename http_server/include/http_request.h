@@ -68,7 +68,7 @@ struct HttpRequest {
             else
             {
                 std::string cookie_str;
-                for (int i=0; i < headers.at(header_name).size(); i++)
+                for (unsigned long i=0; i < headers.at(header_name).size(); i++)
                 {
                     cookie_str += (i==0 ? "" : "; ") + headers.at(header_name)[i];
                 }
