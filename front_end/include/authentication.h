@@ -30,11 +30,16 @@ void login_handler(const HttpRequest& req, HttpResponse& res);
 /// @param res HttpResponse object
 void logout_handler(const HttpRequest& req, HttpResponse& res);
 
-// function to handle password update requests
+/// @brief handles password change requests on /api/pass_change route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void update_password_handler(const HttpRequest& req, HttpResponse& res);
 
-// helper function that validates the password of a user 
-// using a cryptographically secure challenge-response protocol
+/// @brief validates the password against the KVS given the username using cryptographically secure challenge-response protocol
+/// @param kvs_fd file descriptor for KVS server
+/// @param username username associated with current client session
+/// @param password password associated with current client session
+/// @return true if password is associated with valid user; false otherwise
 bool validate_password(int kvs_fd, std::string& username, std::string& password);
 
 /// @brief handles password change requests on /api/pass_change route
