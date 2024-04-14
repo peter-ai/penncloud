@@ -3,8 +3,8 @@
 #include <netinet/in.h>   // sockaddr_in
 #include <thread>         // std::thread
 
-#include "backend_server.h"
-#include "kvs_client.h"
+#include "../include/backend_server.h"
+#include "../include/kvs_client.h"
 #include "../../utils/include/utils.h"
 
 // Initialize logger with info about start and end of key range
