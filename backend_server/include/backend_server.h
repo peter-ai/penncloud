@@ -13,6 +13,7 @@ public:
     static const std::unordered_set<std::string> supported_commands;
 
     // backend server fields
+    static int coord_port;             // port coordinator is running on
     static int port;                   // port server runs on
     // NOTE: if the key range is "aa" to "bz", this server will manage every key UP TO AND INCLUDING "bz"
     // For example, a key called bzzzz would be managed in this server. The next server would start at "ca" 
@@ -32,6 +33,7 @@ private:
 
     static int bind_server_socket();           // bind port to socket
     static void initialize_tablets();          // initialize tablets on this server
+    static void send_coordinator_heartbeat();  // 
     static void accept_and_handle_clients();   // main server loop to accept and handle clients
 };
 

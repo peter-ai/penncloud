@@ -22,6 +22,8 @@ void BackendServer::run()
     }
     be_logger.log("Backend server listening for connections on port " + std::to_string(BackendServer::port), 20);
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
+    initialize_tablets();
+    send_coordinator_heartbeat();
     accept_and_handle_clients();
 }
 
