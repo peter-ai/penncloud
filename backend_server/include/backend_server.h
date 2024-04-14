@@ -31,6 +31,7 @@ private:
     BackendServer() {}
 
     static int bind_server_socket();           // bind port to socket
+    static void initialize_tablets();          // initialize tablets on this server
     static void accept_and_handle_clients();   // main server loop to accept and handle clients
 };
 
