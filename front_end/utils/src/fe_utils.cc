@@ -338,6 +338,18 @@ void FeUtils::set_cookies(HttpResponse &res, std::string username, std::string s
     res.set_cookie(key2, sid);
 }
 
+/// @brief expires the cookies on the http response by setting age to 0
+/// @param res HttpResponse object
+/// @param username username associated with the current session
+/// @param sid session ID associated with the current session
+void FeUtils::expire_cookies(HttpResponse &res, std::string username, std::string sid)
+{
+    const std::string key1 = "user";
+    const std::string key2 = "sid";
+    res.set_cookie(key1, username, "0");
+    res.set_cookie(key2, sid, "0");
+}
+
 /// @brief validates the session id of the current user
 /// @param kvs_fd file descriptor for KVS server
 /// @param username username associatd with the current session to be validated

@@ -60,8 +60,8 @@ public:
 
     // sets cookie in response
     // Note that cookies have a default expiry of 20 minutes (hard coded for convenience)
-    void set_cookie(const std::string& key, const std::string& value) {
-        set_header("Set-Cookie", key + "=" + value + "; Max-Age=1200; HttpOnly");
+    void set_cookie(const std::string& key, const std::string& value, std::string age="1200") {
+        set_header("Set-Cookie", key + "=" + value + "; Max-Age="+ age +"; HttpOnly");
     }
 
     // append binary data to body - useful if you're writing the contents of a file to body since file may contain /0
