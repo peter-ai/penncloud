@@ -1,6 +1,7 @@
 #ifndef BACKEND_SERVER_H
 #define BACKEND_SERVER_H
 
+#include <string>
 #include <unordered_set>
 
 class BackendServer 
@@ -19,11 +20,11 @@ public:
     static std::string range_end;       // end of key range managed by this backend server
   
 private:
-    static int be_server_sock_fd;       // bound server socket's fd
+    static int server_sock_fd;       // bound server socket's fd
 
 // methods
 public:    
-    
+    static void run();                           // run server (server does NOT run on initialization, server instance must explicitly call this method)
 
 private:
     // make default constructor private
