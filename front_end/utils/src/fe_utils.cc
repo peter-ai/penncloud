@@ -313,8 +313,9 @@ bool FeUtils::kv_success(const std::vector<char> &vec)
 /// @brief helper function that parses cookie header responses received in http requests
 /// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
 /// @return a map with keys and values from the cookie
-std::unordered_map<std::string, std::string> FeUtils::parse_cookies(std::vector<std::string> &cookie_vector)
+std::unordered_map<std::string, std::string> FeUtils::parse_cookies(const HttpRequest& req)
 {
+    std::vector<std::string> cookie_vector = req.get_header("Cookie");
     std::unordered_map<std::string, std::string> cookies;
     for (unsigned long i = 0; i < cookie_vector.size(); i++)
     {
@@ -369,8 +370,7 @@ std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, cons
     }
 
     // parse cookies sent with request
-    std::vector<std::string> cookie_vector = req.get_header("Cookie");
-    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(cookie_vector);
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
 
     // check if cookie for sid was sent with request
     if (cookies.count(c_key_str))
