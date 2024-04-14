@@ -1,19 +1,10 @@
-#include <iostream>
-#include <sys/socket.h> // socket
-#include <netinet/in.h> // sockaddr_in
-#include <thread>
-
 #include "../include/http_server.h"
-#include "../include/http_request.h"
-#include "../include/http_response.h"
-#include "../include/client.h"
-#include "../../utils/include/utils.h"
 
 // initialize constant members
 const std::string HttpServer::version = "HTTP/1.1";
 const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST"};
 std::unordered_map<std::string, std::vector<std::string>> HttpServer::client_kvs_addresses;
-std::mutex HttpServer::kvs_mutex;
+std::shared_timed_mutex HttpServer::kvs_mutex;
 
 // initialize static members to dummy or default values
 int HttpServer::port = -1;
@@ -130,9 +121,9 @@ void HttpServer::accept_and_handle_clients()
 /// @return returns true if the user is stored, false otherwise
 bool HttpServer::check_kvs_addr(std::string username)
 {
-    HttpServer::kvs_mutex.lock();
+    HttpServer::kvs_mutex.lock_shared();
     int present = HttpServer::client_kvs_addresses.count(username);
-    HttpServer::kvs_mutex.unlock();
+    HttpServer::kvs_mutex.unlock_shared();
 
     return present;
 }
@@ -156,9 +147,9 @@ std::vector<std::string> HttpServer::get_kvs_addr(std::string username)
 {
     std::vector<std::string> kvs_addr;
 
-    HttpServer::kvs_mutex.lock();
+    HttpServer::kvs_mutex.lock_shared();
     kvs_addr = HttpServer::client_kvs_addresses[username];
-    HttpServer::kvs_mutex.unlock();
+    HttpServer::kvs_mutex.unlock_shared();
 
     return kvs_addr;
 }

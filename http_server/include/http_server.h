@@ -5,9 +5,16 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
+#include <shared_mutex>
+#include <iostream>
+#include <sys/socket.h> // socket
+#include <netinet/in.h> // sockaddr_in
+#include <thread>
 
+#include "client.h"
 #include "http_request.h"
 #include "http_response.h"
+#include "../../utils/include/utils.h"
 
 struct RouteTableEntry
 {
@@ -38,7 +45,8 @@ public:
 
 private:
     static int server_sock_fd;                                                             // bound server socket's fd
-    static std::mutex kvs_mutex;                                                     // mutex for client kvs addresses
+    // static std::mutex kvs_mutex;                                                     // mutex for client kvs addresses
+    static std::shared_timed_mutex kvs_mutex;                                                     // mutex for client kvs addresses
     static std::unordered_map<std::string, std::vector<std::string>> client_kvs_addresses; // map for user kvs addresses
 
     // methods
