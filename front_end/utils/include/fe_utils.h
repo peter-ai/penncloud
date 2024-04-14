@@ -33,9 +33,10 @@ namespace FeUtils
     // @note: don't need s_addr and s_port for now, but can have default and overloaded value for auth?
     int open_socket(const std::string s_addr = SERVADDR, const int s_port = SERVPORT);
 
-    // helper function that, given a path, queries coordinator for corresponding
-    // KVS server address and returns it
-    std::vector<std::string> query_coordinator(std::string& path);
+    /// @brief helper function that queries coordinator for KVS server address given a path
+    /// @param path file/folder path for which the associated KVS server address should be retrieved
+    /// @return returns the server address as a vector of strings <ip,port>
+    std::vector<std::string> query_coordinator(std::string &path);
 
     // pass a fd and row, col values to perform GET(r,c), returns value
     std::vector<char> kv_get(int fd, std::vector<char> row, std::vector<char> col);
@@ -55,14 +56,22 @@ namespace FeUtils
     // checks if a char vector starts with +OK
     bool kv_success(const std::vector<char> &vec);
 
-    // helper function that parsing cookie header responses from request objects
+    /// @brief helper function that parses cookie header responses received in http requests
+    /// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
+    /// @return a map with keys and values from the cookie
     std::unordered_map<std::string, std::string> parse_cookies(std::vector<std::string> &cookies_vector);
 
-    // helper function that resets cookies in route handler
-    void set_cookies(HttpResponse res, std::string username, std::string sid);
+    /// @brief sets the cookies on the http response and resets the age of cookies
+    /// @param res HttpResponse object
+    /// @param username username associated with the current session
+    /// @param sid session ID associated with the current session
+    void set_cookies(HttpResponse &res, std::string username, std::string sid);
 
-    // helper function that validates sessionID of a user
-    // returns empty string if session ID is invalid, otherwise returns SID
+    /// @brief validates the session id for the current user
+    /// @param kvs_fd file descriptor for KVS server
+    /// @param username username associatd with the current session to be validated
+    /// @param req HttpRequest object
+    /// @return returns an empty string if the session is invalid, otherwise returns the user's session ID
     std::string validate_session_id(int kvs_fd, std::string &username, const HttpRequest &req);
 }
 
