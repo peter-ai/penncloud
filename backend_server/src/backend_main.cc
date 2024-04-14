@@ -13,32 +13,40 @@
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "p:s:e:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:p:s:e:")) != -1) {
         switch (opt) {
-        case 'p':
-            try {
-                // set storage server's port
-                BackendServer::port = std::stoi(optarg);
-            } catch (std::invalid_argument const& ex) {
-                return -1;
-            }
-            break;
-        case 's':
-            // assign start of tablet range managed by server
-            BackendServer::range_start = optarg;
-            if (BackendServer::range_start.length() != 2) {
-                return -1;
-            }
-            break;
-        case 'e':
-            // assign end of tablet range managed by server
-            BackendServer::range_end = optarg;
-            if (BackendServer::range_end.length() != 2) {
-                return -1;
-            }
-            break;
-        case '?':
-            break;
+            case 'c':
+                try {
+                    // set coordinator server's port
+                    BackendServer::coord_port = std::stoi(optarg);
+                } catch (std::invalid_argument const& ex) {
+                    return -1;
+                }
+                break;
+            case 'p':
+                try {
+                    // set storage server's port
+                    BackendServer::port = std::stoi(optarg);
+                } catch (std::invalid_argument const& ex) {
+                    return -1;
+                }
+                break;
+            case 's':
+                // assign start of tablet range managed by server
+                BackendServer::range_start = optarg;
+                if (BackendServer::range_start.length() != 2) {
+                    return -1;
+                }
+                break;
+            case 'e':
+                // assign end of tablet range managed by server
+                BackendServer::range_end = optarg;
+                if (BackendServer::range_end.length() != 2) {
+                    return -1;
+                }
+                break;
+            case '?':
+                break;
         }
     }
 
