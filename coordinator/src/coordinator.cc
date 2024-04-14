@@ -135,7 +135,7 @@ int main(int argc, char *argv[])
                 std::string input(optarg);
 
                 // check if option is positive integer
-                for (int i = 0; i < input.length(); i++)
+                for (unsigned long i = 0; i < input.length(); i++)
                 {
                     if (!std::isdigit(input[i]))
                     {
@@ -160,7 +160,7 @@ int main(int argc, char *argv[])
                 std::string input(optarg);
 
                 // check if option is positive integer
-                for (int i = 0; i < input.length(); i++)
+                for (unsigned long i = 0; i < input.length(); i++)
                 {
                     if (!std::isdigit(input[i]))
                     {
@@ -209,7 +209,7 @@ int main(int argc, char *argv[])
     std::string letters = "abcdefghijklmnopqrstuvwxyz";
     std::string ip_addr = "127.0.0.1";
     int server_group = 0;
-    int i = 0;
+    unsigned long i = 0;
 
     // set key value ranges for each kvs server group
     // store primary, secondaries and key value ranges for each server group
@@ -460,7 +460,7 @@ void *client_thread(void *arg)
     {
         logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
     }
-    request.resize(rlen-1);
+    request.resize(rlen);
 
 
     if (VERBOSE)
