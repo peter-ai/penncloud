@@ -36,7 +36,7 @@ std::string split_parent_filename(const std::vector<std::string> &vec, std::stri
         parentpath += '/';
     }
 
-    filename == vec.back();
+    filename = vec.back();
 
     return parentpath;
 }
@@ -65,93 +65,95 @@ bool kv_successful(const std::vector<char> &vec)
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // check req method
-    if (req.method == "GET")
-    {
-        // path is /api/drive/:childpath where parent dir is the page that is being displayed
+    if (req.method == "GET"){
+        res.set_code(200);
+    //     // path is /api/drive/:childpath where parent dir is the page that is being displayed
 
-        std::string childpath_str = req.path.substr(11);
-        std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
 
-        std::cout << "GET request received for child path: " << childpath_str << std::endl;
 
-        int sockfd = FeUtils::open_socket();
+    //     std::string childpath_str = req.path.substr(11);
+    //     std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
 
-        // if we are looking up a folder, use get row
-        if (is_folder(child_path))
-        {
-            std::cout << "Looking up folder" << std::endl;
+    //     std::cout << "GET request received for child path: " << childpath_str << std::endl;
 
-            std::string bodycont = "Folder: " + childpath_str;
-            std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-            res.set_code(200);
-            res.append_body_bytes(body_vec.data(), body_vec.size());
+    //     // int sockfd = FeUtils::open_socket();
 
-            // append header for content length
-            std::string content_header = "Content-Length:";
-            std::string header_value = std::to_string(body_vec.size());
-            res.set_header(content_header, header_value);
+    //     // if we are looking up a folder, use get row
+    //     if (is_folder(child_path))
+    //     {
+    //         std::cout << "Looking up folder" << std::endl;
 
-            // std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
+    //         std::string bodycont = "Folder: " + childpath_str;
+    //         std::vector<char> body_vec(bodycont.begin(), bodycont.end());
+    //         res.set_code(200);
+    //         res.append_body_bytes(body_vec.data(), body_vec.size());
 
-            // if (kv_successful(folder_content))
-            // {
-            //     //@todo: update with html!
-            //     res.append_body_bytes(folder_content.data(), folder_content.size());
+    //         // append header for content length
+    //         std::string content_header = "Content-Length:";
+    //         std::string header_value = std::to_string(body_vec.size());
+    //         res.set_header(content_header, header_value);
 
-            //     // append header for content length
-            //     std::string content_header = "Content-Length:";
-            //     std::string header_value = std::to_string(folder_content.size());
-            //     res.set_header(content_header, header_value);
-            //     res.set_code(200);
-            // }
-            // else
-            // {
-            //     res.set_code(400);
-            // }
-        }
-        else
-        {
-            // file, need to get parent row and file name
-            std::string filename;
-            std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-            std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
-            std::cout << "File is: " << filename.c_str() << std::endl;
+    //         // std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-            std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-            std::vector<char> filename_vec(filename.begin(), filename.end());
+    //         // if (kv_successful(folder_content))
+    //         // {
+    //         //     //@todo: update with html!
+    //         //     res.append_body_bytes(folder_content.data(), folder_content.size());
 
-            std::cout << "Looking up file" << std::endl;
+    //         //     // append header for content length
+    //         //     std::string content_header = "Content-Length:";
+    //         //     std::string header_value = std::to_string(folder_content.size());
+    //         //     res.set_header(content_header, header_value);
+    //         //     res.set_code(200);
+    //         // }
+    //         // else
+    //         // {
+    //         //     res.set_code(400);
+    //         // }
+    //     }
+    //     else
+    //     {
+    //         // file, need to get parent row and file name
+    //         std::string filename;
+    //         std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
+    //         std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
+    //         std::cout << "File is: " << filename.c_str() << std::endl;
 
-            std::string bodycont = "File: " + filename;
-            std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-            res.set_code(200);
-            res.append_body_bytes(body_vec.data(), body_vec.size());
+    //         std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+    //         std::vector<char> filename_vec(filename.begin(), filename.end());
 
-            // append header for content length
-            std::string content_header = "Content-Length:";
-            std::string header_value = std::to_string(body_vec.size());
-            res.set_header(content_header, header_value);
+    //         std::cout << "Looking up file" << std::endl;
 
-            // // get file content
-            // std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
+    //         std::string bodycont = "File: " + filename;
+    //         std::vector<char> body_vec(bodycont.begin(), bodycont.end());
+    //         res.set_code(200);
+    //         res.append_body_bytes(body_vec.data(), body_vec.size());
 
-            // if (kv_successful(file_content))
-            // {
-            //     res.append_body_bytes(file_content.data(), file_content.size());
+    //         // append header for content length
+    //         std::string content_header = "Content-Length:";
+    //         std::string header_value = std::to_string(body_vec.size());
+    //         res.set_header(content_header, header_value);
 
-            //     // append header for content length
-            //     std::string content_header = "Content-Length:";
-            //     std::string header_value = std::to_string(file_content.size());
-            //     res.set_header(content_header, header_value);
-            //     res.set_code(200);
-            // }
-            // else
-            // {
-            //     res.set_code(400);
-            // }
-        }
+    //         // // get file content
+    //         // std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
-        close(sockfd);
+    //         // if (kv_successful(file_content))
+    //         // {
+    //         //     res.append_body_bytes(file_content.data(), file_content.size());
+
+    //         //     // append header for content length
+    //         //     std::string content_header = "Content-Length:";
+    //         //     std::string header_value = std::to_string(file_content.size());
+    //         //     res.set_header(content_header, header_value);
+    //         //     res.set_code(200);
+    //         // }
+    //         // else
+    //         // {
+    //         //     res.set_code(400);
+    //         // }
+    //     }
+
+    //     // close(sockfd);
     }
     else
     {
