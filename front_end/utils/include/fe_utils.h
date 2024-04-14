@@ -60,7 +60,7 @@ namespace FeUtils
     /// @brief helper function that parses cookie header responses received in http requests
     /// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
     /// @return a map with keys and values from the cookie
-    std::unordered_map<std::string, std::string> parse_cookies(std::vector<std::string> &cookies_vector);
+    std::unordered_map<std::string, std::string> parse_cookies(const HttpRequest& req);
 
     /// @brief sets the cookies on the http response and resets the age of cookies
     /// @param res HttpResponse object
