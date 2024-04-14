@@ -50,14 +50,11 @@ public:
     static void get(const std::string &path, const std::function<void(const HttpRequest &, HttpResponse &)> &route);  // register GET route with handler
     static void post(const std::string &path, const std::function<void(const HttpRequest &, HttpResponse &)> &route); // register POST route with handler
 
-    // ! add function to safely accesss user_backend_address map
-    // ! return an empty vector to frontend
-    // ! make sure all of these are thread safe
+    // helper functions to safely access client kvs addresses
     static bool check_kvs_addr(std::string username);
-    static std::vector<std::string> get_kvs_addr(std::string username); // ! check if user exists before
-    static bool delete_kvs_addr(std::string username);     // ! delete user
-    static bool set_kvs_addr(std::string username, std::string backend_address);
-    // ! within add, check if the user already exists in the map, if they do, replace their existing value. If not, add a new entry
+    static bool delete_kvs_addr(std::string username);  
+    static std::vector<std::string> get_kvs_addr(std::string username); 
+    static bool set_kvs_addr(std::string username, std::string kvs_address);
 
 private:
     // make default constructor private
