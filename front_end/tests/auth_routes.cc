@@ -11,8 +11,8 @@ int main()
     HttpServer::post("/api/login", login_route);
 
     // register logout route
-    // auto logout_route = std::bind(logout_handler, std::placeholders::_1, std::placeholders::_2);
-    // HttpServer::post("/api/logout", logout_route);
+    auto logout_route = std::bind(logout_handler, std::placeholders::_1, std::placeholders::_2);
+    HttpServer::post("/api/logout", logout_route);
 
     // register password update route
     // auto update_pass_route = std::bind(update_password_handler, std::placeholders::_1, std::placeholders::_2);
