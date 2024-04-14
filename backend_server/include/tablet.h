@@ -13,6 +13,7 @@ public:
     // NOTE: if the key range is "aa" to "bz", this tablet will manage every key UP TO AND INCLUDING "bz"
     // For example, a key called bzzzz would be managed in this server. The next server would start at "ca" 
     std::string range_start;     // start of key range managed by this backend server
+    // ! might not need to store end of range
     std::string range_end;       // end of key range managed by this backend server
 
 private:
