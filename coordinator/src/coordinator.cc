@@ -57,27 +57,15 @@
  *      }
  */
 
-#include <iostream>
-#include <unistd.h>
-#include <string>
-#include <unordered_map>
-#include "../../utils/include/utils.h"
+#include "../include/coordinator.h"
 
-#include <sys/socket.h>
-#include <arpa/inet.h>
-#include <signal.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <strings.h>
-#include <stdlib.h>
-
-Logger logger("Coordinator");               // setup logger
-int SHUTDOWN = 0;                           // shutdown flag
 std::unordered_map<pthread_t, int> THREADS; // track threads
-std::mutex MAP_MUTEX;                       // mutex for map of threads
+Logger logger("Coordinator");               // setup logger
 int MAX_CONNECTIONS = 100;                  // max pending connections that dispatcher can queue
 int MAX_REQUEST = 10000;                    // max size of a request by coordinator
-int VERBOSE = 0;
+std::mutex MAP_MUTEX;                       // mutex for map of threads
+int SHUTDOWN = 0;                           // shutdown flag
+int VERBOSE = 0;                            // verbose flag
 
 // coordinator kvs data structures
 /*
@@ -86,23 +74,7 @@ int VERBOSE = 0;
 */
 std::unordered_map<char, std::unordered_map<std::string, std::string>> kvs_responsibilities;              // tracks the primary and secondaries for all letters
 std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> server_groups; // tracks the list of secondaries and the keys for each primary
-std::unordered_map<std::string, bool> kvs_health;
-
-void signal_handler(int sig);
-void *kvs_thread(void *arg);    // work to be done by thread servicing a request from a KVS server
-void *client_thread(void *arg); // work to be done by thread servicing a request from a front-end server
-
-struct client_args
-{
-    std::string addr;
-    int fd;
-};
-
-struct kvs_args
-{
-    std::string addr;
-    int fd;
-};
+std::unordered_map<std::string, bool> kvs_health;                                                         // tracks which kvs servers are alive
 
 int main(int argc, char *argv[])
 {
@@ -430,7 +402,6 @@ void *kvs_thread(void *arg)
     if (SHUTDOWN != 1)
         pthread_detach(pthread_self());
 
-
     // clean up thread resources
     MAP_MUTEX.lock();
     THREADS.erase(pthread_self());
@@ -462,10 +433,10 @@ void *client_thread(void *arg)
     }
     request.resize(rlen);
 
-
     if (VERBOSE)
     {
-        if (VERBOSE) logger.log("Received request from <"+ client->addr + ">: " + request, LOGGER_INFO);
+        if (VERBOSE)
+            logger.log("Received request from <" + client->addr + ">: " + request, LOGGER_INFO);
     }
 
     if (rlen != -1)
@@ -473,7 +444,7 @@ void *client_thread(void *arg)
         // TODO: Revisit kvs server selection logic??
         // assign appropriate kvs for given request
         std::string kvs_server = (kvs_responsibilities.count(request[0]) ? kvs_responsibilities[request[0]]["primary"] : "-ERR First character non-alphabetical");
-        
+
         // send response
         if ((sent = send(client->fd, &kvs_server[0], kvs_server.size(), 0)) == -1)
         {
@@ -481,7 +452,8 @@ void *client_thread(void *arg)
         }
         else
         {
-            if (VERBOSE) logger.log("Sent response to <" + client->addr + ">: " + kvs_server, LOGGER_INFO);
+            if (VERBOSE)
+                logger.log("Sent response to <" + client->addr + ">: " + kvs_server, LOGGER_INFO);
         }
     }
 
