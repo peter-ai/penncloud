@@ -125,9 +125,9 @@ void HttpServer::accept_and_handle_clients()
     }
 }
 
-/// @brief
-/// @param username
-/// @return
+/// @brief check if the username and associated KVS server address is cached
+/// @param username username associated with current session
+/// @return returns true if the user is stored, false otherwise
 bool HttpServer::check_kvs_addr(std::string username)
 {
     HttpServer::kvs_mutex.lock();
@@ -137,9 +137,21 @@ bool HttpServer::check_kvs_addr(std::string username)
     return present;
 }
 
-/// @brief
-/// @param username
-/// @return
+/// @brief deletes the entry associated with the given username
+/// @param username username associated with current session
+/// @return return true after operation is completed successfully
+bool HttpServer::delete_kvs_addr(std::string username)
+{
+    HttpServer::kvs_mutex.lock();
+    HttpServer::client_kvs_addresses.erase(username);
+    HttpServer::kvs_mutex.unlock();
+
+    return true;
+}
+
+/// @brief retrieves the KVS server address of the given user
+/// @param username username associated with current session
+/// @return return vector of KVS server in the form <ip,port>
 std::vector<std::string> HttpServer::get_kvs_addr(std::string username)
 {
     std::vector<std::string> kvs_addr;
@@ -151,26 +163,14 @@ std::vector<std::string> HttpServer::get_kvs_addr(std::string username)
     return kvs_addr;
 }
 
-/// @brief
-/// @param username
-/// @return
-bool HttpServer::delete_kvs_addr(std::string username)
+/// @brief set the KVS address of the user
+/// @param username username associated with current session
+/// @param kvs_address address of the user's associated KVS server
+/// @return return true after operation is completed successfully
+bool HttpServer::set_kvs_addr(std::string username, std::string kvs_address)
 {
     HttpServer::kvs_mutex.lock();
-    HttpServer::client_kvs_addresses.erase(username);
-    HttpServer::kvs_mutex.unlock();
-
-    return true;
-}
-
-/// @brief
-/// @param username
-/// @param backend_address
-/// @return
-bool HttpServer::set_kvs_addr(std::string username, std::string backend_address)
-{
-    HttpServer::kvs_mutex.lock();
-    HttpServer::client_kvs_addresses[username] = Utils::split(backend_address, ":");
+    HttpServer::client_kvs_addresses[username] = Utils::split(kvs_address, ":");
     HttpServer::kvs_mutex.unlock();
 
     return true;
