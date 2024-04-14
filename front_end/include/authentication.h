@@ -15,29 +15,45 @@
 #include "../../http_server/include/http_server.h"
 
 
-// function to handle signup requests
+/// @brief handles new user signup requests on /api/signup route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void signup_handler(const HttpRequest& req, HttpResponse& res);
 
-// function to handle login requests
+/// @brief handles login requests on /api/login route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void login_handler(const HttpRequest& req, HttpResponse& res);
 
-// function to handle logout requests
+/// @brief handles logout requests on /api/logout route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void logout_handler(const HttpRequest& req, HttpResponse& res);
 
-// function to handle password update requests
+/// @brief handles password change requests on /api/pass_change route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void update_password_handler(const HttpRequest& req, HttpResponse& res);
 
-// helper function that validates the password of a user 
-// using a cryptographically secure challenge-response protocol
+/// @brief validates the password against the KVS given the username using cryptographically secure challenge-response protocol
+/// @param kvs_fd file descriptor for KVS server
+/// @param username username associated with current client session
+/// @param password password associated with current client session
+/// @return true if password is associated with valid user; false otherwise
 bool validate_password(int kvs_fd, std::string& username, std::string& password);
 
-// helper function for hashing using SHA256 algorithm
+/// @brief helper function generating 32-byte hash string using SHA256 cryptographic hash algorithm
+/// @param string string to be hashed
+/// @param outputBuffer buffer to store resulting hash
 void sha256(char *string, char outputBuffer[65]);
 
-// helper function that generates random strings
+/// @brief helper function that generates a random challenge in the form of a string
+/// @param length length of the challenge to be generated
+/// @return returns the generated challenge
 std::string generate_challenge(std::size_t length);
 
-// helper function that generates secure random session IDs
+/// @brief helper function that generates secure random session IDs
+/// @return returns the generated session ID
 std::string generate_sid();
 
 
