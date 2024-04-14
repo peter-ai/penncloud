@@ -3,12 +3,13 @@ CXXFLAGS = -std=c++11 -Wall -Wextra
 INCLUDE_DIR = include
 SRC_DIR = src
 
-all: 
+all: backend_main
 
 %.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@
 
-# routes: $(SRC_DIR)/routes.cc
-# 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
+backend_main: $(SRC_DIR)/backend_main.cc ../utils/utils.o
+	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
+	rm -f backend_main
