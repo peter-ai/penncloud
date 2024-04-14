@@ -1,8 +1,3 @@
-#include <iostream>
-#include <algorithm> // std::transform
-#include <sys/time.h>
-#include <poll.h> // For poll
-
 #include "../include/fe_utils.h"
 
 // Helper function to appends args to vector
@@ -354,11 +349,11 @@ std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, cons
     row_key.push_back('/');
     std::string c_key_str = "sid";
     std::vector<char> col_key(c_key_str.begin(), c_key_str.end());
-    std::vector<char> kvs_sid = FeUtils::kv_get(kvs_fd, row_key, col_key); // TODO: RETRY
+    const std::vector<char> kvs_sid = FeUtils::kv_get(kvs_fd, row_key, col_key); // TODO: RETRY
     std::string sid;
 
     // check if response from KVS is OK
-    if ((kvs_sid[0] == '+') && (kvs_sid[1] == 'O') && (kvs_sid[2] == 'K'))
+    if (FeUtils::kv_success(kvs_sid))
     {
         sid.assign(kvs_sid.begin() + 4, kvs_sid.end());
     }
