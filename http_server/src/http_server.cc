@@ -122,7 +122,7 @@ void HttpServer::accept_and_handle_clients()
 bool HttpServer::check_kvs_addr(std::string username)
 {
     HttpServer::kvs_mutex.lock_shared();
-    int present = HttpServer::client_kvs_addresses.count(username);
+    bool present = HttpServer::client_kvs_addresses.count(username);
     HttpServer::kvs_mutex.unlock_shared();
 
     return present;
