@@ -143,9 +143,10 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     return sockfd;
 }
 
-// helper function that, given a path, queries coordinator for corresponding
-// KVS server address and returns it as a vector of <IP,Port>
-std::vector<std::string> FeUtils::query_coordinator(std::string& path)
+/// @brief helper function that queries coordinator for KVS server address given a path
+/// @param path file/folder path for which the associated KVS server address should be retrieved
+/// @return returns the server address as a vector of strings <ip,port>
+std::vector<std::string> FeUtils::query_coordinator(std::string &path)
 {
     // set ip:port for coordinator
     std::string ip_addr = "127.0.0.1";
@@ -314,7 +315,9 @@ bool FeUtils::kv_success(const std::vector<char> &vec)
     return std::equal(prefix.begin(), prefix.end(), vec.begin());
 }
 
-// helper function that parsing cookie header responses from request objects
+/// @brief helper function that parses cookie header responses received in http requests
+/// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
+/// @return a map with keys and values from the cookie
 std::unordered_map<std::string, std::string> FeUtils::parse_cookies(std::vector<std::string> &cookie_vector)
 {
     std::unordered_map<std::string, std::string> cookies;
@@ -327,15 +330,23 @@ std::unordered_map<std::string, std::string> FeUtils::parse_cookies(std::vector<
     return cookies;
 }
 
-// helper function that resets cookies in route handler
-void FeUtils::set_cookies(HttpResponse res, std::string username, std::string sid)
+/// @brief sets the cookies on the http response and resets the age of cookies
+/// @param res HttpResponse object
+/// @param username username associated with the current session
+/// @param sid session ID associated with the current session
+void FeUtils::set_cookies(HttpResponse &res, std::string username, std::string sid)
 {
-    res.set_cookie("user", username);
-    res.set_cookie("sid", sid);
+    const std::string key1 = "user";
+    const std::string key2 = "sid";
+    res.set_cookie(key1, username);
+    res.set_cookie(key2, sid);
 }
 
-// helper function that validates sessionID of a user
-// returns empty string if session ID is invalid, otherwise returns SID
+/// @brief validates the session id of the current user
+/// @param kvs_fd file descriptor for KVS server
+/// @param username username associatd with the current session to be validated
+/// @param req HttpRequest object
+/// @return returns an empty string if the session is invalid, otherwise returns the user's session ID
 std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, const HttpRequest &req)
 {
     // get sid from KVS
