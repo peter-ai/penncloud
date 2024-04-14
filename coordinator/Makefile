@@ -1,5 +1,5 @@
 CXX = g++
-CXXFLAGS = -std=c++14 -Wall -Wextra
+CXXFLAGS = -std=c++14 -Wall -Wextra -pthread
 
 TARGETS = coordinator
 
