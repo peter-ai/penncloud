@@ -3,6 +3,8 @@
  *
  *  Created on: Apr 11, 2024
  *      Author: peter-ai
+ * 
+ *  Handler and helper functions that handle authentication and session management
  */
 
 #include "../include/authentication.h"
@@ -14,16 +16,114 @@
 /// @param res HttpResponse object
 void signup_handler(const HttpRequest &req, HttpResponse &res)
 {
-    (void)req;
-    (void)res;
-    // on signup
-    // get user and password
-    // get kvs address
-    // check if user exists,
-    // if they do, send them to login page with special messaging
-    // otherwise,
-    // create folder user/ with col hash(pass) and col sid
-    // create folder user-mbox/ [HOW ARE mailboxes created rn]
+    // Setup logger
+    Logger logger("SignUp Handler");
+    logger.log("Received POST request", LOGGER_INFO);
+
+    // get request body
+    std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");
+
+    // parse username and password from request body
+    std::string username = Utils::trim(Utils::split(req_body[0], "=")[1]);
+    std::string password = Utils::trim(Utils::split(req_body[1], "=")[1]);
+    bool present = HttpServer::check_kvs_addr(username);
+    std::vector<std::string> kvs_addr;
+
+    // check if we know already know the KVS server address for user
+    if (present)
+    {
+        kvs_addr = HttpServer::get_kvs_addr(username);
+    }
+    // otherwise get KVS server address from coordinator
+    else
+    {
+        // query the coordinator for the KVS server address
+        kvs_addr = FeUtils::query_coordinator(username);
+    }
+
+    // create socket for communication with KVS server
+    int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+    // check if user has a password in KVS
+    std::vector<char> row_key(username.begin(), username.end());
+    row_key.push_back('/');
+    std::vector<char> kvs_res = FeUtils::kv_get(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}));
+
+    // if no username match
+    if (!FeUtils::kv_success(kvs_res))
+    {
+        // hash password
+        std::vector<char> pass_hash(65);
+        sha256(&password[0], &pass_hash[0]);
+        
+        // generate new session id for the user
+        std::string sid = generate_sid();
+
+        // create new user
+        FeUtils::kv_put(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}), pass_hash); // store hashed password
+        FeUtils::kv_put(kvs_sock, row_key, std::vector<char>({'s', 'i', 'd'}), std::vector<char>(sid.begin(), sid.end())); // store current session id
+        
+        // create user mailbox
+        std::vector<std::vector<char>> welcome_email = generate_welcome_mail();
+        std::string mail_suffix = "-mailbox/";
+        for (auto &mail_char: mail_suffix) row_key.push_back(mail_char);
+        FeUtils::kv_put(kvs_sock, row_key, welcome_email[0], welcome_email[1]);
+
+        // cache kvs server for user
+        HttpServer::set_kvs_addr(username, kvs_addr[0]+":"+kvs_addr[1]);
+
+        // set cookies
+        FeUtils::set_cookies(res, username, sid);
+
+        // set response status code
+        res.set_code(200);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "User successfully created, redirecting to home page!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/home");
+
+    }
+    else
+    {
+        // set response status code
+        res.set_code(400);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "User already exists, redirecting to login!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+    }
+
+    close(kvs_sock);
 }
 
 /// @brief handles login requests on /api/login route
@@ -425,6 +525,8 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
             res.set_header("Content-Type", "text/html");
             res.set_header("Location", "/");
         }
+
+        close(kvs_sock);
     }
     else
     {
@@ -558,3 +660,14 @@ std::string generate_sid()
 
     return sid;
 }
+
+/// @brief helper function that generates a welcome email for new users and stores
+/// @return a <email header, email body> as a vector that stores vectors of chars
+std::vector<std::vector<char>> generate_welcome_mail()
+{
+    std::vector<char> header;
+    std::vector<char> body;
+
+    return std::vector<std::vector<char>>({header,body});
+}
+
