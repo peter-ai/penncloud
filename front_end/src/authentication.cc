@@ -3,6 +3,8 @@
  *
  *  Created on: Apr 11, 2024
  *      Author: peter-ai
+ * 
+ *  Handler and helper functions that handle authentication and session management
  */
 
 #include "../include/authentication.h"
@@ -14,23 +16,9 @@
 /// @param res HttpResponse object
 void signup_handler(const HttpRequest &req, HttpResponse &res)
 {
-    (void)req;
-    (void)res;
-    // on signup
-    // check if user exists,
-    // if they do, send them to login page with special messaging
-    // otherwise, create primary folder user/ with col pass
-    // create empty sid at r:user/ c:sid v=''
-    // create empty mailbox at user/ mailbox v=metadata
-}
-
-/// @brief handles login requests on /api/login route
-/// @param req HttpRequest object
-/// @param res HttpResponse object
-void login_handler(const HttpRequest &req, HttpResponse &res)
-{
-    Logger logger("Login Handler");
-    logger.log("Received POST request", LOGGER_INFO); // logging message
+    // Setup logger
+    Logger logger("SignUp Handler");
+    logger.log("Received POST request", LOGGER_INFO);
 
     // get request body
     std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");
@@ -38,8 +26,8 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
     // parse username and password from request body
     std::string username = Utils::trim(Utils::split(req_body[0], "=")[1]);
     std::string password = Utils::trim(Utils::split(req_body[1], "=")[1]);
-    std::vector<std::string> kvs_addr;
     bool present = HttpServer::check_kvs_addr(username);
+    std::vector<std::string> kvs_addr;
 
     // check if we know already know the KVS server address for user
     if (present)
@@ -51,125 +39,268 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
     {
         // query the coordinator for the KVS server address
         kvs_addr = FeUtils::query_coordinator(username);
-
-        // Testing - TODO: DELETE
-        HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
     }
 
-    // Testing - TODO: DELETE
-    res.set_code(200);
-    res.set_header("Content-Type", "text/html");
-    FeUtils::set_cookies(res, username, generate_sid());
+    // create socket for communication with KVS server
+    int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
-    std::string html =
-        "<!doctype html>"
-        "<html>"
-        "<head>"
-        "<title>PennCloud.com</title>"
-        "<meta name='description' content='CIS 5050 Spr24'>"
-        "<meta name='keywords' content='HomePage'>"
-        "</head>"
-        "<body>"
-        "Successful Login!"
-        "</body>"
-        "</html>";
-    res.append_body_str(html);
+    // check if user has a password in KVS
+    std::vector<char> row_key(username.begin(), username.end());
+    row_key.push_back('/');
+    std::vector<char> kvs_res = FeUtils::kv_get(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}));
 
-    // // create socket for communication with KVS server
-    // int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+    // if no username match
+    if (!FeUtils::kv_success(kvs_res))
+    {
+        // hash password
+        std::vector<char> pass_hash(65);
+        sha256(&password[0], &pass_hash[0]);
+        
+        // generate new session id for the user
+        std::string sid = generate_sid();
 
-    // // validate session id
-    // std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
-    // logger.log("Client session ID: " + (valid_session_id.empty() ? "[empty]" : "[" + valid_session_id + "]"), LOGGER_INFO);
+        // create new user
+        FeUtils::kv_put(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}), pass_hash); // store hashed password
+        FeUtils::kv_put(kvs_sock, row_key, std::vector<char>({'s', 'i', 'd'}), std::vector<char>(sid.begin(), sid.end())); // store current session id
+        
+        // create user mailbox
+        std::vector<std::vector<char>> welcome_email = generate_welcome_mail();
+        std::string mail_suffix = "-mailbox/";
+        for (auto &mail_char: mail_suffix) row_key.push_back(mail_char);
+        FeUtils::kv_put(kvs_sock, row_key, welcome_email[0], welcome_email[1]);
 
-    // // if there is a valid session id, then construct response and redirect user
-    // if (!valid_session_id.empty())
-    // {
-    //     // if not present, set cache
-    //     if (!present) HttpServer::set_kvs_addr(username, kvs_addr[0]+":"+kvs_addr[1]);
-    //
-    //     // set cookies on response
-    //     FeUtils::set_cookies(res, username, valid_session_id);
-    //     res.set_cookie("sid", valid_session_id);
+        // cache kvs server for user
+        HttpServer::set_kvs_addr(username, kvs_addr[0]+":"+kvs_addr[1]);
 
-    //     // set response status code
-    //     res.set_code(200);
+        // set cookies
+        FeUtils::set_cookies(res, username, sid);
 
-    //     // construct html page from retrieved data and set response body
-    //     std::string html =
-    //         "<!doctype html>"
-    //         "<html>"
-    //         "<head>"
-    //         "<title>PennCloud.com</title>"
-    //         "<meta name='description' content='CIS 5050 Spr24'>"
-    //         "<meta name='keywords' content='HomePage'>"
-    //         "</head>"
-    //         "<body>"
-    //         "Successful Login!"
-    //         "</body>"
-    //         "</html>";
-    //     res.append_body_str(html);
+        // set response status code
+        res.set_code(200);
 
-    //     // set response headers
-    //     res.set_header("Content-Type", "text/html");
-    // }
-    // // otherwise check password
-    // else
-    // {
-    //     // validate password
-    //     bool valid_pass = validate_password(kvs_sock, username, password);
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "User successfully created, redirecting to home page!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
 
-    //     if (valid_pass)
-    //     {
-    //         // if not present, set cache
-    //         if (!present) HttpServer::set_kvs_addr(username, kvs_addr[0]+":"+kvs_addr[1]);
-    //
-    //         // generate random SID
-    //         std::string sid = generate_sid();
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/home");
 
-    //         // store new sid in the kvs
-    //         std::vector<char> row_key(username.begin(), username.end());
-    //         row_key.push_back('/');
-    //         std::vector<char> kvs_res = FeUtils::kv_put(
-    //             kvs_sock,
-    //             row_key,
-    //             std::vector<char>({'s', 'i', 'd'}),
-    //             std::vector<char>(sid.begin(), sid.end()));
+    }
+    else
+    {
+        // set response status code
+        res.set_code(400);
 
-    //         // set cookies on response
-    //         FeUtils::set_cookies(res, username, valid_session_id);
-    //         res.set_cookie("user", username);
-    //         res.set_cookie("sid", sid);
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "User already exists, redirecting to login!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
 
-    //         // set response status code
-    //         res.set_code(200);
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+    }
 
-    //         // construct html page from retrieved data and set response body
-    //         std::string html =
-    //             "<!doctype html>"
-    //             "<html>"
-    //             "<head>"
-    //             "<title>PennCloud.com</title>"
-    //             "<meta name='description' content='CIS 5050 Spr24'>"
-    //             "<meta name='keywords' content='HomePage'>"
-    //             "</head>"
-    //             "<body>"
-    //             "Successful Login!"
-    //             "</body>"
-    //             "</html>";
-    //         res.append_body_str(html);
+    close(kvs_sock);
+}
 
-    //         // set response headers
-    //         res.set_header("Content-Type", "text/html");
-    //     }
-    //     else
-    //     {
-    //         TODO: return user to shadow realm because authentication was unsuccesful
-    //     }
-    // }
+/// @brief handles login requests on /api/login route
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void login_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Setup logger
+    Logger logger("Login Handler");
+    logger.log("Received POST request", LOGGER_INFO);
 
-    // // close socket for KVS server
-    // close(kvs_sock);
+    // get request body
+    std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");
+
+    // parse username and password from request body
+    std::string username = Utils::trim(Utils::split(req_body[0], "=")[1]);
+    std::string password = Utils::trim(Utils::split(req_body[1], "=")[1]);
+    bool present = HttpServer::check_kvs_addr(username);
+    std::vector<std::string> kvs_addr;
+
+    // check if we know already know the KVS server address for user
+    if (present)
+    {
+        kvs_addr = HttpServer::get_kvs_addr(username);
+    }
+    // otherwise get KVS server address from coordinator
+    else
+    {
+        // query the coordinator for the KVS server address
+        kvs_addr = FeUtils::query_coordinator(username);
+    }
+
+    // create socket for communication with KVS server
+    int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+    // validate session id
+    std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
+
+    /* TEST CODE BLOCK */
+    // // if not present, set cache kvs address for the current user
+    // if (!present)
+    //     HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
+
+    // // set cookies on response
+    // FeUtils::set_cookies(res, username, generate_sid());
+
+    // // set response status code
+    // res.set_code(200);
+
+    // // construct html page from retrieved data and set response body
+    // std::string html =
+    //     "<!doctype html>"
+    //     "<html>"
+    //     "<head>"
+    //     "<title>PennCloud.com</title>"
+    //     "<meta name='description' content='CIS 5050 Spr24'>"
+    //     "<meta name='keywords' content='HomePage'>"
+    //     "</head>"
+    //     "<body>"
+    //     "Successful Login!"
+    //     "</body>"
+    //     "</html>";
+    // res.append_body_str(html);
+
+    // // set response headers
+    // res.set_header("Content-Type", "text/html");
+    // res.set_header("Location", "/home"); // TODO: Validate
+    /* TEST CODE BLOCK */
+
+    // if there is a valid session id, then construct response and redirect user
+    if (!valid_session_id.empty())
+    {
+        // if not present, set cache kvs address for the current user
+        if (!present)
+            HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
+
+        // set cookies on response
+        FeUtils::set_cookies(res, username, valid_session_id);
+
+        // set response status code
+        res.set_code(200);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "Successful Login!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/home"); // TODO: Validate
+    }
+    // otherwise check password
+    else
+    {
+        // validate password
+        if (validate_password(kvs_sock, username, password))
+        {
+            // if not present, set cache
+            if (!present)
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
+
+            // generate random SID
+            std::string sid = generate_sid();
+
+            // store new sid in the kvs
+            std::vector<char> row_key(username.begin(), username.end());
+            row_key.push_back('/');
+            std::vector<char> kvs_res = FeUtils::kv_put(
+                kvs_sock,
+                row_key,
+                std::vector<char>({'s', 'i', 'd'}),
+                std::vector<char>(sid.begin(), sid.end()));
+
+            // set cookies on response
+            FeUtils::set_cookies(res, username, sid);
+
+            // set response status code
+            res.set_code(200);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Successful Login!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/home"); // TODO: Validate
+        }
+        // session is inactive - redirect to login page
+        else
+        {
+            // set response status code
+            res.set_code(401);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Bad Login!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/");
+        }
+    }
+
+    // close socket for KVS server
+    close(kvs_sock);
 }
 
 /// @brief handles logout requests on /api/logout route
@@ -177,8 +308,106 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void logout_handler(const HttpRequest &req, HttpResponse &res)
 {
-    (void)req;
-    (void)res;
+    // Setup logger
+    Logger logger("Logout Handler");
+    logger.log("Received POST request", LOGGER_INFO);
+
+    // setup cookies
+    std::string username;
+    std::string sid;
+
+    // parse cookies
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
+    // if cookies are present then they are valid
+    if (cookies.count("user") && cookies.count("sid"))
+    {
+        // get relevant cookies
+        username = cookies["user"];
+        sid = cookies["sid"];
+
+        // check if user exists in cache
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
+
+        // get the KVS server address for user associated with the request
+        if (present)
+        {
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
+        }
+        else
+        {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        // create socket for communication with KVS server
+        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+        // delete associated sid from kvs server
+        std::vector<char> row_key(username.begin(), username.end());
+        row_key.push_back('/');
+        std::vector<char> col_key(sid.begin(), sid.end());
+        std::vector<char> kvs_res = FeUtils::kv_put(kvs_sock, row_key, col_key, std::vector<char>({'-', '1'}));
+
+        // clear user from local cache of kvs addresses
+        if (present)
+            HttpServer::delete_kvs_addr(username);
+
+        // invalidated cookies
+        FeUtils::expire_cookies(res, username, sid);
+
+        // set response status code
+        res.set_code(200);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "Good, Redirecting to Login!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+
+        // close socket for KVS server
+        close(kvs_sock);
+    }
+    // if either cookie expired or was never set
+    else
+    {
+        // set response status code
+        res.set_code(401);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "Bad, Go Login!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+    }
 }
 
 /// @brief handles password change requests on /api/pass_change route
@@ -186,8 +415,143 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void update_password_handler(const HttpRequest &req, HttpResponse &res)
 {
-    (void)req;
-    (void)res;
+    // Setup logger
+    Logger logger("Password Update Handler");
+    logger.log("Received POST request", LOGGER_INFO);
+
+    // parse cookies
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
+    // if cookies are present, validate them
+    if (cookies.count("user") && cookies.count("sid"))
+    {
+        // get relevant cookies
+        std::string username = cookies["user"];
+        std::string sid = cookies["sid"];
+
+        // check if user exists in cache
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
+
+        // get the KVS server address for user associated with the request
+        if (present)
+        {
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
+        }
+        else
+        {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        // create socket for communication with KVS server
+        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+        // validate session id
+        std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
+
+        // check if session is valid
+        if (!valid_session_id.empty())
+        {
+            // get request body
+            std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");
+
+            // parse new password from request body and compute its hash
+            std::string new_password = Utils::trim(Utils::split(req_body[0], "=")[1]);
+            std::vector<char> new_pass_hash(65);
+            sha256(&new_password[0], &new_pass_hash[0]);
+
+            // store hash of new password in the kvs
+            std::vector<char> row_key(username.begin(), username.end());
+            row_key.push_back('/');
+            std::vector<char> kvs_res = FeUtils::kv_put(
+                kvs_sock,
+                row_key,
+                std::vector<char>({'p', 'a', 's', 's'}),
+                new_pass_hash);
+
+            // if not present, set cache
+            if (!present)
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
+
+            // set cookies on response
+            FeUtils::set_cookies(res, username, sid);
+
+            // set response status code
+            res.set_code(200);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Password Successfully Updated!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/pass_change"); // TODO: Validate
+        }
+        // otherwise send them back to login page
+        else
+        {
+            // set response status code
+            res.set_code(401);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Session Expired, Please Reauthenticate!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/");
+        }
+
+        close(kvs_sock);
+    }
+    else
+    {
+        // set response status code
+        res.set_code(401);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "Session Expired, Please Reauthenticate!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+    }
 }
 
 /// @brief validates the password against the KVS given the username using cryptographically secure challenge-response protocol
@@ -202,13 +566,13 @@ bool validate_password(int kvs_fd, std::string &username, std::string &password)
     row_key.push_back('/');
 
     // send GET kvs to retrieve user password
-    std::vector<char> kvs_res = FeUtils::kv_get(
+    const std::vector<char> kvs_res = FeUtils::kv_get(
         kvs_fd,
         row_key,
         std::vector<char>({'p', 'a', 's', 's'})); // TODO: RETRY???
 
     // if good response from KVS
-    if ((kvs_res[0] == '+') && (kvs_res[1] == 'O') && (kvs_res[2] == 'K'))
+    if (FeUtils::kv_success(kvs_res))
     {
         // generate random challenge
         std::string challenge = generate_challenge(64);
@@ -296,3 +660,14 @@ std::string generate_sid()
 
     return sid;
 }
+
+/// @brief helper function that generates a welcome email for new users and stores
+/// @return a <email header, email body> as a vector that stores vectors of chars
+std::vector<std::vector<char>> generate_welcome_mail()
+{
+    std::vector<char> header;
+    std::vector<char> body;
+
+    return std::vector<std::vector<char>>({header,body});
+}
+
