@@ -17,11 +17,13 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
     (void)req;
     (void)res;
     // on signup
+    // get user and password
+    // get kvs address
     // check if user exists,
     // if they do, send them to login page with special messaging
-    // otherwise, create primary folder user/ with col pass
-    // create empty sid at r:user/ c:sid v=''
-    // create empty mailbox at user/ mailbox v=metadata
+    // otherwise,
+    // create folder user/ with col hash(pass) and col sid
+    // create folder user-mbox/ [HOW ARE mailboxes created rn]
 }
 
 /// @brief handles login requests on /api/login route
@@ -59,7 +61,6 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 
     // validate session id
     std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
-    logger.log("Client session ID: " + (valid_session_id.empty() ? "[empty]" : "[" + valid_session_id + "]"), LOGGER_INFO);
 
     /* TEST CODE BLOCK */
     // // if not present, set cache kvs address for the current user
@@ -218,7 +219,7 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
     // parse cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
 
-    // if cookies are present - if so, they are valid
+    // if cookies are present then they are valid
     if (cookies.count("user") && cookies.count("sid"))
     {
         // get relevant cookies
@@ -314,8 +315,141 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void update_password_handler(const HttpRequest &req, HttpResponse &res)
 {
-    (void)req;
-    (void)res;
+    // Setup logger
+    Logger logger("Password Update Handler");
+    logger.log("Received POST request", LOGGER_INFO);
+
+    // parse cookies
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
+    // if cookies are present, validate them
+    if (cookies.count("user") && cookies.count("sid"))
+    {
+        // get relevant cookies
+        std::string username = cookies["user"];
+        std::string sid = cookies["sid"];
+
+        // check if user exists in cache
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
+
+        // get the KVS server address for user associated with the request
+        if (present)
+        {
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
+        }
+        else
+        {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        // create socket for communication with KVS server
+        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+        // validate session id
+        std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
+
+        // check if session is valid
+        if (!valid_session_id.empty())
+        {
+            // get request body
+            std::vector<std::string> req_body = Utils::split(req.body_as_string(), "&");
+
+            // parse new password from request body and compute its hash
+            std::string new_password = Utils::trim(Utils::split(req_body[0], "=")[1]);
+            std::vector<char> new_pass_hash(65);
+            sha256(&new_password[0], &new_pass_hash[0]);
+
+            // store hash of new password in the kvs
+            std::vector<char> row_key(username.begin(), username.end());
+            row_key.push_back('/');
+            std::vector<char> kvs_res = FeUtils::kv_put(
+                kvs_sock,
+                row_key,
+                std::vector<char>({'p', 'a', 's', 's'}),
+                new_pass_hash);
+
+            // if not present, set cache
+            if (!present)
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
+
+            // set cookies on response
+            FeUtils::set_cookies(res, username, sid);
+
+            // set response status code
+            res.set_code(200);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Password Successfully Updated!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/pass_change"); // TODO: Validate
+        }
+        // otherwise send them back to login page
+        else
+        {
+            // set response status code
+            res.set_code(401);
+
+            // construct html page from retrieved data and set response body
+            std::string html =
+                "<!doctype html>"
+                "<html>"
+                "<head>"
+                "<title>PennCloud.com</title>"
+                "<meta name='description' content='CIS 5050 Spr24'>"
+                "<meta name='keywords' content='HomePage'>"
+                "</head>"
+                "<body>"
+                "Session Expired, Please Reauthenticate!"
+                "</body>"
+                "</html>";
+            res.append_body_str(html);
+
+            // set response headers
+            res.set_header("Content-Type", "text/html");
+            res.set_header("Location", "/");
+        }
+    }
+    else
+    {
+        // set response status code
+        res.set_code(401);
+
+        // construct html page from retrieved data and set response body
+        std::string html =
+            "<!doctype html>"
+            "<html>"
+            "<head>"
+            "<title>PennCloud.com</title>"
+            "<meta name='description' content='CIS 5050 Spr24'>"
+            "<meta name='keywords' content='HomePage'>"
+            "</head>"
+            "<body>"
+            "Session Expired, Please Reauthenticate!"
+            "</body>"
+            "</html>";
+        res.append_body_str(html);
+
+        // set response headers
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Location", "/");
+    }
 }
 
 /// @brief validates the password against the KVS given the username using cryptographically secure challenge-response protocol
