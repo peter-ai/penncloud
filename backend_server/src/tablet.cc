@@ -88,7 +88,7 @@ void Tablet::put_value(std::string& row, std::string& col, std::vector<char>& va
         
         // acquire exclusive access to the row_locks map first to create a mutex for the new row
         row_locks_mutex.lock();
-        row_locks.emplace(row, std::shared_timed_mutex());
+        row_locks[row]; // ! this creates a mutex at row (double check this)
         row_locks_mutex.unlock();
 
         // acquire a shared lock on row_locks since we're just reading from it now
@@ -170,8 +170,7 @@ void Tablet::delete_value(std::string& row, std::string& col)
     
     // delete value if row column exists
     if (row_level_data.count(col) != 0) {
-        // ! this currently deletes the column too
-        // ! if the desired behavior is that the value should be removed, but the column left behind with an empty value, use clear(col)
+        // delete value and associated column key
         row_level_data.erase(col);
     }
 
