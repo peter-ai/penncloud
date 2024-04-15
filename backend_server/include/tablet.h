@@ -6,7 +6,7 @@
 #include <unordered_map>
 #include <shared_mutex>
 
-class Tablet 
+class Tablet
 {
 // fields
 public:

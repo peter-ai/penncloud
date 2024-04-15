@@ -2,6 +2,9 @@
 #define KVS_CLIENT_H
 
 #include <string>
+#include <memory>
+
+#include "tablet.h"
 
 class KVSClient 
 {
@@ -26,6 +29,7 @@ public:
 private:
     // read first 4 bytes from stream to get command and then call corresponding command
     void handle_command(std::vector<char>& client_stream);
+    std::shared_ptr<Tablet> retrieve_data_tablet(std::string& row);
     void getr(std::vector<char>& inputs);
     void getv(std::vector<char>& inputs);
     void putv(std::vector<char>& inputs);
