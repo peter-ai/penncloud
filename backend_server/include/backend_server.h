@@ -7,6 +7,7 @@
 #include <memory>
 
 #include "tablet.h"
+#include "kvs_client.h"
 
 class BackendServer 
 {
@@ -28,8 +29,9 @@ public:
 private:
     static int server_sock_fd;                                       // bound server socket's fd
     // note that a vector of unique ptrs is needed because shared_timed_mutexes are NOT copyable
-    static std::vector<std::unique_ptr<Tablet>> server_tablets;      // static tablets on server
+    static std::vector<std::shared_ptr<Tablet>> server_tablets;      // static tablets on server
 
+    friend class KVSClient;
 // methods
 public:    
     static void run();                           // run server (server does NOT run on initialization, server instance must explicitly call this method)
