@@ -14,4 +14,5 @@ backend_main: tablet.o backend_server.o ../utils/utils.o $(SRC_DIR)/backend_main
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
+	rm -f *.o
 	rm -f backend_main
