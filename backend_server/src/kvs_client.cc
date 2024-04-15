@@ -218,7 +218,47 @@ void KVSClient::putv(std::vector<char>& inputs)
 
 void KVSClient::cput(std::vector<char>& inputs)
 {
+    // find index of \b to extract row from inputs
+    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end()) {
+       // log and send error message
+        std::string err_msg = KVSClient::err + "Malformed arguments to CPUT(R,C,V1,V2) - row not found";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        send_response(res_bytes);
+        return;
+    }
+    std::string row(inputs.begin(), row_end);
 
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end()) {
+       // log and send error message
+        std::string err_msg = KVSClient::err + "Malformed arguments to CPUT(R,C,V1,V2) - column not found";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        send_response(res_bytes);
+        return;
+    }
+    std::string col(row_end + 1, col_end);
+
+    // remainder of input is value1 and value2
+    // ! implement logic to extract value1 and value2
+    std::vector<char> val1;
+    std::vector<char> val2;
+
+    // retrieve tablet and call CPUT on tablet
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    tablet->cond_put_value(row, col, val1, val2);
+
+    // construct response msg
+    // append "+OK<SP>" and then the rest of the message
+    kvs_client_logger.log("+OK CPUT value at r:" + row + ", c:" + col , 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    // send response msg to client
+    send_response(response_msg);
 }
 
 
