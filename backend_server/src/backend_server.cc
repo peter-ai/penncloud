@@ -4,7 +4,7 @@
 #include <thread>         // std::thread
 
 #include "../include/backend_server.h"
-// #include "../include/kvs_client.h"
+#include "../include/kvs_client.h"
 #include "../../utils/include/utils.h"
 
 // Initialize logger with info about start and end of key range
@@ -34,7 +34,7 @@ void BackendServer::run()
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
     initialize_tablets();
     send_coordinator_heartbeat();
-    // accept_and_handle_clients();
+    accept_and_handle_clients();
 }
 
 
@@ -130,12 +130,12 @@ void BackendServer::accept_and_handle_clients()
             continue;
         }
 
-//         KVSClient kvs_client(client_fd);
-//         be_logger.log("Accepted connection from client __________", 20);
+        KVSClient kvs_client(client_fd);
+        be_logger.log("Accepted connection from client __________", 20);
 
-//         // launch thread to handle client
-//         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
-//         // ! fix this after everything works (manage multithreading)
-//         client_thread.detach();
-//     }
-// }
+        // launch thread to handle client
+        std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
+        // ! fix this after everything works (manage multithreading)
+        client_thread.detach();
+    }
+}
