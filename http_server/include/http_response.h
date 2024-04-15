@@ -76,6 +76,12 @@ public:
             body.push_back(c);
         }
     }
+
+    size_t getBodySize(){
+        size_t sizeInBytes = body.size() * sizeof(char);
+        return sizeInBytes;
+    }
+    
 };
 
 #endif
