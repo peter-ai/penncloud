@@ -3,7 +3,8 @@ CXXFLAGS = -std=c++14 -Wall -Wextra
 INCLUDE_DIR = include
 SRC_DIR = src
 
-all: tablet.o kvs_client.o backend_server.o backend_main
+# ! removed kvs_client.o for testing
+all: tablet.o backend_server.o backend_main
 
 %.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@
