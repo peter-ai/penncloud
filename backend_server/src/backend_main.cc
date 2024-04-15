@@ -2,7 +2,7 @@
 #include <unistd.h>       // getopt
 
 #include "../../utils/include/utils.h"
-#include "backend_server.h"
+#include "../include/backend_server.h"
 
 // main function to run storage server
 // main expects the following flags:
@@ -13,7 +13,7 @@
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "c:p:s:e:")) != -1) {
+    while ((opt = getopt(argc, argv, "c:p:s:e:t:")) != -1) {
         switch (opt) {
             case 'c':
                 try {
@@ -34,14 +34,22 @@ int main(int argc, char *argv[])
             case 's':
                 // assign start of tablet range managed by server
                 BackendServer::range_start = optarg;
-                if (BackendServer::range_start.length() != 2) {
+                if (BackendServer::range_start.length() != 1) {
                     return -1;
                 }
                 break;
             case 'e':
                 // assign end of tablet range managed by server
                 BackendServer::range_end = optarg;
-                if (BackendServer::range_end.length() != 2) {
+                if (BackendServer::range_end.length() != 1) {
+                    return -1;
+                }
+                break;
+            case 't':
+                try {
+                    // set number of tablets in server
+                    BackendServer::num_tablets = std::stoi(optarg);
+                } catch (std::invalid_argument const& ex) {
                     return -1;
                 }
                 break;
