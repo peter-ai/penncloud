@@ -23,22 +23,22 @@ private:
 
     // enables row level locking
     // read-write locking (a row has concurrent read access, exclusive write access)
-    std::map<std::string, std::shared_timed_mutex> row_locks;
+    std::unordered_map<std::string, std::shared_timed_mutex> row_locks;
 
     // locks access to the row_locks map while a new lock is being created for a row
     std::shared_timed_mutex row_locks_mutex;
 
 // methods
 public:
-    // Construct to initialize a tablet
+    // Constructor to initialize a tablet
     Tablet(std::string range_start, std::string range_end) 
-            : range_start(range_start), range_end(range_end), data(), row_locks() {}
+            : range_start(range_start), range_end(range_end), data(), row_locks(), row_locks_mutex() {}
 
     // default constructor
     // NOTE: this should ONLY be used during deserialization
     // to deserialize, create a tablet using this constructor and then call deserialize on the instance to populate the object's fields
     // deserialize will populate the tablet's fields
-    Tablet() : range_start(""), range_end(""), data(), row_locks() {}
+    Tablet() : range_start(""), range_end(""), data(), row_locks(), row_locks_mutex() {}
 
     /**
      *  Methods for interacting with in memory data

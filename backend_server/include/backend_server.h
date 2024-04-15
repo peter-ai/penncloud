@@ -3,6 +3,10 @@
 
 #include <string>
 #include <unordered_set>
+#include <vector>
+#include <memory>
+
+#include "tablet.h"
 
 class BackendServer 
 {
@@ -15,13 +19,16 @@ public:
     // backend server fields
     static int coord_port;             // port coordinator is running on
     static int port;                   // port server runs on
-    // NOTE: if the key range is "aa" to "bz", this server will manage every key UP TO AND INCLUDING "bz"
-    // For example, a key called bzzzz would be managed in this server. The next server would start at "ca" 
+    // NOTE: if the key range is "a" to "d", this server will manage every key UP TO AND INCLUDING "d"'s full key range
+    // For example, a key called dzzzzz would be managed in this server. The next server would start at "e" 
     static std::string range_start;     // start of key range managed by this backend server
     static std::string range_end;       // end of key range managed by this backend server
+    static int num_tablets;             // number of static tablets on this server
   
 private:
-    static int server_sock_fd;       // bound server socket's fd
+    static int server_sock_fd;                                       // bound server socket's fd
+    // note that a vector of unique ptrs is needed because shared_timed_mutexes are NOT copyable
+    static std::vector<std::unique_ptr<Tablet>> server_tablets;      // static tablets on server
 
 // methods
 public:    
@@ -33,7 +40,7 @@ private:
 
     static int bind_server_socket();           // bind port to socket
     static void initialize_tablets();          // initialize tablets on this server
-    static void send_coordinator_heartbeat();  // 
+    static void send_coordinator_heartbeat();  // dispatch thread to send heartbeat to coordinator port
     static void accept_and_handle_clients();   // main server loop to accept and handle clients
 };
 
