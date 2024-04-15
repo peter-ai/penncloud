@@ -1,3 +1,8 @@
+/*
+ *   Helper functions for front-end route handlers.
+ *   Utility functions that assist in communication with the KVS.
+ */
+
 #include "../include/fe_utils.h"
 
 // Helper function to appends args to vector
