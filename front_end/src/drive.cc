@@ -65,131 +65,125 @@ bool kv_successful(const std::vector<char> &vec)
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // check req method
-    if (req.method == "GET"){
+
+    // path is /api/drive/:childpath where parent dir is the page that is being displayed
+
+    std::string childpath_str = req.path.substr(11);
+    std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+    std::cout << "GET request received for child path: " << childpath_str << std::endl;
+
+    // int sockfd = FeUtils::open_socket();
+
+    // if we are looking up a folder, use get row
+    if (is_folder(child_path))
+    {
+        std::cout << "Looking up folder" << std::endl;
+
+        std::string bodycont = "Folder: " + childpath_str;
+        std::vector<char> body_vec(bodycont.begin(), bodycont.end());
         res.set_code(200);
-    //     // path is /api/drive/:childpath where parent dir is the page that is being displayed
+        res.append_body_bytes(body_vec.data(), body_vec.size());
 
+        // append header for content length
 
+        // std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-    //     std::string childpath_str = req.path.substr(11);
-    //     std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
+        // if (kv_successful(folder_content))
+        // {
+        //     //@todo: update with html!
+        //     res.append_body_bytes(folder_content.data(), folder_content.size());
 
-    //     std::cout << "GET request received for child path: " << childpath_str << std::endl;
-
-    //     // int sockfd = FeUtils::open_socket();
-
-    //     // if we are looking up a folder, use get row
-    //     if (is_folder(child_path))
-    //     {
-    //         std::cout << "Looking up folder" << std::endl;
-
-    //         std::string bodycont = "Folder: " + childpath_str;
-    //         std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-    //         res.set_code(200);
-    //         res.append_body_bytes(body_vec.data(), body_vec.size());
-
-    //         // append header for content length
-    //         std::string content_header = "Content-Length:";
-    //         std::string header_value = std::to_string(body_vec.size());
-    //         res.set_header(content_header, header_value);
-
-    //         // std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
-
-    //         // if (kv_successful(folder_content))
-    //         // {
-    //         //     //@todo: update with html!
-    //         //     res.append_body_bytes(folder_content.data(), folder_content.size());
-
-    //         //     // append header for content length
-    //         //     std::string content_header = "Content-Length:";
-    //         //     std::string header_value = std::to_string(folder_content.size());
-    //         //     res.set_header(content_header, header_value);
-    //         //     res.set_code(200);
-    //         // }
-    //         // else
-    //         // {
-    //         //     res.set_code(400);
-    //         // }
-    //     }
-    //     else
-    //     {
-    //         // file, need to get parent row and file name
-    //         std::string filename;
-    //         std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-    //         std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
-    //         std::cout << "File is: " << filename.c_str() << std::endl;
-
-    //         std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-    //         std::vector<char> filename_vec(filename.begin(), filename.end());
-
-    //         std::cout << "Looking up file" << std::endl;
-
-    //         std::string bodycont = "File: " + filename;
-    //         std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-    //         res.set_code(200);
-    //         res.append_body_bytes(body_vec.data(), body_vec.size());
-
-    //         // append header for content length
-    //         std::string content_header = "Content-Length:";
-    //         std::string header_value = std::to_string(body_vec.size());
-    //         res.set_header(content_header, header_value);
-
-    //         // // get file content
-    //         // std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
-
-    //         // if (kv_successful(file_content))
-    //         // {
-    //         //     res.append_body_bytes(file_content.data(), file_content.size());
-
-    //         //     // append header for content length
-    //         //     std::string content_header = "Content-Length:";
-    //         //     std::string header_value = std::to_string(file_content.size());
-    //         //     res.set_header(content_header, header_value);
-    //         //     res.set_code(200);
-    //         // }
-    //         // else
-    //         // {
-    //         //     res.set_code(400);
-    //         // }
-    //     }
-
-    //     // close(sockfd);
+        //     // append header for content length
+        //     std::string content_header = "Content-Length:";
+        //     std::string header_value = std::to_string(folder_content.size());
+        //     res.set_header(content_header, header_value);
+        //     res.set_code(200);
+        // }
+        // else
+        // {
+        //     res.set_code(400);
+        // }
     }
     else
     {
-        // If the request method is not GET, set an appropriate error response
-        res.set_code(405); // Method Not Allowed
-        std::cerr << "Only GET method is allowed for file retrieval." << std::endl;
+        // file, need to get parent row and file name
+        std::string filename;
+        std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
+        std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
+        std::cout << "File is: " << filename.c_str() << std::endl;
+
+        std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+        std::vector<char> filename_vec(filename.begin(), filename.end());
+
+        std::cout << "Looking up file" << std::endl;
+
+        std::string bodycont = "File: " + filename;
+        std::vector<char> body_vec(bodycont.begin(), bodycont.end());
+        res.set_code(200);
+        res.append_body_bytes(body_vec.data(), body_vec.size());
+
+        // // get file content
+        // std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
+
+        // if (kv_successful(file_content))
+        // {
+        //     res.append_body_bytes(file_content.data(), file_content.size());
+
+        //     res.set_header(content_header, header_value);
+        //     res.set_code(200);
+        // }
+        // else
+        // {
+        //     res.set_code(400);
+        // }
     }
+
+    // close(sockfd);
 }
 
 void upload_file(const HttpRequest &req, HttpResponse &res)
 {
-    // Check if the request method is POST
-    if (req.method == "POST")
+
+    // Check if the request contains a body
+    if (!req.body_as_bytes().empty())
     {
-        // Check if the request contains a body
-        if (!req.body_as_bytes().empty())
-        {
 
-            // Copy request body to response body
-            std::vector<char> body_content = req.body_as_bytes();
-            res.append_body_bytes(body_content.data(), body_content.size());
+        // Copy request body to response body
+        std::vector<char> body_content = req.body_as_bytes();
+        res.append_body_bytes(body_content.data(), body_content.size());
 
-            // Respond with a success message
-            std::string response_body = "File uploaded successfully";
-            res.set_code(200); // OK
-        }
-        else
+        std::cout << "Content-Disposition header" << std::endl;
+        std::vector<std::string> headers = req.get_header("Content-Disposition");
+        for (const auto &header : headers)
         {
-            // No body found in the request
-            res.set_code(400); // Bad Request
+            std::cout << header << std::endl;
         }
+
+
+         std::cout << "Content-Type header" << std::endl;
+        headers = req.get_header("Content-Type");
+        for (const auto &header : headers)
+        {
+            std::cout << header << std::endl;
+        }
+
+          // int sockfd = FeUtils::open_socket();
+           // std::vector<char> file_content = FeUtils::kv_get(sockfd, par, filename_vec);
+
+        
+
+        // Respond with a success message
+        std::string response_body = "File uploaded successfully";
+
+        // @todo should we instead get row for the page they are on?
+        res.set_code(200); // OK
+
+
     }
     else
     {
-        // If the request method is not POST, set an appropriate error response
-        res.set_code(405); // Method Not Allowed
-        // res.append_body("Only POST method is allowed for file upload.");
+        // No body found in the request
+        res.set_code(400); // Bad Request
     }
 }
