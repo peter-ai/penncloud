@@ -4,7 +4,7 @@
 #include <thread>         // std::thread
 
 #include "../include/backend_server.h"
-// #include "../include/kvs_client.h"
+#include "../include/kvs_client.h"
 #include "../../utils/include/utils.h"
 
 // Initialize logger with info about start and end of key range
@@ -20,7 +20,7 @@ std::string BackendServer::range_start = "";
 std::string BackendServer::range_end = "";
 int BackendServer::num_tablets = 0;
 int BackendServer::server_sock_fd = -1;                                  
-std::vector<std::unique_ptr<Tablet>> BackendServer::server_tablets;      
+std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;      
 
 void BackendServer::run()
 {
@@ -34,7 +34,7 @@ void BackendServer::run()
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
     initialize_tablets();
     send_coordinator_heartbeat();
-    // accept_and_handle_clients();
+    accept_and_handle_clients();
 }
 
 
@@ -100,7 +100,7 @@ void BackendServer::initialize_tablets()
         // initialize tablet and add to server tablets
         char tablet_start = curr_char;
         char tablet_end = curr_char + curr_tablet_size - 1;
-        server_tablets.push_back(std::make_unique<Tablet>(std::string(1, tablet_start), std::string(1, tablet_end)));
+        server_tablets.push_back(std::make_shared<Tablet>(std::string(1, tablet_start), std::string(1, tablet_end)));
         curr_char += curr_tablet_size;
     }
 
@@ -113,29 +113,29 @@ void BackendServer::initialize_tablets()
 
 void BackendServer::send_coordinator_heartbeat() 
 {
-    // create thread and send 
+    // create thread and send message to coordinator port
 }
 
 
-// void BackendServer::accept_and_handle_clients()
-// {
-//     while (true) {
-//         // accept client connection, which returns a fd for the client
-//         int client_fd;
-//         struct sockaddr_in client_addr;
-//         socklen_t client_addr_size = sizeof(client_addr);
-//         if ((client_fd = accept(BackendServer::server_sock_fd, (sockaddr*) &client_addr, &client_addr_size)) < 0) {
-//             be_logger.log("Unable to accept incoming connection from client. Skipping.", 30);
-//             // error with incoming connection should NOT break the server loop
-//             continue;
-//         }
+void BackendServer::accept_and_handle_clients()
+{
+    while (true) {
+        // accept client connection, which returns a fd for the client
+        int client_fd;
+        struct sockaddr_in client_addr;
+        socklen_t client_addr_size = sizeof(client_addr);
+        if ((client_fd = accept(BackendServer::server_sock_fd, (sockaddr*) &client_addr, &client_addr_size)) < 0) {
+            be_logger.log("Unable to accept incoming connection from client. Skipping.", 30);
+            // error with incoming connection should NOT break the server loop
+            continue;
+        }
 
-//         KVSClient kvs_client(client_fd);
-//         be_logger.log("Accepted connection from client __________", 20);
+        KVSClient kvs_client(client_fd);
+        be_logger.log("Accepted connection from client __________", 20);
 
-//         // launch thread to handle client
-//         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
-//         // ! fix this after everything works (manage multithreading)
-//         client_thread.detach();
-//     }
-// }
+        // launch thread to handle client
+        std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
+        // ! fix this after everything works (manage multithreading)
+        client_thread.detach();
+    }
+}
