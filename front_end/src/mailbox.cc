@@ -105,11 +105,11 @@ vector<char> modifyForwardedEmail(vector<char> emailData)
 // UIDL: time, to, from, subject
 
 // EMAIL FORMAT //
-// time: Fri Mar 15 18:47:23 2024
-//"to": "recipient@example.com",
-//"from": "sender@example.com",
-//"subject": "Your Subject Here",
-//"body": "Hello, this is the body of the email."
+// time: Fri Mar 15 18:47:23 2024 \n
+// to: recipient@example.com \n
+// from: sender@example.com \n
+// subject: Your Subject Here \n
+// body : Hello, this is the body of the email. \n
 
 void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
