@@ -4,12 +4,12 @@ LDFLAGS = -L../http_server -lhttp_server
 INCLUDE_DIR = include
 SRC_DIR = src
 
-all: routes
+all: routes drive.o
 
 %.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@
 
-routes: $(SRC_DIR)/routes.cc
+routes: routes.o ../utils/utils.o ../front_end/src/drive.o
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 
 clean:
