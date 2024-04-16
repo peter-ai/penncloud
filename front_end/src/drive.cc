@@ -127,7 +127,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
     std::cout << "GET request received for child path: " << childpath_str << std::endl;
 
-    // int sockfd = FeUtils::open_socket();
+    int sockfd = FeUtils::open_socket();
 
     // if we are looking up a folder, use get row
     if (is_folder(child_path))
@@ -141,23 +141,23 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // append header for content length
 
-        // std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
+        std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        // if (kv_successful(folder_content))
-        // {
-        //     //@todo: update with html!
-        //     res.append_body_bytes(folder_content.data(), folder_content.size());
+        if (kv_successful(folder_content))
+        {
+            //@todo: update with html!
+            res.append_body_bytes(folder_content.data(), folder_content.size());
 
-        //     // append header for content length
-        //     std::string content_header = "Content-Length:";
-        //     std::string header_value = std::to_string(folder_content.size());
-        //     res.set_header(content_header, header_value);
-        //     res.set_code(200);
-        // }
-        // else
-        // {
-        //     res.set_code(400);
-        // }
+            // append header for content length
+            std::string content_header = "Content-Length:";
+            std::string header_value = std::to_string(folder_content.size());
+            res.set_header(content_header, header_value);
+            res.set_code(200);
+        }
+        else
+        {
+            res.set_code(400);
+        }
     }
     else
     {
@@ -177,23 +177,24 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         res.set_code(200);
         res.append_body_bytes(body_vec.data(), body_vec.size());
 
-        // // get file content
-        // std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
+        // get file content
+        std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
-        // if (kv_successful(file_content))
-        // {
-        //     res.append_body_bytes(file_content.data(), file_content.size());
-
-        //     res.set_header(content_header, header_value);
-        //     res.set_code(200);
-        // }
-        // else
-        // {
-        //     res.set_code(400);
-        // }
+        if (kv_successful(file_content))
+        {
+            res.append_body_bytes(file_content.data(), file_content.size());
+            std::string content_header = "Content-Type";
+            std::string content_value = "application/octet-stream";
+            res.set_header(content_header, content_value);
+            res.set_code(200);
+        }
+        else
+        {
+            res.set_code(400);
+        }
     }
 
-    // close(sockfd);
+    close(sockfd);
 }
 
 void upload_file(const HttpRequest &req, HttpResponse &res)
@@ -251,20 +252,20 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         std::cout << "row: " <<parentpath_str << std::endl;
         std::cout << "column: " <<childpath_str << std::endl;
 
-        // int sockfd = FeUtils::open_socket();
+        int sockfd = FeUtils::open_socket();
 
-        // std::vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
+        std::vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
 
-        // if (kv_successful(kvs_resp))
-        // {
-        //     // @todo should we instead get row for the page they are on?
-        //     res.set_code(200); // OK
-        //     // res.append_body_bytes(file_binary.data(), file_binary.size());
-        // } else {
-        //     res.set_code(400);
-        //     // maybe retry? tbd
+        if (kv_successful(kvs_resp))
+        {
+            // @todo should we instead get row for the page they are on?
+            res.set_code(200); // OK
+            // res.append_body_bytes(file_binary.data(), file_binary.size());
+        } else {
+            res.set_code(400);
+            // maybe retry? tbd
 
-        // }
+        }
 
         // @todo should we instead get row for the page they are on?
         res.set_code(200); // OK
