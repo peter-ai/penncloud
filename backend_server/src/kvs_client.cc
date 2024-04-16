@@ -311,54 +311,6 @@ void KVSClient::delv(std::vector<char>& inputs)
 }
 
 
-void KVSClient::delr(std::vector<char>& inputs)
-{
-    // extract row as string from inputs
-    std::string row(inputs.begin(), inputs.end());
-    // retrieve tablet to delete row from
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    // delete row from tablet
-    tablet->delete_row(row);
-
-    // construct response msg
-    // append "+OK<SP>" and then the rest of the message
-    kvs_client_logger.log("+OK DELETE row at r:" + row, 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    // send response msg to client
-    send_response(response_msg);
-}
-
-
-void KVSClient::delv(std::vector<char>& inputs)
-{
-    // convert vector to string since row and column are string-compatible values and split on delimiter
-    std::string delv_args(inputs.begin(), inputs.end());
-
-    size_t col_index = delv_args.find_first_of('\b');
-    // delimiter not found in string - should be present to split row and column
-    if (col_index == std::string::npos) {
-        // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to DELV(R,C) - delimiter not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
-    }
-    std::string row = delv_args.substr(0, col_index);
-    std::string col = delv_args.substr(col_index + 1);
-
-    // retrieve tablet and delete value from row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    tablet->delete_value(row, col);
-
-    // construct response msg
-    // append "+OK<SP>" and then the rest of the message
-    kvs_client_logger.log("+OK DELETE value at r:" + row + ", c:" + col , 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    // send response msg to client
-    send_response(response_msg);
-}
-
 
 void KVSClient::send_response(std::vector<char>& response_msg) 
 {

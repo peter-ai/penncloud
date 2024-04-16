@@ -44,17 +44,6 @@ void update_password_handler(const HttpRequest& req, HttpResponse& res);
 /// @return true if password is associated with valid user; false otherwise
 bool validate_password(int kvs_fd, std::string& username, std::string& password);
 
-/// @brief handles password change requests on /api/pass_change route
-/// @param req HttpRequest object
-/// @param res HttpResponse object
-void update_password_handler(const HttpRequest& req, HttpResponse& res);
-
-/// @brief validates the password against the KVS given the username using cryptographically secure challenge-response protocol
-/// @param kvs_fd file descriptor for KVS server
-/// @param username username associated with current client session
-/// @param password password associated with current client session
-/// @return true if password is associated with valid user; false otherwise
-bool validate_password(int kvs_fd, std::string& username, std::string& password);
 
 /// @brief helper function generating 32-byte hash string using SHA256 cryptographic hash algorithm
 /// @param string string to be hashed

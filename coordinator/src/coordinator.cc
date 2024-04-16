@@ -177,12 +177,6 @@ int main(int argc, char *argv[])
         logger.log("Backups/Server Group: " + std::to_string(kvs_backups), LOGGER_INFO);
     }
 
-    if (VERBOSE)
-    {
-        logger.log("Server Groups: " + std::to_string(kvs_servers), LOGGER_INFO);
-        logger.log("Backups/Server Group: " + std::to_string(kvs_backups), LOGGER_INFO);
-    }
-
     /* -------------------- KVS SERVER INFORMATION -------------------- */
     std::string letters = "abcdefghijklmnopqrstuvwxyz";
     std::string ip_addr = "127.0.0.1";

@@ -31,7 +31,9 @@ private:
         body.clear();
     }
 
-    friend class Client;
+
+        friend class Client;
+
 
 public:
 
@@ -71,19 +73,19 @@ public:
     }
 
     // append string data to body
-    void append_body_str(const std::string &s)
-    {
-        for (char c : s)
-        {
+
+    void append_body_str(const std::string& s) {
+        for (char c : s) {
             body.push_back(c);
         }
     }
 
-    // get the size of the body - you can call this when setting the content length header in your response
-    std::string body_size()
-    {
-        return std::to_string(body.size());
+
+    size_t getBodySize(){
+        size_t sizeInBytes = body.size() * sizeof(char);
+        return sizeInBytes;
     }
+
 };
 
 #endif
