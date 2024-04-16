@@ -78,7 +78,7 @@ void KVSClient::handle_command(std::vector<char>& client_stream)
     // extract command from first 4 bytes
     std::string command(client_stream.begin(), client_stream.begin() + 4);
     // remove first 5 bytes to remove delimiter after command
-    client_stream.erase(client_stream.begin(), client_stream.begin() + 4);
+    client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
     kvs_client_logger.log("Command received - " + command, 20);
 
     // convert command to lowercase to standardize command
