@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include <poll.h> // For poll
 #include "../../../http_server/include/http_request.h"
+#include "../../../utils/include/utils.h"
 
 const std::string SERVADDR = "127.0.0.1";
 const int SERVPORT = 8000;

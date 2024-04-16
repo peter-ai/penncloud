@@ -11,28 +11,49 @@ constexpr int BUFFER_SIZE = 1024;
 int server_socket;
 
 // Function to handle client connections
+// Function to handle client connections
 void handle_client(int client_socket) {
     // Set the socket to non-blocking
     fcntl(client_socket, F_SETFL, O_NONBLOCK);
 
     char buffer[BUFFER_SIZE];
+    std::vector<char> client_data;
+
     while (true) {
         memset(buffer, 0, BUFFER_SIZE); // Clear buffer
         ssize_t bytes_received = recv(client_socket, buffer, BUFFER_SIZE, 0);
 
         if (bytes_received > 0) {
+            // Append data to the vector
+            client_data.insert(client_data.end(), buffer, buffer + bytes_received);
+
+            // Log received data
             std::cout << "Received data from client: " << std::string(buffer, bytes_received) << std::endl;
 
             // Construct response
-            std::string response = "Response from server to client.";
-            ssize_t bytes_sent = send(client_socket, response.c_str(), response.length(), 0);
-            if (bytes_sent == -1) {
-                std::cerr << "Error sending response to client" << std::endl;
-                close(client_socket);
-                break;
+            std::string response = "+OK ";
+            if (client_data.size() >= 4) {
+                response.append(client_data.begin(), client_data.begin() + 4); // First 4 characters of the received message
+            }
+
+            uint32_t response_size = htonl(response.size());
+            std::vector<char> response_data(sizeof(uint32_t) + response.size());
+            memcpy(response_data.data(), &response_size, sizeof(uint32_t));
+            memcpy(response_data.data() + sizeof(uint32_t), response.c_str(), response.size());
+
+            // Send the size-prefixed response
+            size_t total_bytes_sent = 0;
+            while (total_bytes_sent < response_data.size()) {
+                ssize_t bytes_sent = send(client_socket, response_data.data() + total_bytes_sent, response_data.size() - total_bytes_sent, 0);
+                if (bytes_sent == -1) {
+                    std::cerr << "Error sending response to client" << std::endl;
+                    close(client_socket);
+                    break;
+                }
+                total_bytes_sent += bytes_sent;
             }
             std::cerr << "Sent response to client." << std::endl;
-            std::cerr << "bytes sent = " << bytes_sent << std::endl;
+            std::cerr << "bytes sent = " << total_bytes_sent << std::endl;
             
         } else if (bytes_received == 0) {
             std::cout << "Client disconnected" << std::endl;
@@ -47,7 +68,7 @@ void handle_client(int client_socket) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    close(client_socket);
+    // close(client_socket);
 }
 
 // Signal handler for SIGINT (Ctrl+C)

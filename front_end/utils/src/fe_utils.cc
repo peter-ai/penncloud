@@ -4,112 +4,113 @@
  */
 
 #include "../include/fe_utils.h"
+#include <unistd.h>
+#include <sys/socket.h>
+#include <iostream>
+
+Logger fe_utils_logger("FE Utils");
 
 // Helper function to appends args to vector
 // current format: COMMAND<SP><SP>arg1<SP><SP>arg2.....
 void insert_arg(std::vector<char> &curr_vec, std::vector<char> arg)
 {
     // can modify depending on delimiter of chouce
-    curr_vec.push_back(' ');
-    curr_vec.push_back(' ');
+    curr_vec.push_back('\b');
     curr_vec.insert(curr_vec.end(), arg.begin(), arg.end());
 }
 
 // Helper function for all writes to kvs
-size_t writeto_kvs(const std::vector<char> &data, int fd)
+size_t writeto_kvs(std::vector<char> &msg, int fd)
 {
     // Send data to kvs using fd
-    ssize_t bytes_sent = send(fd, data.data(), data.size(), 0);
-    if (bytes_sent == -1)
+    uint32_t msg_size = htonl(msg.size());
+
+    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
+    // Copy bytes from msg_size into the size_prefix vector
+    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
+
+    // Insert the size prefix at the beginning of the original response msg vector
+    msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
+
+    // write response to client as bytes
+    size_t total_bytes_sent = 0;
+    while (total_bytes_sent < msg.size())
     {
-        std::cerr << "Error sending data" << std::endl;
-        return 0;
+        int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
+        total_bytes_sent += bytes_sent;
     }
+    fe_utils_logger.log("Response sent to kvs", 20);
 
-    // std::cout << "Sent message: ";
-    // for (char c : data)
-    // {
-    //     std::cout << c;
-    // }
-    // std::cout << std::endl;
-
-    return bytes_sent;
+    return total_bytes_sent;
 }
 
 // Helper function for all reads from kvs responses
 std::vector<char> readfrom_kvs(int fd)
 {
-    std::string stringBuffer(1024, '\0'); // Start with a large initial size like 1MB
-    size_t current_capacity = stringBuffer.size();
-    size_t total_bytes_received = 0;
-    ssize_t bytes_received = 0;
+    std::vector<char> kvs_data;
+    char buffer[4096];
+    uint32_t data_size = 0;
+    int total_bytes_recvd = 0;
+    bool size_extracted = false;
+    char size_buffer[4];
+    int size_buffer_filled = 0;
 
-    // Prepare the poll structure
-    struct pollfd fds[1];
-    fds[0].fd = fd;
-    fds[0].events = POLLIN; // Check for data to read
-
-    int timeout = 100; // Timeout in milliseconds (1 second)
-
-    do
+    while (true)
     {
-        // Wait for the socket to be ready for reading using poll
-        int retval = poll(fds, 1, timeout);
-
-        if (retval == -1)
+        int bytes_recvd = recv(fd, buffer, sizeof(buffer), 0);
+        if (bytes_recvd < 0)
         {
-            std::cerr << "Poll error: " << strerror(errno) << std::endl;
-            return std::vector<char>{'-', 'E', 'R'};
-        }
-        else if (retval)
-        {
-            // Check if we have events on the socket
-            if (fds[0].revents & POLLIN)
-            {
-                // Data is available to read
-                bytes_received = recv(fd, &stringBuffer[total_bytes_received], current_capacity - total_bytes_received, 0);
-
-                if (bytes_received == -1)
-                {
-                    if (errno == EAGAIN || errno == EWOULDBLOCK)
-                    {
-                        // Non-blocking mode, no data available at the moment
-                        continue;
-                    }
-                    else
-                    {
-                        // An actual error occurred
-                        std::cerr << "Error receiving data: " << strerror(errno) << std::endl;
-                        return std::vector<char>{'-', 'E', 'R'};
-                    }
-                }
-                else if (bytes_received == 0)
-                {
-                    // The connection has been closed by the peer
-                    std::cerr << "Connection closed by peer" << std::endl;
-                    break;
-                }
-
-                total_bytes_received += bytes_received;
-                // std::cout << "Received " << bytes_received << " bytes, Total: " << total_bytes_received << " bytes." << std::endl;
-
-                // Ensure there is enough room to receive more data
-                if (total_bytes_received == current_capacity)
-                {
-                    current_capacity *= 2; // Double the capacity
-                    stringBuffer.resize(current_capacity);
-                }
-            }
-        }
-        else
-        {
-            // No data within the timeout period
+            // Log error and exit on read error
+            fe_utils_logger.log("Error reading from KVS server", 40);
             break;
         }
-    } while (true);
+        else if (bytes_recvd == 0)
+        {
+            // Log and exit when KVS server closes the connection
+            fe_utils_logger.log("KVS server closed connection", 30);
+            break;
+        }
 
-    stringBuffer.resize(total_bytes_received); // Resize to fit actual data received
-    return std::vector<char>(stringBuffer.begin(), stringBuffer.begin() + total_bytes_received);
+        int buffer_offset = 0;
+
+        // Collect bytes for the data size if not already extracted
+        if (!size_extracted)
+        {
+            while (size_buffer_filled < 4 && buffer_offset < bytes_recvd)
+            {
+                size_buffer[size_buffer_filled++] = buffer[buffer_offset++];
+            }
+
+            // Check if we have collected 4 bytes for the data size
+            if (size_buffer_filled == 4)
+            {
+                memcpy(&data_size, size_buffer, 4);
+                data_size = ntohl(data_size); // Convert from network byte order to host byte order
+                size_extracted = true;
+            }
+        }
+
+        // If data size is known, collect the KVS data
+        if (size_extracted)
+        {
+            int remaining_data = bytes_recvd - buffer_offset;
+            if (remaining_data > 0)
+            {
+                int needed_data = data_size - total_bytes_recvd;
+                int data_to_copy = std::min(remaining_data, needed_data);
+                kvs_data.insert(kvs_data.end(), buffer + buffer_offset, buffer + buffer_offset + data_to_copy);
+                total_bytes_recvd += data_to_copy;
+            }
+        }
+
+        // Exit the loop if the entire data set has been received
+        if (total_bytes_recvd == data_size && size_extracted)
+        {
+            break;
+        }
+    }
+
+    return kvs_data;
 }
 
 // Opens socket and sends parameters
@@ -121,7 +122,7 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     if (sockfd == -1)
     {
         //@todo: potentially log instead
-        std::cerr << "Error creating socket" << std::endl;
+        fe_utils_logger.log("Error creating socket", 40);
         return -1;
     }
 
@@ -135,7 +136,7 @@ int FeUtils::open_socket(const std::string s_addr, const int s_port)
     // Connect to the server
     if (connect(sockfd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1)
     {
-        std::cerr << "Error connecting to server" << std::endl;
+        fe_utils_logger.log("Error connecting to server", 40);
         close(sockfd);
         return -1;
     }
@@ -176,7 +177,7 @@ std::vector<std::string> FeUtils::query_coordinator(std::string &path)
 std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<char> col)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "GET";
+    std::string cmd = "GETV";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     insert_arg(fn_string, col);
@@ -186,6 +187,7 @@ std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<cha
     if (writeto_kvs(fn_string, fd) == 0)
     {
         // potentially logger
+
         response = {'-', 'E', 'R'};
         return response;
     }
@@ -201,7 +203,7 @@ std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<cha
 std::vector<char> FeUtils::kv_put(int fd, std::vector<char> row, std::vector<char> col, std::vector<char> val)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "PUT";
+    std::string cmd = "PUTV";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     insert_arg(fn_string, col);
@@ -212,6 +214,7 @@ std::vector<char> FeUtils::kv_put(int fd, std::vector<char> row, std::vector<cha
     if (writeto_kvs(fn_string, fd) == 0)
     {
         // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
         response = {'-', 'E', 'R'};
         return response;
     }
@@ -223,11 +226,11 @@ std::vector<char> FeUtils::kv_put(int fd, std::vector<char> row, std::vector<cha
     return response;
 }
 
-// Gets a row's  columns using RGET(r), returns list of cols
+// Gets a row's  columns using GETR(r), returns list of cols
 std::vector<char> FeUtils::kv_get_row(int fd, std::vector<char> row)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "RGET";
+    std::string cmd = "GETR";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     std::vector<char> response = {};
@@ -236,6 +239,7 @@ std::vector<char> FeUtils::kv_get_row(int fd, std::vector<char> row)
     if (writeto_kvs(fn_string, fd) == 0)
     {
         // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
         response = {'-', 'E', 'R'};
         return response;
     }
@@ -263,6 +267,7 @@ std::vector<char> FeUtils::kv_cput(int fd, std::vector<char> row, std::vector<ch
     if (writeto_kvs(fn_string, fd) == 0)
     {
         // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
         response = {'-', 'E', 'R'};
         return response;
     }
@@ -278,7 +283,7 @@ std::vector<char> FeUtils::kv_cput(int fd, std::vector<char> row, std::vector<ch
 std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<char> col)
 {
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
-    std::string cmd = "DELETE";
+    std::string cmd = "DELV";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);
     insert_arg(fn_string, col);
@@ -288,6 +293,7 @@ std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<cha
     if (writeto_kvs(fn_string, fd) == 0)
     {
         // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
         response = {'-', 'E', 'R'};
         return response;
     }
@@ -318,7 +324,7 @@ bool FeUtils::kv_success(const std::vector<char> &vec)
 /// @brief helper function that parses cookie header responses received in http requests
 /// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
 /// @return a map with keys and values from the cookie
-std::unordered_map<std::string, std::string> FeUtils::parse_cookies(const HttpRequest& req)
+std::unordered_map<std::string, std::string> FeUtils::parse_cookies(const HttpRequest &req)
 {
     std::vector<std::string> cookie_vector = req.get_header("Cookie");
     std::unordered_map<std::string, std::string> cookies;
