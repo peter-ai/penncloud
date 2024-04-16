@@ -142,17 +142,11 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
     std::string childpath_str = req.path.substr(11);
     std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
-
-    std::cout << "GET request received for child path: " << childpath_str << std::endl;
-
     int sockfd = FeUtils::open_socket();
 
     // if we are looking up a folder, use get row
     if (is_folder(child_path))
     {
-        std::cout << "Looking up folder" << std::endl;
-
-        std::string bodycont = "Folder: " + childpath_str;
 
         std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
@@ -263,9 +257,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
 
         std::vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
         std::vector<char> col_vec(filename.begin(), filename.end());
-
-        std::cout << "row: " <<parentpath_str << std::endl;
-        std::cout << "column: " <<filename << std::endl;
 
         int sockfd = FeUtils::open_socket();
 
