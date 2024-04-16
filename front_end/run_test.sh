@@ -14,7 +14,7 @@ make clean
 make
 cd ..
 
-# compile http server as library
+# compile coordinator server
 cd coordinator
 make clean
 make

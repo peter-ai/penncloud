@@ -3,6 +3,8 @@
  *
  *  Created on: Apr 11, 2024
  *      Author: peter-ai
+ * 
+ *  Handler and helper functions that handle authentication and session management
  */
 
 #ifndef FRONT_END_INCLUDE_AUTHENTICATION_H_
@@ -56,5 +58,8 @@ std::string generate_challenge(std::size_t length);
 /// @return returns the generated session ID
 std::string generate_sid();
 
+/// @brief helper function that generates a welcome email for new users and stores
+/// @return a <email header, email body> as a vector that stores vectors of chars
+std::vector<std::vector<char>> generate_welcome_mail();
 
 #endif /* FRONT_END_INCLUDE_AUTHENTICATION_H_ */

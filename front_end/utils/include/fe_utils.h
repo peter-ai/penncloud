@@ -9,10 +9,11 @@
 #include <iostream>
 #include <unistd.h>
 #include <unordered_map>
+#include <iostream>
+#include <algorithm> // std::transform
+#include <sys/time.h>
+#include <poll.h> // For poll
 #include "../../../http_server/include/http_request.h"
-
-// #include "../../../utils/include/utils.h"
-// #include "../../include/main.h"
 
 const std::string SERVADDR = "127.0.0.1";
 const int SERVPORT = 8000;
@@ -59,13 +60,19 @@ namespace FeUtils
     /// @brief helper function that parses cookie header responses received in http requests
     /// @param cookies_vector a vector containing cookies of the form <"key1=value1", "key2=value2", "key3=value3", ...>
     /// @return a map with keys and values from the cookie
-    std::unordered_map<std::string, std::string> parse_cookies(std::vector<std::string> &cookies_vector);
+    std::unordered_map<std::string, std::string> parse_cookies(const HttpRequest &req);
 
     /// @brief sets the cookies on the http response and resets the age of cookies
     /// @param res HttpResponse object
     /// @param username username associated with the current session
     /// @param sid session ID associated with the current session
     void set_cookies(HttpResponse &res, std::string username, std::string sid);
+
+    /// @brief expires the cookies on the http response by setting age to 0
+    /// @param res HttpResponse object
+    /// @param username username associated with the current session
+    /// @param sid session ID associated with the current session
+    void expire_cookies(HttpResponse &res, std::string username, std::string sid);
 
     /// @brief validates the session id for the current user
     /// @param kvs_fd file descriptor for KVS server

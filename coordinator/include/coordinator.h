@@ -16,8 +16,6 @@
 #include <unistd.h>
 #include <string>
 #include <unordered_map>
-#include "../../utils/include/utils.h"
-
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <signal.h>
@@ -25,6 +23,8 @@
 #include <sys/types.h>
 #include <strings.h>
 #include <stdlib.h>
+
+#include "../../utils/include/utils.h"
 
 extern std::unordered_map<pthread_t, int> THREADS; // track threads
 extern std::mutex MAP_MUTEX;                       // mutex for map of threads
