@@ -22,8 +22,12 @@ void insert_arg(std::vector<char> &curr_vec, std::vector<char> arg)
 // Helper function for all writes to kvs
 size_t writeto_kvs(std::vector<char> &msg, int fd)
 {
+    fe_utils_logger.log("msg size before conversion" + std::to_string(msg.size()), 20);
+
     // Send data to kvs using fd
     uint32_t msg_size = htonl(msg.size());
+
+    fe_utils_logger.log("msg size after conversion" + std::to_string(msg_size), 20);
 
     std::vector<uint8_t> size_prefix(sizeof(uint32_t));
     // Copy bytes from msg_size into the size_prefix vector
@@ -32,13 +36,17 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
     // Insert the size prefix at the beginning of the original response msg vector
     msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
+    fe_utils_logger.log("msg - " + std::string(msg.begin(), msg.end()), 20);
+
     // write response to client as bytes
     size_t total_bytes_sent = 0;
     while (total_bytes_sent < msg.size())
     {
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
+        fe_utils_logger.log("bytes sent - " + std::to_string(bytes_sent), 20);
         total_bytes_sent += bytes_sent;
     }
+
     fe_utils_logger.log("Response sent to kvs", 20);
 
     return total_bytes_sent;
@@ -176,7 +184,7 @@ std::vector<std::string> FeUtils::query_coordinator(std::string &path)
 // Function for KV GET(row, col). Returns value as vector<char> to user
 std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<char> col)
 {
-    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    // string to send  COMMAND + \b + row + \b + col....
     std::string cmd = "GETV";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);

@@ -194,7 +194,7 @@ int main(int argc, char *argv[])
             std::unordered_map<std::string, std::string> resp;
             std::vector<std::string> backups;
             std::string secondary_kvs;
-            std::string primary_kvs = ip_addr + ":5" + std::to_string(server_group) + std::to_string(server_number) + "0";
+            std::string primary_kvs = ip_addr + ":6" + std::to_string(server_group) + std::to_string(server_number) + "0";
 
             resp["primary"] = primary_kvs;
 
@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
 
             while (server_number <= kvs_backups)
             {
-                secondary_kvs = ip_addr + ":5" + std::to_string(server_group) + std::to_string(server_number) + "0";
+                secondary_kvs = ip_addr + ":6" + std::to_string(server_group) + std::to_string(server_number) + "0";
                 resp["secondary" + std::to_string(server_number)] = secondary_kvs;
 
                 kvs_health[secondary_kvs] = true;

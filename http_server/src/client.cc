@@ -225,13 +225,9 @@ void Client::set_req_type()
 
         std::vector<std::string> route_path_tokens = Utils::split(route.path, "/");
 
-        // request path must be at least as long as the route path to match
-        if (req_path_tokens.size() < route_path_tokens.size()) {
-            continue;
-        }
-
         // iterate route path tokens and check if there's a match for each token
         bool dynamic_route_found = true;
+        bool wildcard_found = false;
         for (size_t i = 0 ; i < route_path_tokens.size() ; i++) {
             std::string req_token = req_path_tokens.at(i);
             std::string route_token = route_path_tokens.at(i);
@@ -243,10 +239,16 @@ void Client::set_req_type()
             } 
             // route token is *, in which case we're done and we can break since * catches everything
             else if (route_token == "*") {
+                wildcard_found = true;
                 break;
             } else {
                 dynamic_route_found = false;
             }
+        }
+
+        // check that route sizes matched up only if wildcard was not found
+        if (!wildcard_found && req_path_tokens.size() != route_path_tokens.size()) {
+            continue;
         }
 
         if (dynamic_route_found) {

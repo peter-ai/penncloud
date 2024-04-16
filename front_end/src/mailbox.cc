@@ -23,7 +23,7 @@ using namespace std;
  */
 
 // takes the a path's request and parses it to user mailbox key "user1-mbox/"
-string parseMailboxPathToRowKey(string path)
+string parseMailboxPathToRowKey(const string& path)
 {
 	regex userRegex("/api/(\\w+)");
 	regex mailboxRegex("/(mbox)(?:/|$)"); // Matches 'mbox' or 'mailbox' followed by '/' or end of string
@@ -154,7 +154,6 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		}
 	}
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 }
 
@@ -190,7 +189,6 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("-ER Failed to respond to email.");
 	}
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 }
 
@@ -222,7 +220,6 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("-ER Failed to delete email.");
 	}
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 }
 
@@ -257,7 +254,6 @@ void sendEMail_handler(const HttpRequest &request, HttpResponse &response)
 	}
 
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 }
 
@@ -290,7 +286,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		response.set_code(400); // Bad request
 	}
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 }
 
@@ -322,7 +317,6 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		response.set_code(400); // Bad request
 	}
 	response.set_header("Content-Type", "text/html");
-	response.set_header("Content-Length", to_string(response.getBodySize()));
 	close(socket_fd);
 	// end of handler --> http server sends response back to client
 }

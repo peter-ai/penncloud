@@ -100,6 +100,10 @@ void Tablet::put_value(std::string& row, std::string& col, std::vector<char>& va
         // create entry for row in data map
         data.emplace(row, std::unordered_map<std::string, std::vector<char>>());
     } else {
+        // acquire a shared lock on row_locks since we're just reading from it now
+        // ! figure out how to make sure shared lock blocks to acquire the shared lock
+        row_locks_mutex.lock_shared();
+
         // acquire an exclusive lock on data map to put value
         row_locks.at(row).lock(); 
     }

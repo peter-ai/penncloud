@@ -37,7 +37,16 @@ void KVSClient::read_from_network()
             if (bytes_left_in_command != 0) {
                 client_stream.push_back(buf[i]);
                 bytes_left_in_command--;
-            } 
+
+                if (bytes_left_in_command == 0) {
+                    kvs_client_logger.log("handling command", 40);
+                    handle_command(client_stream);
+                    // clear the client stream in preparation for the next command
+                    client_stream.clear();
+                    // reset bytes left in comand to 0
+                    bytes_left_in_command = 0;
+                }
+            }
             // command is complete, we need the next 4 bytes to determine how much bytes are in this command
             else {
                 // now we have two situations
@@ -45,26 +54,16 @@ void KVSClient::read_from_network()
                 // 2) client stream's size >= 4
                 if (client_stream.size() < 4) {
                     client_stream.push_back(buf[i]);
-
                     // parse size of command once client stream is 4 bytes long and store it in bytes_left_in_command
                     if (client_stream.size() == 4) {
                         // parse size of command from client
                         uint32_t client_stream_size;
                         std::memcpy(&client_stream_size, client_stream.data(), sizeof(uint32_t));
-
                         // ! convert number received from network order to host order
                         bytes_left_in_command = ntohl(client_stream_size);
                         // clear the client stream in preparation for the incoming data
                         client_stream.clear();
                     }
-                } 
-                // bytes left in command is 0 because command is complete
-                else {
-                    handle_command(client_stream);
-                    // clear the client stream in preparation for the next command
-                    client_stream.clear();
-                    // reset bytes left in comand to 0
-                    bytes_left_in_command = 0;
                 }
             }
         }
@@ -127,7 +126,7 @@ void KVSClient::getr(std::vector<char>& inputs)
     // construct response msg from vector of strings containing rows in column
     std::vector<char> response_msg;
     // append "+OK<SP>" and then the rest of the message
-    response_msg.insert(response_msg.end(), ok.begin(), ok.end());
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
     // iterate through each column in response and append chars from each col to response msg
     for (const std::string& col : result) {
         response_msg.insert(response_msg.end(), col.begin(), col.end());
@@ -136,6 +135,8 @@ void KVSClient::getr(std::vector<char>& inputs)
     }
     // remove last added delimiter
     response_msg.pop_back();
+
+    kvs_client_logger.log(std::string(response_msg.begin(), response_msg.end()), 20);
 
     // send response msg to client
     send_response(response_msg);
@@ -160,13 +161,21 @@ void KVSClient::getv(std::vector<char>& inputs)
     std::string row = getv_args.substr(0, col_index);
     std::string col = getv_args.substr(col_index + 1);
 
+    kvs_client_logger.log("row - " + row, 20);
+    kvs_client_logger.log("col - " + col, 20);
+
     // retrieve tablet and read value from row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_value(row, col);
 
+    kvs_client_logger.log(std::string(response_msg.begin(), response_msg.end()), 20);
+
     // construct response msg from value
     // append "+OK<SP>" and then the rest of the message
-    response_msg.insert(response_msg.end(), ok.begin(), ok.end());
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+
+    kvs_client_logger.log(std::string(response_msg.begin(), response_msg.end()), 20);
+
     // send response msg to client
     send_response(response_msg);
 }
