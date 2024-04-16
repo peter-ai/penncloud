@@ -21,7 +21,12 @@ make
 cd ..
 
 # compile routes
+# cd front_end
+# make clean
+# make
+# ./auth_routes
+
 cd front_end
 make clean
 make
-./auth_routes
+./main
