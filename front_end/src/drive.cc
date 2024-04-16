@@ -21,9 +21,8 @@
 
 // Folder handlers
 
-// @todo: check path vs parameters of request
-
-std::vector<char> content_vec = {'c', 'o', 'n', 't', 'e', 'n', 't'};
+std::vector<char> ok_vec = {'+', 'O', 'K', ' '};
+std::vector<char> err_vec = {'-', 'E', 'R', ' '};
 
 // helper to return parent path
 std::string split_parent_filename(const std::vector<std::string> &vec, std::string &filename)
@@ -116,6 +115,25 @@ std::vector<std::vector<char>> split_vec_first_delim(const std::vector<char> &da
     return result;
 }
 
+// helper to return parent path
+std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
+{
+    std::vector<char> output;
+
+    // Iterate over all elements except the last one
+    for (size_t i = 0; i < vec.size() - 1; ++i)
+    {
+        output.insert(output.end(), (vec[i]).begin(), (vec[i]).end());
+        output.push_back(',');
+        output.push_back(' ');
+    }
+
+    output.insert(output.end(), (vec.back()).begin(), (vec.back()).end());
+
+    return output;
+}
+
+
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // check req method
@@ -140,8 +158,14 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         if (kv_successful(folder_content))
         {
+            // content list, remove '+OK<sp>'
+            std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // split on delim
+            std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+            std::vector<char> formatted_content = format_folder_contents(contents);
+
             //@todo: update with html!
-            res.append_body_bytes(folder_content.data(), folder_content.size());
+            res.append_body_bytes(formatted_content.data(), formatted_content.size());
 
             // append header for content length
             res.set_code(200);
@@ -156,34 +180,32 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         // file, need to get parent row and file name
         std::string filename;
         std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-        std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
-        std::cout << "File is: " << filename.c_str() << std::endl;
-
+    
         std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
         std::vector<char> filename_vec(filename.begin(), filename.end());
-
-        std::cout << "Looking up file" << std::endl;
-
-        // std::string bodycont = "File: " + filename;
-        // std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-        // res.set_code(200);
-        // res.append_body_bytes(body_vec.data(), body_vec.size());
 
         // get file content
         std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
-        std::cout << std::string(file_content.begin(), file_content.end()) << std::endl;
-
         if (kv_successful(file_content))
         {
-            res.append_body_bytes(file_content.data(), file_content.size());
+            // get binary from 4th char onward (ignore +OK<sp>)
+            std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
+
+            // apend to body
+            res.append_body_bytes(file_binary.data(), file_binary.size());
+
+            // octet-steam for content header
             std::string content_header = "Content-Type";
             std::string content_value = "application/octet-stream";
             res.set_header(content_header, content_value);
+
+            // set code
             res.set_code(200);
         }
         else
         {
+            // @todo ask about error codes
             res.set_code(400);
         }
     }
