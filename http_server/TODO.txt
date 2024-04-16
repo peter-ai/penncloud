@@ -1,0 +1,5 @@
+TODO
+[] add cleanup on SIGINT 
+[] (general) add file of constants for server ports
+[] log when a client is accepted and store the ip address string and port for the client
+[] rewrite Makefile to use as library
