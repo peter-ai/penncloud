@@ -311,6 +311,7 @@ void KVSClient::delv(std::vector<char>& inputs)
 }
 
 
+
 void KVSClient::send_response(std::vector<char>& response_msg) 
 {
     // set size of response in first 4 bytes of vector
