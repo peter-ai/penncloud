@@ -195,10 +195,10 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             // apend to body
             res.append_body_bytes(file_binary.data(), file_binary.size());
 
-            // octet-steam for content header
-            std::string content_header = "Content-Type";
-            std::string content_value = "application/octet-stream";
-            res.set_header(content_header, content_value);
+            // // octet-steam for content header @todo -- setting this type means postman can't see it
+            // std::string content_header = "Content-Type";
+            // std::string content_value = "application/octet-stream";
+            // res.set_header(content_header, content_value);
 
             // set code
             res.set_code(200);
