@@ -305,6 +305,9 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		return;
 	}
 	// path is: /api/mailbox/{username}/
+
+	//string recipientAddress;
+
 	string rowKey = parseMailboxPathToRowKey(request.path);
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> kvsResponse = FeUtils::kv_get_row(socket_fd, row);
