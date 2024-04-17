@@ -192,7 +192,7 @@ void KVSClient::putv(std::vector<char> &inputs)
     if (row_end == inputs.end())
     {
         // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to PUT(R,C,V) - row not found";
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         send_response(res_bytes);
@@ -206,7 +206,7 @@ void KVSClient::putv(std::vector<char> &inputs)
     if (row_end == inputs.end())
     {
         // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to PUT(R,C,V) - column not found";
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         send_response(res_bytes);
@@ -217,14 +217,13 @@ void KVSClient::putv(std::vector<char> &inputs)
     // remainder of input is value
     std::vector<char> val(col_end + 1, inputs.end());
 
+    // log command and args
+    kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
+
     // retrieve tablet and put value for row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    tablet->put_value(row, col, val);
+    std::vector<char> response_msg = tablet->put_value(row, col, val);
 
-    // construct response msg
-    // append "+OK<SP>" and then the rest of the message
-    kvs_client_logger.log("+OK PUT value at r:" + row + ", c:" + col, 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
     // send response msg to client
     send_response(response_msg);
 }

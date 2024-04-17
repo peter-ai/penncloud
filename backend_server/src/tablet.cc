@@ -1,6 +1,9 @@
 #include <iostream>
 
 #include "../include/tablet.h"
+#include "../../utils/include/utils.h"
+
+Logger tablet_logger("Tablet");
 
 // define constants
 const char Tablet::delimiter = '\b';
@@ -72,49 +75,40 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
 }
 
 // add value at supplied row and column to tablet data
-void Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
+std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
 {
-    // check if the row exists in the map
+    // row must be created if it does not exist in the map
     if (data.count(row) == 0)
     {
-        // row must be created
-
         // acquire exclusive access to the row_locks map first to create a mutex for the new row
         row_locks_mutex.lock();
-        row_locks[row]; // ! this creates a mutex at row (double check this)
+        row_locks[row];
         row_locks_mutex.unlock();
 
-        // acquire a shared lock on row_locks since we're just reading from it now
-        // ! figure out how to make sure shared lock blocks to acquire the shared lock
-        row_locks_mutex.lock_shared();
-
-        // acquire exclusive lock on data map to create row
-        row_locks.at(row).lock();
+        row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
+        row_locks.at(row).lock();      // acquire exclusive lock on data map to create row
         // create entry for row in data map
         data.emplace(row, std::unordered_map<std::string, std::vector<char>>());
+        tablet_logger.log("Created R[" + row + "]", 20);
     }
     else
     {
-        // acquire a shared lock on row_locks since we're just reading from it now
-        // ! figure out how to make sure shared lock blocks to acquire the shared lock
-        row_locks_mutex.lock_shared();
-
-        // acquire an exclusive lock on data map to put value
-        row_locks.at(row).lock();
+        row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
+        row_locks.at(row).lock();      // acquire exclusive lock on data map to create row
     }
 
     // at this point, the row we want to update has an exclusive lock on it
     auto &row_level_data = data.at(row);
 
     // add value at column
-    // ! NOTE - this overwrites the value
     row_level_data[col] = val;
 
-    // unlock exclusive lock on row
-    row_locks.at(row).unlock();
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
 
-    // release shared lock on row locks
-    row_locks_mutex.unlock_shared();
+    std::string response_msg = "Inserted value at R[" + row + "], C[" + col + "]";
+    tablet_logger.log(response_msg, 20);
+    return construct_msg(response_msg, false);
 }
 
 // add value at supplied row and column to tablet data, ONLY if current value is val1
