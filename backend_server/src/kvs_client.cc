@@ -9,11 +9,6 @@
 
 Logger kvs_client_logger("KVS Client");
 
-// initialize constant values
-// const char KVSClient::delimiter = '\b';
-// const std::string KVSClient::ok = "+OK ";
-// const std::string KVSClient::err = "-ER ";
-
 void KVSClient::read_from_network()
 {
     std::vector<char> client_stream;
@@ -117,7 +112,7 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     {
         kvs_client_logger.log("Unsupported command", 40);
         // send error response msg
-        std::string res_str = KVSClient::err + "Unsupported command";
+        std::string res_str = "-ER Unsupported command";
         std::vector<char> res_bytes(res_str.begin(), res_str.end());
         send_response(res_bytes);
     }
@@ -281,7 +276,7 @@ void KVSClient::cput(std::vector<char> &inputs)
     if (row_end == inputs.end())
     {
         // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to CPUT(R,C,V1,V2) - row not found";
+        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         send_response(res_bytes);
@@ -295,7 +290,7 @@ void KVSClient::cput(std::vector<char> &inputs)
     if (row_end == inputs.end())
     {
         // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to CPUT(R,C,V1,V2) - column not found";
+        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         send_response(res_bytes);
@@ -303,19 +298,36 @@ void KVSClient::cput(std::vector<char> &inputs)
     }
     std::string col(row_end + 1, col_end);
 
+    // clear inputs UP TO AND INCLUDING the last \b chara
+    inputs.erase(inputs.begin(), col_end + 1);
+
     // remainder of input is value1 and value2
-    // ! implement logic to extract value1 and value2
+
+    // extract the number in front of val1
     std::vector<char> val1;
-    std::vector<char> val2;
+    uint32_t val1_size;
+    std::memcpy(&val1_size, inputs.data(), sizeof(uint32_t));
+    // convert number received from network order to host order
+    int bytes_in_val1 = ntohl(val1_size);
+
+    // clear the first 4 bytes from inputs
+    inputs.erase(inputs.begin(), inputs.begin() + sizeof(uint32_t));
+
+    // copy the number of characters in bytes_in_val1 to val1
+    std::vector<char> val1;
+    std::memcpy(&val1, inputs.data(), bytes_in_val1);
+
+    // remaining characters are val2
+    inputs.erase(inputs.begin(), inputs.begin() + bytes_in_val1);
+    std::vector<char> val2 = inputs;
+
+    // log command and args
+    kvs_client_logger.log("CPUT R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and call CPUT on tablet
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    tablet->cond_put_value(row, col, val1, val2);
+    std::vector<char> response_msg = tablet->cond_put_value(row, col, val1, val2);
 
-    // construct response msg
-    // append "+OK<SP>" and then the rest of the message
-    kvs_client_logger.log("+OK CPUT value at r:" + row + ", c:" + col, 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
     // send response msg to client
     send_response(response_msg);
 }
@@ -323,7 +335,7 @@ void KVSClient::cput(std::vector<char> &inputs)
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
     // set size of response in first 4 bytes of vector
-    // ! convert to network order and interpret msg_size as bytes
+    // convert to network order and interpret msg_size as bytes
     uint32_t msg_size = htonl(response_msg.size());
     std::vector<uint8_t> size_prefix(sizeof(uint32_t));
     // Copy bytes from msg_size into the size_prefix vector

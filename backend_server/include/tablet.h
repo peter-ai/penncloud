@@ -60,11 +60,6 @@ public:
     // if column does not exist, it will be created
     std::vector<char> put_value(std::string &row, std::string &col, std::vector<char> &val);
 
-    // add value at supplied row and column to tablet data, ONLY if current value is val1
-    // this operation acquires exclusive access to the row
-    // if the row or column does not exist, they will NOT be created
-    std::vector<char> cond_put_value(std::string &row, std::string &col, std::vector<char> &old_val, std::vector<char> &new_val);
-
     // delete row in tablet data
     // this operation requires exclusive access to the row
     // nothing will happen if the row does not exist
@@ -74,6 +69,11 @@ public:
     // this operation requires exclusive access to the row
     // nothing will happen if the row and column do not exist
     std::vector<char> delete_value(std::string &row, std::string &col);
+
+    // add value at supplied row and column to tablet data, ONLY if current value is val1
+    // this operation acquires exclusive access to the row
+    // if the row or column does not exist, they will NOT be created
+    std::vector<char> cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val);
 
     /**
      * Serialization methods

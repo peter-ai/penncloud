@@ -16,6 +16,7 @@ std::vector<char> Tablet::get_row(std::string &row)
     // Return empty vector if row not found in map
     if (data.count(row) == 0)
     {
+        tablet_logger.log("-ER Row not found", 20);
         return construct_msg("Row not found", true);
     }
 
@@ -28,8 +29,7 @@ std::vector<char> Tablet::get_row(std::string &row)
     for (const auto &col : row_level_data)
     {
         response_msg.insert(response_msg.end(), col.first.begin(), col.first.end());
-        // insert delimiter to separate columns
-        response_msg.push_back('\b');
+        response_msg.push_back('\b'); // insert delimiter to separate columns
     }
     // remove last added delimiter
     response_msg.pop_back();
@@ -38,7 +38,8 @@ std::vector<char> Tablet::get_row(std::string &row)
     row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
 
     // append +OK to response and send it back
-    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    tablet_logger.log("+OK Retrieved columns at R[" + row + "]", 20);
+    response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
     return response_msg;
 }
 
@@ -48,6 +49,7 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
     // Return empty vector if row not found in map
     if (data.count(row) == 0)
     {
+        tablet_logger.log("-ER Row not found", 20);
         return construct_msg("Row not found", true);
     }
 
@@ -60,6 +62,7 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
     {
         row_locks.at(row).unlock_shared(); // release shared lock on row's mutex
         row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
+        tablet_logger.log("-ER Column not found", 20);
         return construct_msg("Column not found", true);
     }
 
@@ -70,7 +73,8 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
     row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
 
     // append +OK to response and send it back
-    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    tablet_logger.log("+OK Retrieved value at R[" + row + "], C[" + col + "]", 20);
+    response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
     return response_msg;
 }
 
@@ -106,7 +110,7 @@ std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vec
     row_locks.at(row).unlock();      // unlock exclusive lock on row
     row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
 
-    tablet_logger.log("Inserted value at R[" + row + "], C[" + col + "]", 20);
+    tablet_logger.log("+OK Inserted value at R[" + row + "], C[" + col + "]", 20);
     std::vector<char> response_msg(ok.begin(), ok.end());
     return response_msg;
 }
@@ -177,34 +181,31 @@ std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
 }
 
 // add value at supplied row and column to tablet data, ONLY if current value is val1
-void Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &old_val, std::vector<char> &new_val)
+std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
 {
-    // get the value at the row and col
-    // this ensures we're not exclusively locking unless we're sure we need to write
+    // get the value at the row and col - ensures we're not exclusively locking the row unless we're sure we need to write
     const std::vector<char> &retrieved_val = get_value(row, col);
 
-    // exit if retrieved_val does not match old_val
-    if (retrieved_val.size() != old_val.size() || retrieved_val != old_val)
+    // exit if retrieved_val does not match curr_val (do preliminary size check first)
+    if (retrieved_val.size() != curr_val.size() || retrieved_val != curr_val)
     {
-        return;
+        tablet_logger.log("-ER V1 provided does not match currently stored value", 20);
+        return construct_msg("V1 provided does not match currently stored value", true);
     }
 
-    // acquire a shared lock on row_locks to read from row_locks
-    // ! figure out how to make sure shared lock blocks to acquire the shared lock
-    row_locks_mutex.lock_shared();
-
-    // acquire exclusive access to row to conditionally update value
-    row_locks.at(row).lock();
+    // current value matches stored value
+    row_locks_mutex.lock_shared(); // acquire a shared lock on row_locks to read from row_locks
+    row_locks.at(row).lock();      // acquire an exclusive lock on data map to update value
     auto &row_level_data = data.at(row);
 
-    // overwrite value at column
+    // overwrite value at column with new value
     row_level_data[col] = new_val;
 
-    // unlock exclusive lock on row
-    row_locks.at(row).unlock();
-
-    // release shared lock on row locks
-    row_locks_mutex.unlock_shared();
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+    tablet_logger.log("+OK Conditionally inserted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
 }
 
 // construct error/success message as vector of chars to send back to client given a string
@@ -213,21 +214,11 @@ std::vector<char> Tablet::construct_msg(const std::string &msg, bool error)
     std::vector<char> response_msg(msg.begin(), msg.end());
     if (error)
     {
-        response_msg.insert(response_msg.begin(), err.begin(), err.end());
+        response_msg.insert(response_msg.begin(), (err + " ").begin(), (err + " ").end());
     }
     else
     {
-        response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+        response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
     }
     return response_msg;
 }
-
-// // construct error/success message as vector of chars to send back to client given a vector of chars
-// std::vector<char> Tablet::construct_msg(std::vector<char>& msg, bool error) {
-//     if (error) {
-//         msg.insert(msg.begin(), err.begin(), err.end());
-//     } else {
-//         msg.insert(msg.begin(), ok.begin(), ok.end());
-//     }
-//     return msg;
-// }
