@@ -65,15 +65,15 @@ public:
     // if the row or column does not exist, they will NOT be created
     std::vector<char> cond_put_value(std::string &row, std::string &col, std::vector<char> &old_val, std::vector<char> &new_val);
 
-    // delete value at supplied row and column in tablet data
-    // this operation requires exclusive access to the row
-    // nothing will happen if the row and column do not exist
-    std::vector<char> delete_value(std::string &row, std::string &col);
-
     // delete row in tablet data
     // this operation requires exclusive access to the row
     // nothing will happen if the row does not exist
     std::vector<char> delete_row(std::string &row);
+
+    // delete value at supplied row and column in tablet data
+    // this operation requires exclusive access to the row
+    // nothing will happen if the row and column do not exist
+    std::vector<char> delete_value(std::string &row, std::string &col);
 
     /**
      * Serialization methods

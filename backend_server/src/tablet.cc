@@ -7,8 +7,8 @@ Logger tablet_logger("Tablet");
 
 // define constants
 const char Tablet::delimiter = '\b';
-const std::string Tablet::ok = "+OK ";
-const std::string Tablet::err = "-ER ";
+const std::string Tablet::ok = "+OK";
+const std::string Tablet::err = "-ER";
 
 // read all columns from tablet data at supplied row
 std::vector<char> Tablet::get_row(std::string &row)
@@ -106,9 +106,71 @@ std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vec
     row_locks.at(row).unlock();      // unlock exclusive lock on row
     row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
 
-    std::string response_msg = "Inserted value at R[" + row + "], C[" + col + "]";
-    tablet_logger.log(response_msg, 20);
-    return construct_msg(response_msg, false);
+    tablet_logger.log("Inserted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+// delete row in tablet data
+std::vector<char> Tablet::delete_row(std::string &row)
+{
+    // Return empty vector if row not found in map
+    if (data.count(row) == 0)
+    {
+        tablet_logger.log("-ER Row not found", 20);
+        return construct_msg("Row not found", true);
+    }
+
+    row_locks_mutex.lock_shared(); // acquire a shared lock on row_locks to read from row_locks
+    row_locks.at(row).lock();      // acquire an exclusive lock on data map to delete row
+
+    // delete row
+    data.erase(row);
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+
+    // acquire exclusive access to the row_locks map to delete the mutex for the deleted row
+    row_locks_mutex.lock();
+    row_locks.erase(row);
+    row_locks_mutex.unlock();
+
+    tablet_logger.log("+OK Deleted R[" + row + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+// delete value at supplied row and column in tablet data
+std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
+{
+    // exit if row does not exist in map
+    if (data.count(row) == 0)
+    {
+        return construct_msg("Row not found", true);
+    }
+
+    // acquire a shared lock on row_locks to read from row_locks
+    // ! figure out how to make sure shared lock blocks to acquire the shared lock
+    row_locks_mutex.lock_shared();
+
+    // acquire an exclusive lock on data map to delete value
+    row_locks.at(row).lock();
+
+    // at this point, the row we want to update has an exclusive lock on it
+    auto &row_level_data = data.at(row);
+
+    // delete value if row column exists
+    if (row_level_data.count(col) != 0)
+    {
+        // delete value and associated column key
+        row_level_data.erase(col);
+    }
+
+    // unlock exclusive lock on row
+    row_locks.at(row).unlock();
+
+    // release shared lock on row locks
+    row_locks_mutex.unlock_shared();
 }
 
 // add value at supplied row and column to tablet data, ONLY if current value is val1
@@ -140,70 +202,6 @@ void Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char
 
     // release shared lock on row locks
     row_locks_mutex.unlock_shared();
-}
-
-// delete value at supplied row and column in tablet data
-void Tablet::delete_value(std::string &row, std::string &col)
-{
-    // exit if row does not exist in map
-    if (data.count(row) == 0)
-    {
-        return;
-    }
-
-    // acquire a shared lock on row_locks to read from row_locks
-    // ! figure out how to make sure shared lock blocks to acquire the shared lock
-    row_locks_mutex.lock_shared();
-
-    // acquire an exclusive lock on data map to delete value
-    row_locks.at(row).lock();
-
-    // at this point, the row we want to update has an exclusive lock on it
-    auto &row_level_data = data.at(row);
-
-    // delete value if row column exists
-    if (row_level_data.count(col) != 0)
-    {
-        // delete value and associated column key
-        row_level_data.erase(col);
-    }
-
-    // unlock exclusive lock on row
-    row_locks.at(row).unlock();
-
-    // release shared lock on row locks
-    row_locks_mutex.unlock_shared();
-}
-
-// delete row in tablet data
-void Tablet::delete_row(std::string &row)
-{
-    // exit if row does not exist in map
-    if (data.count(row) == 0)
-    {
-        return;
-    }
-
-    // acquire a shared lock on row_locks to read from row_locks
-    // ! figure out how to make sure shared lock blocks to acquire the shared lock
-    row_locks_mutex.lock_shared();
-
-    // acquire an exclusive lock on data map to delete row
-    row_locks.at(row).lock();
-
-    // delete row
-    data.erase(row);
-
-    // unlock exclusive lock on row
-    row_locks.at(row).unlock();
-
-    // release shared lock on row locks
-    row_locks_mutex.unlock_shared();
-
-    // acquire exclusive access to the row_locks map first to delete the mutex for the deleted row
-    row_locks_mutex.lock();
-    row_locks.erase(row);
-    row_locks_mutex.unlock();
 }
 
 // construct error/success message as vector of chars to send back to client given a string
