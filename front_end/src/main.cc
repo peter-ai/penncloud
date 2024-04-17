@@ -26,9 +26,9 @@ int main()
 	/* Mail Routes */
 
 	HttpServer::post("/api/:user/mbox/send", sendEMail_handler);// send an email
-	HttpServer::post("/api/:user/mbox/reply", replyEmail_handler);// respond to an email
-	HttpServer::post("/api/:user/mbox/forward", forwardEmail_handler);// forward an email
-	HttpServer::post("/api/:user/mbox/delete", deleteEmail_handler);// delete an email
+	HttpServer::post("/api/:user/mbox/reply?", replyEmail_handler);// respond to an email
+	HttpServer::post("/api/:user/mbox/forward?", forwardEmail_handler);// forward an email
+	HttpServer::post("/api/:user/mbox/delete?", deleteEmail_handler);// delete an email
 	HttpServer::get("/api/:user/mbox", mailbox_handler); // get mailbox
 	HttpServer::get("/api/:user/mbox?", email_handler);// get email
 

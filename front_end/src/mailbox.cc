@@ -18,6 +18,7 @@
 #include <openssl/md5.h>
 #include <iomanip>
 
+
 using namespace std;
 
 struct EmailData
@@ -98,39 +99,20 @@ string computeEmailMD5(const string &emailText)
 	return hexStream.str();
 }
 
-// takes the a path's request and parses it to user mailbox key "user1-mbox/"
+// takes the a path's request and parses it to user mailbox key "user1-mailbox/"
 string parseMailboxPathToRowKey(const string &path)
 {
-	regex userRegex("/api/(\\w+)");
-	regex mailboxRegex("/(mbox)(?:/|$)"); // Matches 'mbox' or 'mailbox' followed by '/' or end of string
+    std::regex pattern("/api/([^/]*)");
+    std::smatch matches;
 
-	std::smatch userMatch, mailboxMatch;
+    // Execute the regex search
+    if (std::regex_search(path, matches, pattern)) {
+        if (matches.size() > 1) {  // Check if there is a capturing group
+            return matches[1].str() + "-mailbox/";  // Return the captured username
+        }
+    }
 
-	std::string username, mailbox;
-
-	// Search for username
-	if (regex_search(path, userMatch, userRegex))
-	{
-		if (userMatch.size() > 1)
-		{
-			username = userMatch[1].str();
-		}
-	}
-
-	// Search for mailbox or mbox
-	if (regex_search(path, mailboxMatch, mailboxRegex))
-	{
-		if (mailboxMatch.size() > 1)
-		{
-			mailbox = mailboxMatch[1].str();
-		}
-	}
-
-	if (!username.empty() && !mailbox.empty())
-	{
-		return username + "-" + mailbox;
-	}
-	return "";
+    return "";  // Return empty string if no username is found
 }
 
 string extractUsernameFromEmailAddress(const string &emailAddress)
@@ -173,34 +155,34 @@ bool startsWith(const std::vector<char> &vec, const std::string &prefix)
 }
 
 // retrieves query parameter from a request's path /api/user/mailbox/send?uidl=12345
-std::string get_query_parameter(const HttpRequest &request, const std::string &key)
-{
-	std::unordered_map<std::string, std::string> query_params;
-	size_t queryStart = request.path.find('?');
-	if (queryStart != std::string::npos)
-	{
-		std::string queryString = request.path.substr(queryStart + 1);
-		std::istringstream queryStream(queryString);
-		std::string param;
-		while (std::getline(queryStream, param, '&'))
-		{
-			size_t equals = param.find('=');
-			if (equals != std::string::npos)
-			{
-				std::string param_key = param.substr(0, equals);
-				std::string param_value = param.substr(equals + 1);
-				query_params[param_key] = param_value;
-			}
-		}
-	}
-	// Attempt to find the key in the parsed query parameters
-	auto it = query_params.find(key);
-	if (it != query_params.end())
-	{
-		return it->second;
-	}
-	return ""; // Return empty string if key is not found
-}
+// std::string get_query_parameter(const string& path, const std::string &key)
+// {
+// 	std::unordered_map<std::string, std::string> query_params;
+// 	size_t queryStart = path.find('?');
+// 	if (queryStart != std::string::npos)
+// 	{
+// 		std::string queryString = path.substr(queryStart + 1);
+// 		std::istringstream queryStream(queryString);
+// 		std::string param;
+// 		while (std::getline(queryStream, param, '&'))
+// 		{
+// 			size_t equals = param.find('=');
+// 			if (equals != std::string::npos)
+// 			{
+// 				std::string param_key = param.substr(0, equals);
+// 				std::string param_value = param.substr(equals + 1);
+// 				query_params[param_key] = param_value;
+// 			}
+// 		}
+// 	}
+// 	// Attempt to find the key in the parsed query parameters
+// 	auto it = query_params.find(key);
+// 	if (it != query_params.end())
+// 	{
+// 		return it->second;
+// 	}
+// 	return ""; // Return empty string if key is not found
+// }
 
 vector<char> modifyForwardedEmail(vector<char> emailData)
 {
@@ -252,7 +234,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 
 	// get the email we are supposed
 	string rowKey = parseMailboxPathToRowKey(request.path);
-	string colKey = get_query_parameter(request, "uidl");
+	string colKey = request.get_qparam("uidl");
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> col(colKey.begin(), colKey.end());
 
@@ -277,7 +259,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				{
 					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
 					vector<char> col(colKey.begin(), colKey.end());
-					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mbox";
+					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 					vector<char> row(rowKey.begin(), rowKey.end());
 					vector<char> value(emailToStore.body.begin(), emailToStore.body.end());
 					vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
@@ -302,7 +284,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				{
 					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
 					vector<char> col(colKey.begin(), colKey.end());
-					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mbox";
+					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 					vector<char> row(rowKey.begin(), rowKey.end());
 					vector<char> value(emailToStore.body.begin(), emailToStore.body.end());
 					vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
@@ -341,7 +323,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	}
 	// get row and col key as strings
 	string rowKey = parseMailboxPathToRowKey(request.path);
-	string colKey = get_query_parameter(request, "uidl");
+	string colKey = request.get_qparam("uidl");
 
 	// prepare char vectors as arguments to kvs util
 	vector<char> value_original = request.body_as_bytes();
@@ -362,7 +344,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 			cout << "entering recipient loop" << endl;
 			string colKey = computeEmailMD5(responseEmail.time + responseEmail.from + responseEmail.to + responseEmail.subject);
 			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mbox";
+			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
 			vector<char> value_response(responseEmail.body.begin(), responseEmail.body.end());
 
@@ -401,7 +383,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 	}
 
 	string rowKey = parseMailboxPathToRowKey(request.path);
-	string emailId = get_query_parameter(request, "uidl");
+	string emailId = request.get_qparam("uidl");
 
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> col(emailId.begin(), emailId.end());
@@ -433,13 +415,12 @@ void sendEMail_handler(const HttpRequest &request, HttpResponse &response)
 		return;
 	}
 
-	string rowKey = parseMailboxPathToRowKey(request.path);
-
 	// Parse individual parts
 	EmailData email = parseEmail(request.body_as_bytes());
 
 	// compute unique hash UIDL (column value) based on email's time, to, from, subject lines
 	string colKey = computeEmailMD5(email.time + email.from + email.to + email.subject);
+	string rowKey = extractUsernameFromEmailAddress(email.from) + "-mailbox/";
 
 	vector<char> value = request.body_as_bytes();
 	vector<char> row(rowKey.begin(), rowKey.end());
@@ -466,6 +447,11 @@ void sendEMail_handler(const HttpRequest &request, HttpResponse &response)
 // retrieves an email
 void email_handler(const HttpRequest &request, HttpResponse &response)
 {
+	Logger logger("Email Handler");
+    logger.log("Received POST request", LOGGER_INFO);
+	logger.log("Path is: " + request.path, LOGGER_INFO);
+
+
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
 	{
@@ -475,10 +461,12 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 	}
 	string rowKey = parseMailboxPathToRowKey(request.path);
 	// get UIDL from path query
-	string colKey = get_query_parameter(request, "uidl");
+	string colKey = request.get_qparam("uidl");
+
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> col(colKey.begin(), colKey.end());
 	// Fetch the email from KVS
+	logger.log("Fetching email at ROW " + rowKey + " and COLUMN " + colKey, LOGGER_DEBUG); // DEBUG
 	vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
 
 	if (startsWith(kvsResponse, "+OK"))
@@ -487,6 +475,8 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		// get rid of "+OK "
 		response.append_body_bytes(kvsResponse.data() + 4,
 								   kvsResponse.size() - 4);
+		logger.log("Successful response from KVS received at email handler", LOGGER_DEBUG); // DEBUG
+
 	}
 	else
 	{
