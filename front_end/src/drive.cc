@@ -266,7 +266,8 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         {
             // @todo should we instead get row for the page they are on?
             res.set_code(200); // OK
-            // res.append_body_bytes(file_binary.data(), file_binary.size());
+            std::vector<char> folder_contents = FeUtils::kv_get_row(sockfd, row_vec);
+            res.append_body_bytes(folder_contents.data(), folder_contents.size());
         } else {
             res.set_code(400);
             // maybe retry? tbd
@@ -274,8 +275,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         }
 
         // @todo should we instead get row for the page they are on?
-        res.set_code(200); // OK
-        res.append_body_bytes(file_binary.data(), file_binary.size());
     }
     else
     {
