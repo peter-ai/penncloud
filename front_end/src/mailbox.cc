@@ -1,22 +1,4 @@
-#include <iostream>
-#include "../../http_server/include/http_server.h"
-#include "../utils/include/fe_utils.h"
-#include <thread>
-#include <map>
-#include <set>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <signal.h>
-#include <vector>
-#include <utility>
-#include <sstream>
-#include <string>
-#include <unordered_map>
-#include <regex>
-#include <openssl/md5.h>
-#include <iomanip>
+#include "../include/mailbox.h"
 
 using namespace std;
 

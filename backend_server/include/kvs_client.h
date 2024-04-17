@@ -3,8 +3,12 @@
 
 #include <string>
 #include <memory>
+#include <sys/socket.h> // recv
+#include <unistd.h>     // close
 
 #include "tablet.h"
+#include "backend_server.h"
+#include "../../utils/include/utils.h"
 
 class KVSClient
 {

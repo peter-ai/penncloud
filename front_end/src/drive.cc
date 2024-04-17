@@ -4,20 +4,7 @@
  *  Created on: Apr 10, 2024
  *      Author: aashok12
  */
-
-#include <iostream>
-#include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <algorithm>
-#include <vector>
-
 #include "../include/drive.h"
-#include "../../http_server/include/http_server.h"
-#include "../../utils/include/utils.h"
-#include "../utils/include/fe_utils.h"
 
 // Folder handlers
 

@@ -166,37 +166,6 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
     // validate session id
     std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
 
-    /* TEST CODE BLOCK */
-    // // if not present, set cache kvs address for the current user
-    // if (!present)
-    //     HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
-
-    // // set cookies on response
-    // FeUtils::set_cookies(res, username, generate_sid());
-
-    // // set response status code
-    // res.set_code(200);
-
-    // // construct html page from retrieved data and set response body
-    // std::string html =
-    //     "<!doctype html>"
-    //     "<html>"
-    //     "<head>"
-    //     "<title>PennCloud.com</title>"
-    //     "<meta name='description' content='CIS 5050 Spr24'>"
-    //     "<meta name='keywords' content='HomePage'>"
-    //     "</head>"
-    //     "<body>"
-    //     "Successful Login!"
-    //     "</body>"
-    //     "</html>";
-    // res.append_body_str(html);
-
-    // // set response headers
-    // res.set_header("Content-Type", "text/html");
-    // res.set_header("Location", "/home"); // TODO: Validate
-    /* TEST CODE BLOCK */
-
     // if there is a valid session id, then construct response and redirect user
     if (!valid_session_id.empty())
     {

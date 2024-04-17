@@ -1,14 +1,4 @@
-#include <iostream>
-#include <sys/socket.h> // recv
-#include <unistd.h>     // close
-#include <fstream>
-#include <sstream>
-
-#include "client.h"
-#include "http_request.h"
-#include "http_response.h"
-#include "http_server.h"
-#include "../../utils/include/utils.h"
+#include "../include/client.h"
 
 const std::string Client::CRLF = "\r\n";
 const std::string Client::DOUBLE_CRLF = "\r\n\r\n";

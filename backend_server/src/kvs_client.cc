@@ -1,11 +1,5 @@
-#include <iostream>
-#include <sys/socket.h> // recv
-#include <unistd.h>     // close
-
 #include "../include/kvs_client.h"
-#include "../include/tablet.h"
-#include "../include/backend_server.h"
-#include "../../utils/include/utils.h"
+
 
 Logger kvs_client_logger("KVS Client");
 

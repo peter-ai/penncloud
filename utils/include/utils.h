@@ -1,6 +1,9 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#include <iostream>
+#include <algorithm>    // std::transform
+#include <sys/time.h>
 #include <vector>
 #include <string>
 
