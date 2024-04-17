@@ -22,12 +22,8 @@ void insert_arg(std::vector<char> &curr_vec, std::vector<char> arg)
 // Helper function for all writes to kvs
 size_t writeto_kvs(std::vector<char> &msg, int fd)
 {
-    fe_utils_logger.log("msg size before conversion" + std::to_string(msg.size()), 20);
-
     // Send data to kvs using fd
     uint32_t msg_size = htonl(msg.size());
-
-    fe_utils_logger.log("msg size after conversion" + std::to_string(msg_size), 20);
 
     std::vector<uint8_t> size_prefix(sizeof(uint32_t));
     // Copy bytes from msg_size into the size_prefix vector
@@ -36,18 +32,16 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
     // Insert the size prefix at the beginning of the original response msg vector
     msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
-    fe_utils_logger.log("msg - " + std::string(msg.begin(), msg.end()), 20);
-
     // write response to client as bytes
     size_t total_bytes_sent = 0;
     while (total_bytes_sent < msg.size())
     {
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
-        fe_utils_logger.log("bytes sent - " + std::to_string(bytes_sent), 20);
         total_bytes_sent += bytes_sent;
     }
 
-    fe_utils_logger.log("Response sent to kvs", 20);
+    // logging message
+    fe_utils_logger.log("Message Sent to KVS ("+ std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
 
     return total_bytes_sent;
 }
