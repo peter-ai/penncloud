@@ -10,9 +10,9 @@ class KVSClient
 {
 // fields
 private:
-    static const char delimiter;
-    static const std::string ok;
-    static const std::string err;
+    // static const char delimiter;
+    // static const std::string ok;
+    // static const std::string err;
 
 private:
     int client_fd;        // client's bound fd
