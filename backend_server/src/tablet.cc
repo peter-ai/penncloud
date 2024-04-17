@@ -143,34 +143,37 @@ std::vector<char> Tablet::delete_row(std::string &row)
 // delete value at supplied row and column in tablet data
 std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
 {
-    // exit if row does not exist in map
+    // Return empty vector if row not found in map
     if (data.count(row) == 0)
     {
+        tablet_logger.log("-ER Row not found", 20);
         return construct_msg("Row not found", true);
     }
 
-    // acquire a shared lock on row_locks to read from row_locks
-    // ! figure out how to make sure shared lock blocks to acquire the shared lock
-    row_locks_mutex.lock_shared();
-
-    // acquire an exclusive lock on data map to delete value
-    row_locks.at(row).lock();
+    row_locks_mutex.lock_shared(); // acquire a shared lock on row_locks to read from row_locks
+    row_locks.at(row).lock();      // acquire an exclusive lock on data map to delete row
 
     // at this point, the row we want to update has an exclusive lock on it
     auto &row_level_data = data.at(row);
 
     // delete value if row column exists
-    if (row_level_data.count(col) != 0)
+    if (row_level_data.count(col) == 0)
     {
-        // delete value and associated column key
-        row_level_data.erase(col);
+        row_locks.at(row).unlock();      // unlock exclusive lock on row
+        row_locks_mutex.unlock_shared(); // release shared lock on row locks
+        tablet_logger.log("-ER Column not found", 20);
+        return construct_msg("Column not found", true);
     }
 
-    // unlock exclusive lock on row
-    row_locks.at(row).unlock();
+    // delete value and associated column key
+    row_level_data.erase(col);
 
-    // release shared lock on row locks
-    row_locks_mutex.unlock_shared();
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+
+    tablet_logger.log("+OK Deleted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
 }
 
 // add value at supplied row and column to tablet data, ONLY if current value is val1
