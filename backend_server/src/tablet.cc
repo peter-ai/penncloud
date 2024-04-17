@@ -38,8 +38,9 @@ std::vector<char> Tablet::get_row(std::string &row)
     row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
 
     // append +OK to response and send it back
-    tablet_logger.log("+OK Retrieved columns at R[" + row + "]", 20);
-    response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
+
     return response_msg;
 }
 
@@ -74,7 +75,8 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
 
     // append +OK to response and send it back
     tablet_logger.log("+OK Retrieved value at R[" + row + "], C[" + col + "]", 20);
-    response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
     return response_msg;
 }
 
@@ -214,11 +216,13 @@ std::vector<char> Tablet::construct_msg(const std::string &msg, bool error)
     std::vector<char> response_msg(msg.begin(), msg.end());
     if (error)
     {
-        response_msg.insert(response_msg.begin(), (err + " ").begin(), (err + " ").end());
+        response_msg.insert(response_msg.begin(), err.begin(), err.end());
+        response_msg.insert(response_msg.begin() + err.size(), ' '); // Add a space after "-ER"
     }
     else
     {
-        response_msg.insert(response_msg.begin(), (ok + " ").begin(), (ok + " ").end());
+        response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+        response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
     }
     return response_msg;
 }

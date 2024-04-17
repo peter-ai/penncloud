@@ -145,6 +145,9 @@ void KVSClient::getr(std::vector<char> &inputs)
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_row(row);
 
+    // log client response since all values are string values
+    kvs_client_logger.log("GETR Response - " + std::string(response_msg.begin(), response_msg.end()), 20);
+
     // send response msg to client
     send_response(response_msg);
 }
@@ -304,7 +307,6 @@ void KVSClient::cput(std::vector<char> &inputs)
     // remainder of input is value1 and value2
 
     // extract the number in front of val1
-    std::vector<char> val1;
     uint32_t val1_size;
     std::memcpy(&val1_size, inputs.data(), sizeof(uint32_t));
     // convert number received from network order to host order
