@@ -1,6 +1,10 @@
 #ifndef BACKEND_SERVER_H
 #define BACKEND_SERVER_H
 
+#include <iostream>
+#include <sys/socket.h>   // socket
+#include <netinet/in.h>   // sockaddr_in
+#include <thread>         // std::thread
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -8,6 +12,8 @@
 
 #include "tablet.h"
 #include "kvs_client.h"
+#include "../../utils/include/utils.h"
+
 
 class BackendServer 
 {

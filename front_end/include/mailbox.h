@@ -16,6 +16,12 @@
 #include <string>
 #include <unordered_map>
 #include <regex>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <openssl/md5.h>
+#include <iomanip>
+
 #include "../../http_server/include/http_server.h"
 #include "../utils/include/fe_utils.h"
 

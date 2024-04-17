@@ -4,6 +4,7 @@ INCLUDE_DIR = include
 SRC_DIR = src
 
 all: libhttp_server.a
+	rm -f *.o
 
 %.o: $(SRC_DIR)/%.cc
 	$(CXX) $(CXXFLAGS) -I$(INCLUDE_DIR) $^ -c -o $@

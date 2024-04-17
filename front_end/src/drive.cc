@@ -4,20 +4,7 @@
  *  Created on: Apr 10, 2024
  *      Author: aashok12
  */
-
-#include <iostream>
-#include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <algorithm>
-#include <vector>
-
 #include "../include/drive.h"
-#include "../../http_server/include/http_server.h"
-#include "../../utils/include/utils.h"
-#include "../utils/include/fe_utils.h"
 
 // Folder handlers
 
@@ -135,11 +122,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         std::cout << "Looking up folder" << std::endl;
 
         std::string bodycont = "Folder: " + childpath_str;
-        std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-        res.set_code(200);
-        res.append_body_bytes(body_vec.data(), body_vec.size());
-
-        // append header for content length
 
         std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
@@ -149,9 +131,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             res.append_body_bytes(folder_content.data(), folder_content.size());
 
             // append header for content length
-            std::string content_header = "Content-Length:";
-            std::string header_value = std::to_string(folder_content.size());
-            res.set_header(content_header, header_value);
             res.set_code(200);
         }
         else
@@ -172,13 +151,15 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         std::cout << "Looking up file" << std::endl;
 
-        std::string bodycont = "File: " + filename;
-        std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-        res.set_code(200);
-        res.append_body_bytes(body_vec.data(), body_vec.size());
+        // std::string bodycont = "File: " + filename;
+        // std::vector<char> body_vec(bodycont.begin(), bodycont.end());
+        // res.set_code(200);
+        // res.append_body_bytes(body_vec.data(), body_vec.size());
 
         // get file content
         std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
+
+        std::cout << std::string(file_content.begin(), file_content.end()) << std::endl;
 
         if (kv_successful(file_content))
         {
@@ -246,11 +227,10 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         std::string childpath_str = parentpath_str + filename;
 
         std::vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
-        std::vector<char> col_vec(childpath_str.begin(), childpath_str.end());
-
+        std::vector<char> col_vec(filename.begin(), filename.end());
 
         std::cout << "row: " <<parentpath_str << std::endl;
-        std::cout << "column: " <<childpath_str << std::endl;
+        std::cout << "column: " <<filename << std::endl;
 
         int sockfd = FeUtils::open_socket();
 

@@ -39,7 +39,9 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
         total_bytes_sent += bytes_sent;
     }
-    fe_utils_logger.log("Response sent to kvs", 20);
+
+    // logging message
+    fe_utils_logger.log("Message Sent to KVS ("+ std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
 
     return total_bytes_sent;
 }
@@ -176,7 +178,7 @@ std::vector<std::string> FeUtils::query_coordinator(std::string &path)
 // Function for KV GET(row, col). Returns value as vector<char> to user
 std::vector<char> FeUtils::kv_get(int fd, std::vector<char> row, std::vector<char> col)
 {
-    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    // string to send  COMMAND + \b + row + \b + col....
     std::string cmd = "GETV";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
     insert_arg(fn_string, row);

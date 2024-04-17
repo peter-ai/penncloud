@@ -17,7 +17,7 @@
 #include "../../../utils/include/utils.h"
 
 const std::string SERVADDR = "127.0.0.1";
-const int SERVPORT = 8000;
+const int SERVPORT = 6000;
 
 // Helper function to appends args to vector
 // current format: COMMAND<SP><SP>arg1<SP><SP>arg2.....
