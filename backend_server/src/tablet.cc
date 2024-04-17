@@ -39,48 +39,36 @@ std::vector<char> Tablet::get_row(std::string &row)
     return response_msg;
 }
 
-// ! what if the value at that row + col is just empty? Should we differentiate between a successful/unsuccessful operation?
 // read value at supplied row and column from tablet data
 std::vector<char> Tablet::get_value(std::string &row, std::string &col)
 {
     // Return empty vector if row not found in map
     if (data.count(row) == 0)
     {
-        return std::vector<char>();
+        return construct_msg("Row not found", true);
     }
 
-    // acquire a shared lock on row_locks to read from row_locks
-    // ! figure out how to make sure shared lock blocks to acquire the shared lock
-    row_locks_mutex.lock_shared();
-
-    // otherwise, acquire a shared lock on this row's mutex
-    // if lock cannot be acquired, thread should wait here until lock can be acquired
-    // ! check the logic here - make sure we're waiting here if a shared lock can't be acquired
-    row_locks.at(row).lock_shared();
+    row_locks_mutex.lock_shared();   // acquire shared lock on row_locks to read mutex from row_locks
+    row_locks.at(row).lock_shared(); // acquire shared lock on this row's mutex
     const auto &row_level_data = data.at(row);
 
     // release shared lock and exit if col not found in row
     if (row_level_data.count(col) == 0)
     {
-        // release shared lock on row
-        row_locks.at(row).unlock_shared();
-
-        // release shared lock on row_lock
-        row_locks_mutex.unlock_shared();
-
-        return std::vector<char>();
+        row_locks.at(row).unlock_shared(); // release shared lock on row's mutex
+        row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
+        return construct_msg("Column not found", true);
     }
 
     // retrieve value from row
-    std::vector<char> value = row_level_data.at(col);
+    std::vector<char> response_msg = row_level_data.at(col);
 
-    // release shared lock on row
-    row_locks.at(row).unlock_shared();
+    row_locks.at(row).unlock_shared(); // release shared lock on row's mutex
+    row_locks_mutex.unlock_shared();   // release shared lock on row_lock's mutex
 
-    // release shared lock on row_lock
-    row_locks_mutex.unlock_shared();
-
-    return value;
+    // append +OK to response and send it back
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    return response_msg;
 }
 
 // add value at supplied row and column to tablet data

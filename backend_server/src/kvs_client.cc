@@ -164,7 +164,7 @@ void KVSClient::getv(std::vector<char> &inputs)
     if (col_index == std::string::npos)
     {
         // log and send error message
-        std::string err_msg = KVSClient::err + "Malformed arguments to GET(R,C) - delimiter not found";
+        std::string err_msg = "-ER Malformed arguments to GETV(R,C) - delimiter after row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         send_response(res_bytes);
@@ -173,20 +173,12 @@ void KVSClient::getv(std::vector<char> &inputs)
     std::string row = getv_args.substr(0, col_index);
     std::string col = getv_args.substr(col_index + 1);
 
-    kvs_client_logger.log("row - " + row, 20);
-    kvs_client_logger.log("col - " + col, 20);
+    // log command and args
+    kvs_client_logger.log("GETV R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and read value from row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_value(row, col);
-
-    kvs_client_logger.log(std::string(response_msg.begin(), response_msg.end()), 20);
-
-    // construct response msg from value
-    // append "+OK<SP>" and then the rest of the message
-    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
-
-    kvs_client_logger.log(std::string(response_msg.begin(), response_msg.end()), 20);
 
     // send response msg to client
     send_response(response_msg);
