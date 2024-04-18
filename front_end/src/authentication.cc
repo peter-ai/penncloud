@@ -45,7 +45,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
     int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
     // check if user has a password in KVS
-    logger.log("Username = " + username, LOGGER_DEBUG); // DEBUG
     std::vector<char> row_key(username.begin(), username.end());
     row_key.push_back('/');
     std::vector<char> kvs_res = FeUtils::kv_get(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}));
@@ -102,8 +101,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("User already exists: " + std::string(kvs_res.begin(), kvs_res.end()), LOGGER_DEBUG);
-
         // set response status code
         res.set_code(400);
 

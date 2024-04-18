@@ -405,7 +405,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 }
 
 // sends an email
-void sendEMail_handler(const HttpRequest &request, HttpResponse &response)
+void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
@@ -455,9 +455,9 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
-	string rowKey = parseMailboxPathToRowKey(request.path);
+	string rowKey = parseMailboxPathToRowKey(request.path); // TODO: @Milan - this function does not work - it returns an empty string for some reason
 	// get UIDL from path query
-	string colKey = get_query_parameter(request, "uidl");
+	string colKey = get_query_parameter(request, "uidl"); // TODO: @Milan - this function does not work - it returns an empty string for some reason
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> col(colKey.begin(), colKey.end());
 	// Fetch the email from KVS

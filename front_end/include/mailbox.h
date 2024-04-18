@@ -43,7 +43,7 @@ std::string get_query_parameter(const HttpRequest& request, const std::string& k
 void forwardEmail_handler(const HttpRequest& request, HttpResponse& response);
 void replyEmail_handler(const HttpRequest& request, HttpResponse& response);
 void deleteEmail_handler(const HttpRequest& request, HttpResponse& response);
-void sendEMail_handler(const HttpRequest& request, HttpResponse& response);
+void sendEmail_handler(const HttpRequest& request, HttpResponse& response);
 void email_handler(const HttpRequest& request, HttpResponse& response);
 void mailbox_handler(const HttpRequest& request, HttpResponse& response);
 
