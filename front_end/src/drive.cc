@@ -4,26 +4,12 @@
  *  Created on: Apr 10, 2024
  *      Author: aashok12
  */
-
-#include <iostream>
-#include <cstring>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
-#include <algorithm>
-#include <vector>
-
 #include "../include/drive.h"
-#include "../../http_server/include/http_server.h"
-#include "../../utils/include/utils.h"
-#include "../utils/include/fe_utils.h"
 
 // Folder handlers
 
-// @todo: check path vs parameters of request
-
-std::vector<char> content_vec = {'c', 'o', 'n', 't', 'e', 'n', 't'};
+std::vector<char> ok_vec = {'+', 'O', 'K', ' '};
+std::vector<char> err_vec = {'-', 'E', 'R', ' '};
 
 // helper to return parent path
 std::string split_parent_filename(const std::vector<std::string> &vec, std::string &filename)
@@ -116,6 +102,25 @@ std::vector<std::vector<char>> split_vec_first_delim(const std::vector<char> &da
     return result;
 }
 
+// helper to return parent path
+std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
+{
+    std::vector<char> output;
+
+    // Iterate over all elements except the last one
+    for (size_t i = 0; i < vec.size() - 1; ++i)
+    {
+        output.insert(output.end(), (vec[i]).begin(), (vec[i]).end());
+        output.push_back(',');
+        output.push_back(' ');
+    }
+
+    output.insert(output.end(), (vec.back()).begin(), (vec.back()).end());
+
+    return output;
+}
+
+
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // check req method
@@ -124,24 +129,24 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
     std::string childpath_str = req.path.substr(11);
     std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
-
-    std::cout << "GET request received for child path: " << childpath_str << std::endl;
-
     int sockfd = FeUtils::open_socket();
 
     // if we are looking up a folder, use get row
     if (is_folder(child_path))
     {
-        std::cout << "Looking up folder" << std::endl;
-
-        std::string bodycont = "Folder: " + childpath_str;
 
         std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
         if (kv_successful(folder_content))
         {
+            // content list, remove '+OK<sp>'
+            std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // split on delim
+            std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+            std::vector<char> formatted_content = format_folder_contents(contents);
+
             //@todo: update with html!
-            res.append_body_bytes(folder_content.data(), folder_content.size());
+            res.append_body_bytes(formatted_content.data(), formatted_content.size());
 
             // append header for content length
             res.set_code(200);
@@ -156,34 +161,32 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         // file, need to get parent row and file name
         std::string filename;
         std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-        std::cout << "Parent path is: " << parentpath_str.c_str() << std::endl;
-        std::cout << "File is: " << filename.c_str() << std::endl;
-
+    
         std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
         std::vector<char> filename_vec(filename.begin(), filename.end());
-
-        std::cout << "Looking up file" << std::endl;
-
-        // std::string bodycont = "File: " + filename;
-        // std::vector<char> body_vec(bodycont.begin(), bodycont.end());
-        // res.set_code(200);
-        // res.append_body_bytes(body_vec.data(), body_vec.size());
 
         // get file content
         std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
-        std::cout << std::string(file_content.begin(), file_content.end()) << std::endl;
-
         if (kv_successful(file_content))
         {
-            res.append_body_bytes(file_content.data(), file_content.size());
-            std::string content_header = "Content-Type";
-            std::string content_value = "application/octet-stream";
-            res.set_header(content_header, content_value);
+            // get binary from 4th char onward (ignore +OK<sp>)
+            std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
+
+            // apend to body
+            res.append_body_bytes(file_binary.data(), file_binary.size());
+
+            // // octet-steam for content header @todo -- setting this type means postman can't see it
+            // std::string content_header = "Content-Type";
+            // std::string content_value = "application/octet-stream";
+            // res.set_header(content_header, content_value);
+
+            // set code
             res.set_code(200);
         }
         else
         {
+            // @todo ask about error codes
             res.set_code(400);
         }
     }
@@ -242,9 +245,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         std::vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
         std::vector<char> col_vec(filename.begin(), filename.end());
 
-        std::cout << "row: " <<parentpath_str << std::endl;
-        std::cout << "column: " <<filename << std::endl;
-
         int sockfd = FeUtils::open_socket();
 
         std::vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
@@ -253,7 +253,8 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         {
             // @todo should we instead get row for the page they are on?
             res.set_code(200); // OK
-            // res.append_body_bytes(file_binary.data(), file_binary.size());
+            std::vector<char> folder_contents = FeUtils::kv_get_row(sockfd, row_vec);
+            res.append_body_bytes(folder_contents.data(), folder_contents.size());
         } else {
             res.set_code(400);
             // maybe retry? tbd
@@ -261,8 +262,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         }
 
         // @todo should we instead get row for the page they are on?
-        res.set_code(200); // OK
-        res.append_body_bytes(file_binary.data(), file_binary.size());
     }
     else
     {

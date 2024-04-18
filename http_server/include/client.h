@@ -3,9 +3,16 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
+#include <sys/socket.h> // recv
+#include <unistd.h>     // close
+#include <fstream>
+#include <sstream>
 
 #include "http_response.h"
 #include "http_request.h"
+#include "http_server.h"
+#include "../../utils/include/utils.h"
 
 class Client 
 {

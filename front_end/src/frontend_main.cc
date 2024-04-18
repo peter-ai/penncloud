@@ -4,12 +4,9 @@
  *  Created on: Apr 10, 2024
  *      Author: cis5050
  */
-
-#include <iostream>
 #include "../../http_server/include/http_server.h"
-#include "../utils/include/fe_utils.h"
-#include "../include/mailbox.h"
 #include "../include/authentication.h"
+#include "../include/mailbox.h"
 #include "../include/drive.h"
 
 
@@ -24,11 +21,18 @@ void contactLoadBalancer()
 int main()
 {
 	/* Mail Routes */
+<<<<<<< HEAD:front_end/src/main.cc
 
 	HttpServer::post("/api/:user/mbox/send", sendEMail_handler);// send an email
 	HttpServer::post("/api/:user/mbox/reply?", replyEmail_handler);// respond to an email
 	HttpServer::post("/api/:user/mbox/forward?", forwardEmail_handler);// forward an email
 	HttpServer::post("/api/:user/mbox/delete?", deleteEmail_handler);// delete an email
+=======
+	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);// send an email
+	HttpServer::post("/api/:user/mbox/reply", replyEmail_handler);// respond to an email
+	HttpServer::post("/api/:user/mbox/forward", forwardEmail_handler);// forward an email
+	HttpServer::post("/api/:user/mbox/delete", deleteEmail_handler);// delete an email
+>>>>>>> dev:front_end/src/frontend_main.cc
 	HttpServer::get("/api/:user/mbox", mailbox_handler); // get mailbox
 	HttpServer::get("/api/:user/mbox?", email_handler);// get email
 

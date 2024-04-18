@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <shared_mutex>
 
+#include "../../utils/include/utils.h"
+
 class Tablet
 {
     // fields

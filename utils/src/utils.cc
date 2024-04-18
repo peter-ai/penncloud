@@ -1,7 +1,3 @@
-#include <iostream>
-#include <algorithm>    // std::transform
-#include <sys/time.h>
-
 #include "../include/utils.h"
 
 // ! test this for something like GET   some_path HTTP/1.1 (with trailing spaces)  

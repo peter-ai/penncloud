@@ -1,23 +1,4 @@
-#include <iostream>
-#include "../../http_server/include/http_server.h"
-#include "../utils/include/fe_utils.h"
-#include <thread>
-#include <map>
-#include <set>
-#include <stdlib.h>
-#include <stdio.h>
-#include <unistd.h>
-#include <string.h>
-#include <signal.h>
-#include <vector>
-#include <utility>
-#include <sstream>
-#include <string>
-#include <unordered_map>
-#include <regex>
-#include <openssl/md5.h>
-#include <iomanip>
-
+#include "../include/mailbox.h"
 
 using namespace std;
 
@@ -405,7 +386,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 }
 
 // sends an email
-void sendEMail_handler(const HttpRequest &request, HttpResponse &response)
+void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
@@ -459,7 +440,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
-	string rowKey = parseMailboxPathToRowKey(request.path);
+	string rowKey = parseMailboxPathToRowKey(request.path); // TODO: @Milan - this function does not work - it returns an empty string for some reason
 	// get UIDL from path query
 	string colKey = request.get_qparam("uidl");
 
@@ -500,6 +481,9 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		return;
 	}
 	// path is: /api/mailbox/{username}/
+
+	//string recipientAddress;
+
 	string rowKey = parseMailboxPathToRowKey(request.path);
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> kvsResponse = FeUtils::kv_get_row(socket_fd, row);

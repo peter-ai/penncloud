@@ -16,6 +16,12 @@
 #include <string>
 #include <unordered_map>
 #include <regex>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <openssl/md5.h>
+#include <iomanip>
+
 #include "../../http_server/include/http_server.h"
 #include "../utils/include/fe_utils.h"
 
@@ -37,7 +43,7 @@ std::string get_query_parameter(const HttpRequest& request, const std::string& k
 void forwardEmail_handler(const HttpRequest& request, HttpResponse& response);
 void replyEmail_handler(const HttpRequest& request, HttpResponse& response);
 void deleteEmail_handler(const HttpRequest& request, HttpResponse& response);
-void sendEMail_handler(const HttpRequest& request, HttpResponse& response);
+void sendEmail_handler(const HttpRequest& request, HttpResponse& response);
 void email_handler(const HttpRequest& request, HttpResponse& response);
 void mailbox_handler(const HttpRequest& request, HttpResponse& response);
 

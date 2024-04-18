@@ -1,32 +1,13 @@
 #!/bin/bash
 
-# make sure you're in the example_frontend directory
-
-# compile utils
-cd ../utils
+# compile http server
+cd ../http_server
 make clean
-make
+make 
 cd ..
 
-# compile http server as library
-cd http_server
-make clean
-make
-cd ..
-
-# compile coordinator server
-cd coordinator
-make clean
-make
-cd ..
-
-# compile routes
-# cd front_end
-# make clean
-# make
-# ./auth_routes
-
+# compile front end main and run
 cd front_end
 make clean
 make
-./main
+./frontend_main

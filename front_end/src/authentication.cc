@@ -45,7 +45,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
     int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
     // check if user has a password in KVS
-    logger.log("Username = " + username, LOGGER_DEBUG); // DEBUG
     std::vector<char> row_key(username.begin(), username.end());
     row_key.push_back('/');
     std::vector<char> kvs_res = FeUtils::kv_get(kvs_sock, row_key, std::vector<char>({'p', 'a', 's', 's'}));
@@ -102,8 +101,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("User already exists: " + std::string(kvs_res.begin(), kvs_res.end()), LOGGER_DEBUG);
-
         // set response status code
         res.set_code(400);
 
@@ -165,37 +162,6 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 
     // validate session id
     std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
-
-    /* TEST CODE BLOCK */
-    // // if not present, set cache kvs address for the current user
-    // if (!present)
-    //     HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
-
-    // // set cookies on response
-    // FeUtils::set_cookies(res, username, generate_sid());
-
-    // // set response status code
-    // res.set_code(200);
-
-    // // construct html page from retrieved data and set response body
-    // std::string html =
-    //     "<!doctype html>"
-    //     "<html>"
-    //     "<head>"
-    //     "<title>PennCloud.com</title>"
-    //     "<meta name='description' content='CIS 5050 Spr24'>"
-    //     "<meta name='keywords' content='HomePage'>"
-    //     "</head>"
-    //     "<body>"
-    //     "Successful Login!"
-    //     "</body>"
-    //     "</html>";
-    // res.append_body_str(html);
-
-    // // set response headers
-    // res.set_header("Content-Type", "text/html");
-    // res.set_header("Location", "/home"); // TODO: Validate
-    /* TEST CODE BLOCK */
 
     // if there is a valid session id, then construct response and redirect user
     if (!valid_session_id.empty())

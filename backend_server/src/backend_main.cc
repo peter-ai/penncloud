@@ -1,6 +1,3 @@
-#include <iostream>       
-#include <unistd.h>       // getopt
-
 #include "../../utils/include/utils.h"
 #include "../include/backend_server.h"
 
