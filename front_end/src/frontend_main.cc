@@ -21,18 +21,10 @@ void contactLoadBalancer()
 int main()
 {
 	/* Mail Routes */
-<<<<<<< HEAD:front_end/src/main.cc
-
-	HttpServer::post("/api/:user/mbox/send", sendEMail_handler);// send an email
+	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);// send an email
 	HttpServer::post("/api/:user/mbox/reply?", replyEmail_handler);// respond to an email
 	HttpServer::post("/api/:user/mbox/forward?", forwardEmail_handler);// forward an email
 	HttpServer::post("/api/:user/mbox/delete?", deleteEmail_handler);// delete an email
-=======
-	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);// send an email
-	HttpServer::post("/api/:user/mbox/reply", replyEmail_handler);// respond to an email
-	HttpServer::post("/api/:user/mbox/forward", forwardEmail_handler);// forward an email
-	HttpServer::post("/api/:user/mbox/delete", deleteEmail_handler);// delete an email
->>>>>>> dev:front_end/src/frontend_main.cc
 	HttpServer::get("/api/:user/mbox", mailbox_handler); // get mailbox
 	HttpServer::get("/api/:user/mbox?", email_handler);// get email
 
