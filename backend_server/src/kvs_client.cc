@@ -1,6 +1,5 @@
 #include "../include/kvs_client.h"
 
-
 Logger kvs_client_logger("KVS Client");
 
 void KVSClient::read_from_network()

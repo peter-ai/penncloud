@@ -30,7 +30,7 @@ public:
     static int num_tablets;         // number of static tablets on this server
 
     // group metadata
-    static bool is_primary;                  // tracks if the server is a primary or secondary server
+    static std::atomic<bool> is_primary;     // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
     static int primary_port;                 // primary port (only useful is this server is a secondary)
     static std::vector<int> secondary_ports; // list of secondaries (only useful if this server is a primary)
 

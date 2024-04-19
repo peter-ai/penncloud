@@ -16,7 +16,7 @@ int BackendServer::port = 0;
 std::string BackendServer::range_start = "";
 std::string BackendServer::range_end = "";
 int BackendServer::num_tablets = 0;
-bool BackendServer::is_primary = false;
+std::atomic<bool> BackendServer::is_primary = false;
 int BackendServer::primary_port = 0;
 std::vector<int> BackendServer::secondary_ports;
 int BackendServer::server_sock_fd = -1;
