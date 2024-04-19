@@ -177,46 +177,54 @@ void KVSClient::getv(std::vector<char> &inputs)
 
 void KVSClient::putv(std::vector<char> &inputs)
 {
-    // find index of \b to extract row from inputs
-    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
+    // if server is primary, it can initiate the write
+    if (BackendServer::is_primary)
     {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
-    }
-    std::string row(inputs.begin(), row_end);
+        // find index of \b to extract row from inputs
+        auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+        // \b not found in index
+        if (row_end == inputs.end())
+        {
+            // log and send error message
+            std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
+            kvs_client_logger.log(err_msg, 40);
+            std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+            send_response(res_bytes);
+            return;
+        }
+        std::string row(inputs.begin(), row_end);
 
-    // find index of \b to extract col from inputs
-    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
+        // find index of \b to extract col from inputs
+        auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+        // \b not found in index
+        if (row_end == inputs.end())
+        {
+            // log and send error message
+            std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
+            kvs_client_logger.log(err_msg, 40);
+            std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+            send_response(res_bytes);
+            return;
+        }
+        std::string col(row_end + 1, col_end);
+
+        // remainder of input is value
+        std::vector<char> val(col_end + 1, inputs.end());
+
+        // log command and args
+        kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
+
+        // retrieve tablet and put value for row and col combination
+        std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+        std::vector<char> response_msg = tablet->put_value(row, col, val);
+
+        // send response msg to client
+        send_response(response_msg);
+    }
+    // server is secondary, it must forward the write to the primary
+    else
     {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
     }
-    std::string col(row_end + 1, col_end);
-
-    // remainder of input is value
-    std::vector<char> val(col_end + 1, inputs.end());
-
-    // log command and args
-    kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
-
-    // retrieve tablet and put value for row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    std::vector<char> response_msg = tablet->put_value(row, col, val);
-
-    // send response msg to client
-    send_response(response_msg);
 }
 
 void KVSClient::delr(std::vector<char> &inputs)

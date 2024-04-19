@@ -37,6 +37,9 @@ public:
 private:
     static int server_sock_fd; // bound server socket's fd
     static int coord_sock_fd;  // fd for communication with coordinator
+    static int primary_fd;     // fd for communication with primary
+    // ! do we need to ensure secondary_ports and secondary_fds indices correspond? come back to this
+    static std::vector<int> secondary_fds; // fd for communication with secondary
 
     // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
@@ -44,20 +47,18 @@ private:
     friend class KVSClient;
     // methods
 public:
-    static void run();                                       // run server (server does NOT run on initialization, server instance must explicitly call this method)
-    static int write_to_coordinator(const std::string &msg); // write msg to coordinator
+    static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)
 
 private:
     // make default constructor private
     BackendServer() {}
 
-    static int bind_server_socket();                // bind port to socket
-    static int open_connection_with_coordinator();  // open connection with coordinator
-    static std::string read_from_coordinator();     // read msg from coordinator
-    static int initialize_state_from_coordinator(); // contact coordinator to get information
-    static void initialize_tablets();               // initialize tablets on this server
-    static void send_coordinator_heartbeat();       // dispatch thread to send heartbeat to coordinator port
-    static void accept_and_handle_clients();        // main server loop to accept and handle clients
+    static int bind_server_socket();                  // bind port to socket
+    static int initialize_state_from_coordinator();   // contact coordinator to get information
+    static int initialize_intergroup_communication(); // set up threads to talk to other servers in group
+    static void initialize_tablets();                 // initialize tablets on this server
+    static void send_coordinator_heartbeat();         // dispatch thread to send heartbeat to coordinator port
+    static void accept_and_handle_clients();          // main server loop to accept and handle clients
 };
 
 #endif
