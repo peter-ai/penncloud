@@ -140,7 +140,7 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 {
     // TODO: VALIDATE THAT INPUT IS LOWER CASE
     // VALIDATE THAT NEITHER FORM FIELD IS EMPTY
-    // VALIDATE THAT PASSWORD IS WITHIN LENGTH REQUIREMENTS
+    // CAN CURRENTLY AUTHENTICATE IF USER HAS COOKIE SET IN BROWSER AND PROVIDES CORRECT USERNAME BUT WRONG PASSWORD
 
     // Setup logger
     Logger logger("Login Handler");
@@ -186,25 +186,9 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
         // set response status code
         res.set_code(303);
 
-        // construct html page from retrieved data and set response body
-        std::string html =
-            "<!doctype html>"
-            "<html>"
-            "<head>"
-            "<title>PennCloud.com</title>"
-            "<meta name='description' content='CIS 5050 Spr24'>"
-            "<meta name='keywords' content='HomePage'>"
-            "</head>"
-            "<body>"
-            "Successful Login!"
-            "</body>"
-            "</html>";
-        res.append_body_str(html);
-
         // set response headers
         res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/home");
-        // res.set_header("Location", "/home"); // TODO: Validate
     }
     // otherwise check password
     else
@@ -234,21 +218,6 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
             // set response status code
             res.set_code(303);
 
-            // construct html page from retrieved data and set response body
-            std::string html =
-                "<!doctype html>"
-                "<html>"
-                "<head>"
-                "<title>PennCloud.com</title>"
-                "<meta name='description' content='CIS 5050 Spr24'>"
-                "<meta name='keywords' content='HomePage'>"
-                "</head>"
-                "<body>"
-                "Successful Login!"
-                "</body>"
-                "</html>";
-            res.append_body_str(html);
-
             // set response headers
             res.set_header("Content-Type", "text/html");
             res.set_header("Location", "/home"); // TODO: Validate
@@ -256,23 +225,9 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
         // session is inactive - redirect to login page
         else
         {
+            // TODO: FIGURE OUT HOW TO KEEP USER ON LOGIN PAGE
             // set response status code
             res.set_code(401);
-
-            // construct html page from retrieved data and set response body
-            std::string html =
-                "<!doctype html>"
-                "<html>"
-                "<head>"
-                "<title>PennCloud.com</title>"
-                "<meta name='description' content='CIS 5050 Spr24'>"
-                "<meta name='keywords' content='HomePage'>"
-                "</head>"
-                "<body>"
-                "Bad Login!"
-                "</body>"
-                "</html>";
-            res.append_body_str(html);
 
             // set response headers
             res.set_header("Content-Type", "text/html");
@@ -283,6 +238,91 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
     // close socket for KVS server
     close(kvs_sock);
 }
+
+/// @brief home page after authentication
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void home_handler(const HttpRequest &req, HttpResponse &res)
+{
+	// get cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
+	std::string page =
+	"<!doctype html>"
+	"<html lang='en' data-bs-theme='dark'>"
+	"<head>"
+		"<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+		"<meta content='utf-8' http-equiv='encoding'>"
+		"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+		"<meta name='description' content='CIS 5050 Spr24'>"
+		"<meta name='keywords' content='Home'>"
+		"<title>Home - PennCloud.com</title>"
+		"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
+			"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
+		"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+	"</head>"
+
+	"<body>"
+		"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
+			"<div class='container-fluid'>"
+				"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
+					"<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
+						"class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
+						"<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
+					"</svg>"
+					"<span> </span>"
+					"PennCloud"
+				"</span>"
+				"<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
+					"<span class='navbar-toggler-icon'></span>"
+				"</button>"
+				"<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
+					"<div class='navbar-nav'>"
+						"<a class='nav-link active' aria-current='page' href='#'>Home</a>"
+						"<a class='nav-link' href='#'>Drive</a>"
+						"<a class='nav-link' href='#'>Email</a>"
+						"<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+                        "<a class='nav-link' href='#'>Account</a>"
+                        "<a class='nav-link' href='/api/logout'>Logout</a>"
+					"</div>"
+				"</div>"
+				"<div class='form-check form-switch form-check-reverse'>"
+					"<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+					"<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+				"</div>"
+			"</div>"
+		"</nav>"
+
+		"<div class='container-fluid text-start'>"
+			"<div class='row mx-2 mt-3'>"
+				"<h1>"
+					"Hi " + cookies["user"] +
+				"!</h1>"
+			"</div>"
+		"</div>"
+
+		"<script src='http://ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js'></script>"
+		"<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+			"integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+			"crossorigin='anonymous'></script>"
+		"<script>"
+			"document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+				"if (document.documentElement.getAttribute('data-bs-theme') == 'dark') {"
+					"document.documentElement.setAttribute('data-bs-theme', 'light');"
+					"$('#switchLabel').html('Light Mode');"
+				"}"
+				"else {"
+					"document.documentElement.setAttribute('data-bs-theme', 'dark');"
+					"$('#switchLabel').html('Dark Mode');"
+				"}"
+			"})"
+		"</script>"
+	"</body>"
+	"</html>";
+	res.set_code(200);
+	res.append_body_str(page);
+}
+
 
 /// @brief handles logout requests on /api/logout route
 /// @param req HttpRequest object
@@ -340,7 +380,7 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
         FeUtils::expire_cookies(res, username, sid);
 
         // set response status code
-        res.set_code(200);
+        res.set_code(303);
 
         // construct html page from retrieved data and set response body
         std::string html =

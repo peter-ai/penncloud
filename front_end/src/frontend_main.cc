@@ -17,29 +17,6 @@ void contactLoadBalancer()
 {
 }
 
-void home_handler(const HttpRequest &req, HttpResponse &res)
-{
-	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
-	std::cerr << (cookies.empty() ? "EMPTY" : "NOT EMPTY") << std::endl;
-	for (auto &cookie : cookies)
-		std::cerr << "Cookie: " << cookie.first << "=" << cookie.second << std::endl;
-
-	std::string page =
-		"<!doctype html>"
-		"<html>"
-		"<head>"
-		"<title>PennCloud.com</title>"
-		"<meta name='description' content='CIS 5050 Spr24'>"
-		"<meta name='keywords' content='HomePage'>"
-		"</head>"
-		"<body>"
-		"Successful Login!"
-		"</body>"
-		"</html>";
-	res.set_code(200);
-	res.append_body_str(page);
-}
-
 int main()
 {
 	HttpServer::get("/home", home_handler);
