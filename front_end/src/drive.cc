@@ -120,7 +120,6 @@ std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
     return output;
 }
 
-
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // check req method
@@ -161,7 +160,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         // file, need to get parent row and file name
         std::string filename;
         std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-    
+
         std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
         std::vector<char> filename_vec(filename.begin(), filename.end());
 
@@ -253,15 +252,23 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         {
             // @todo should we instead get row for the page they are on?
             res.set_code(200); // OK
-            std::vector<char> folder_contents = FeUtils::kv_get_row(sockfd, row_vec);
-            res.append_body_bytes(folder_contents.data(), folder_contents.size());
-        } else {
-            res.set_code(400);
-            // maybe retry? tbd
+            std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
+
+            // content list, remove '+OK<sp>'
+            std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // split on delim
+            std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+            std::vector<char> formatted_content = format_folder_contents(contents);
+
+            //@todo: update with html!
+            res.append_body_bytes(formatted_content.data(), formatted_content.size());
 
         }
-
-        // @todo should we instead get row for the page they are on?
+        else
+        {
+            res.set_code(400);
+            // maybe retry? tbd
+        }
     }
     else
     {
