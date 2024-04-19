@@ -465,8 +465,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
             res.set_code(400);
             // maybe retry? tbd
         }
-
-        // @todo should we instead get row for the page they are on?
     }
     else
     {
