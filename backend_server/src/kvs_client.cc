@@ -1,4 +1,7 @@
+#include <poll.h>
+
 #include "../include/kvs_client.h"
+#include "../utils/include/be_utils.h"
 
 Logger kvs_client_logger("KVS Client");
 
@@ -74,9 +77,14 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     std::string command(client_stream.begin(), client_stream.begin() + 4);
     // remove first 5 bytes to remove delimiter after command
     client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
-
     // convert command to lowercase to standardize command
     command = Utils::to_lowercase(command);
+
+    // SOME COMMANDS ARE KVS COMMANDS
+
+    // SOME COMMANDS COME FROM THE PRIMARY
+    // as the secondary, your job is to look for the
+
     if (command == "getr")
     {
         getr(client_stream);
@@ -175,56 +183,166 @@ void KVSClient::getv(std::vector<char> &inputs)
     send_response(response_msg);
 }
 
+void KVSClient::forward_to_primary(std::vector<char> &inputs)
+{
+    kvs_client_logger.log("Forwarding operation to primary", 20);
+
+    // forward operation to primary and wait
+    BeUtils::write(BackendServer::primary_fd, inputs);
+    // wait for primary to respond
+    BeUtils::read(BackendServer::primary_fd);
+
+    // ! send response to client - can send whatever the primary responded with
+}
+
+int KVSClient::send_operation_to_secondaries(std::vector<char> &inputs)
+{
+    // primary server - forward this message to all of your secondaries
+
+    // send operation to each secondary
+    kvs_client_logger.log("Sending operation to all secondaries", 20);
+    for (int secondary : BackendServer::secondary_fds)
+    {
+        BeUtils::write(BackendServer::primary_fd, inputs);
+    }
+
+    kvs_client_logger.log("Waiting for secondary ACKs", 20);
+    // error occurred while waiting for secondary acknowledgement of operation
+    if (wait_for_secondary_acks() < 0)
+    {
+        kvs_client_logger.log("One or more secondaries did not send an ACK - command failed", 20);
+        // ! how do we handle this situation? shouldn't we tell the secondaries to revert back?
+        // ! or should we get all the acks, then respond with ok to actually finish the write?
+        // ! maybe add another error message here
+        return -1;
+    }
+
+    // all acks received
+    // ! read all of the file descriptors and ensure they were able to perform the put correctly
+    // ! if so, you can complete the write yourself
+
+    kvs_client_logger.log("All servers acknowledged operation - completing operation on primary", 20);
+}
+
+// Poll secondaries and wait for acknowledgement from all secondaries (with timeout)
+// ! double check this logic
+int KVSClient::wait_for_secondary_acks()
+{
+    std::vector<pollfd> poll_secondary_fds(BackendServer::secondary_fds.size());
+    for (size_t i = 0; i < poll_secondary_fds.size(); i++)
+    {
+        poll_secondary_fds[i].fd = BackendServer::secondary_fds[i];
+        poll_secondary_fds[i].events = POLLIN;
+        poll_secondary_fds[i].revents = 0;
+    }
+
+    // ! wait for 2 seconds in total for all secondary servers to respond
+    int timeout_ms = 2000;
+    struct timespec startTime, currentTime;
+    clock_gettime(CLOCK_MONOTONIC, &startTime);
+
+    int total_ready = 0;
+    while (true)
+    {
+        // Calculate elapsed time since start
+        clock_gettime(CLOCK_MONOTONIC, &currentTime);
+        int elapsedMs = (currentTime.tv_sec - startTime.tv_sec) * 1000 +
+                        (currentTime.tv_nsec - startTime.tv_nsec) / 1000000;
+
+        // Poll to wait for events on secondary file descriptors with updated timeout
+        int num_ready = poll(poll_secondary_fds.data(), poll_secondary_fds.size(), timeout_ms - elapsedMs);
+
+        // file descriptors ready, add the number that were ready for reading on this iteration
+        if (num_ready > 0)
+        {
+            // update total ready by the number ready to read on this iteration
+            total_ready += num_ready;
+            // check if all fds are ready to read from
+            if (total_ready == poll_secondary_fds.size())
+            {
+                return 0;
+            }
+        }
+        // Either timeout occurred, or error occurred during poll - failure in both cases
+        else
+        {
+            return -1;
+        }
+    }
+}
+
 void KVSClient::putv(std::vector<char> &inputs)
 {
-    // if server is primary, it can initiate the write
-    if (BackendServer::is_primary)
+    // ! Regardless of what server this is, first validate the command
+    // ! If the command was invalid, the secondary could have just figured that out with initiating extra communication
+
+    // ! maybe check if we should be doing this in this order, mabye just fire the command from the beginning
+
+    // find index of \b to extract row from inputs
+    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end())
     {
-        // find index of \b to extract row from inputs
-        auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-        // \b not found in index
-        if (row_end == inputs.end())
-        {
-            // log and send error message
-            std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
-            kvs_client_logger.log(err_msg, 40);
-            std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-            send_response(res_bytes);
-            return;
-        }
-        std::string row(inputs.begin(), row_end);
-
-        // find index of \b to extract col from inputs
-        auto col_end = std::find(row_end + 1, inputs.end(), '\b');
-        // \b not found in index
-        if (row_end == inputs.end())
-        {
-            // log and send error message
-            std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
-            kvs_client_logger.log(err_msg, 40);
-            std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-            send_response(res_bytes);
-            return;
-        }
-        std::string col(row_end + 1, col_end);
-
-        // remainder of input is value
-        std::vector<char> val(col_end + 1, inputs.end());
-
-        // log command and args
-        kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
-
-        // retrieve tablet and put value for row and col combination
-        std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-        std::vector<char> response_msg = tablet->put_value(row, col, val);
-
-        // send response msg to client
-        send_response(response_msg);
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        send_response(res_bytes);
+        return;
     }
-    // server is secondary, it must forward the write to the primary
-    else
+    std::string row(inputs.begin(), row_end);
+
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end())
     {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        send_response(res_bytes);
+        return;
     }
+    std::string col(row_end + 1, col_end);
+
+    // remainder of input is value
+    std::vector<char> val(col_end + 1, inputs.end());
+
+    // log command and args
+    kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
+
+    // ! we've performed basic validation on the command
+
+    // if this server is a secondary, it needs to forward the message to its primary and wait
+    // ! second condition checks that the current client is not the primary
+    if (!BackendServer::is_primary && ___________)
+    {
+        forward_to_primary(inputs);
+        return;
+    }
+
+    // sending operation to secondaries failed, don't want to continue past this
+    if (send_operation_to_secondaries(inputs) < 0)
+    {
+        // ! maybe add an error log
+        return;
+    }
+
+    // Perform the update if the backend server is a primary OR if this is a secondary and client's address is the primary's port number
+    // In the second case, that means the primary wanted the secondary to perform the write and then respond
+
+    // retrieve tablet and put value for row and col combination
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->put_value(row, col, val);
+
+    // send response msg to client (+OK)
+    // note that the client could be the primary that told the secondary to ini
+    // The client can be one of three groups
+    // 1. The secondary that forwarded the command
+    // 2. The frontend server that send the command
+    // 3. The primary that asked the write to be completed
+    send_response(response_msg);
 }
 
 void KVSClient::delr(std::vector<char> &inputs)
@@ -335,6 +453,7 @@ void KVSClient::cput(std::vector<char> &inputs)
     send_response(response_msg);
 }
 
+// ! might be duplicated in BEUtils, check this
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
     // set size of response in first 4 bytes of vector

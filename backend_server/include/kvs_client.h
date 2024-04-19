@@ -29,8 +29,15 @@ private:
     // read first 4 bytes from stream to get command and then call corresponding command
     void handle_command(std::vector<char> &client_stream);
     std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row);
+
+    // read only methods
     void getr(std::vector<char> &inputs);
     void getv(std::vector<char> &inputs);
+
+    // remote-writes related methods
+    void forward_to_primary(std::vector<char> &inputs);
+    int send_operation_to_secondaries(std::vector<char> &inputs);
+    int wait_for_secondary_acks(); // loops and waits for secondaries to send acknowledgements
     void putv(std::vector<char> &inputs);
     void cput(std::vector<char> &inputs);
     void delr(std::vector<char> &inputs);
