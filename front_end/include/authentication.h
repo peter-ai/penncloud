@@ -28,6 +28,11 @@ void signup_handler(const HttpRequest& req, HttpResponse& res);
 /// @param res HttpResponse object
 void login_handler(const HttpRequest& req, HttpResponse& res);
 
+/// @brief home page after authentication
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void home_handler(const HttpRequest &req, HttpResponse &res);
+
 /// @brief handles logout requests on /api/logout route
 /// @param req HttpRequest object
 /// @param res HttpResponse object
