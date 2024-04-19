@@ -41,6 +41,27 @@ void BackendServer::run()
 
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
 
+    // ! UNCOMMENT THIS TO FACILITATE CONNECTION WITH COORDINATOR
+    // // create socket for coordinator communication
+    // if (open_connection_with_coordinator() < 0)
+    // {
+    //     be_logger.log("Failed to open connection with coordinator. Exiting.", 40);
+    //     return;
+    // }
+
+    // // create socket for coordinator communication
+    // if (initialize_state_from_coordinator() < 0)
+    // {
+    //     be_logger.log("Failed to initialize server state via coordinator. Exiting.", 40);
+    //     close(coord_sock_fd);
+    //     return;
+    // }
+
+    // ! GET RID OF THIS AFTER COMMUNICATION WITH COORDINATOR IS ESTABLISHED
+    is_primary = true;
+    range_start = "a";
+    range_end = "z";
+
     is_primary
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
