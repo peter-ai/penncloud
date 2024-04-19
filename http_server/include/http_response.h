@@ -50,6 +50,8 @@ public:
         code = res_code;
         const std::unordered_map<int, std::string> response_codes = {
             {200, "OK"},
+            {201, "Created"}, // new content created
+            {303, "See Other"}, // redirect after POST so that refreshing the result page doesn't retrigger the operation
             {400, "Bad Request"},  // request is not as the API expects
             {401, "Unauthorized"}, // no credentials or invalid credentials
             {403, "Forbidden"},    // valid credentials but not enough privileges to perform an action on a resource
@@ -63,7 +65,7 @@ public:
     // sets cookie in response
     // Note that cookies have a default expiry of 20 minutes (hard coded for convenience)
     void set_cookie(const std::string& key, const std::string& value, std::string age="1200") {
-        set_header("Set-Cookie", key + "=" + value + "; Max-Age="+ age +"; HttpOnly");
+        set_header("Set-Cookie", key + "=" + value + "; Max-Age="+ age +"; HttpOnly; Path=/");
     }
 
     // append binary data to body - useful if you're writing the contents of a file to body since file may contain /0

@@ -16,6 +16,10 @@
 /// @param res HttpResponse object
 void signup_handler(const HttpRequest &req, HttpResponse &res)
 {
+    // TODO: VALIDATE THAT INPUT IS LOWER CASE
+    // VALIDATE THAT NEITHER FORM FIELD IS EMPTY
+    // VALIDATE THAT PASSWORD IS WITHIN LENGTH REQUIREMENTS
+
     // Setup logger
     Logger logger("SignUp Handler");
     logger.log("Received POST request", LOGGER_INFO);
@@ -109,6 +113,8 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
             "<!doctype html>"
             "<html>"
             "<head>"
+            "<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+            "<meta content='utf-8' http-equiv='encoding'>"
             "<title>PennCloud.com</title>"
             "<meta name='description' content='CIS 5050 Spr24'>"
             "<meta name='keywords' content='HomePage'>"
@@ -132,6 +138,10 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void login_handler(const HttpRequest &req, HttpResponse &res)
 {
+    // TODO: VALIDATE THAT INPUT IS LOWER CASE
+    // VALIDATE THAT NEITHER FORM FIELD IS EMPTY
+    // VALIDATE THAT PASSWORD IS WITHIN LENGTH REQUIREMENTS
+
     // Setup logger
     Logger logger("Login Handler");
     logger.log("Received POST request", LOGGER_INFO);
@@ -174,7 +184,7 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
         FeUtils::set_cookies(res, username, valid_session_id);
 
         // set response status code
-        res.set_code(200);
+        res.set_code(303);
 
         // construct html page from retrieved data and set response body
         std::string html =
@@ -193,7 +203,8 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 
         // set response headers
         res.set_header("Content-Type", "text/html");
-        res.set_header("Location", "/home"); // TODO: Validate
+        res.set_header("Location", "/home");
+        // res.set_header("Location", "/home"); // TODO: Validate
     }
     // otherwise check password
     else
@@ -221,7 +232,7 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
             FeUtils::set_cookies(res, username, sid);
 
             // set response status code
-            res.set_code(200);
+            res.set_code(303);
 
             // construct html page from retrieved data and set response body
             std::string html =
