@@ -35,22 +35,45 @@ int BeUtils::open_connection(int port)
     return sock_fd;
 }
 
-int BeUtils::write(const int fd, const std::string &msg)
+// int BeUtils::write(const int fd, const std::string &msg)
+// {
+//     // send msg to coordinator
+//     int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
+//     while (bytes_sent != msg.length())
+//     {
+//         if (bytes_sent < 0)
+//         {
+//             be_utils_logger.log("Unable to send message", 40);
+//             return -1;
+//         }
+//         bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
+//     }
+//     return 0;
+// }
+
+// ! add error checks in here
+int BeUtils::write(const int fd, std::vector<char> &response_msg)
 {
-    // send msg to coordinator
-    int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
-    while (bytes_sent != msg.length())
+    // set size of response in first 4 bytes of vector
+    // convert to network order and interpret msg_size as bytes
+    uint32_t msg_size = htonl(response_msg.size());
+    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
+    // Copy bytes from msg_size into the size_prefix vector
+    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
+
+    // Insert the size prefix at the beginning of the original response msg vector
+    response_msg.insert(response_msg.begin(), size_prefix.begin(), size_prefix.end());
+
+    // write response to client as bytes
+    size_t total_bytes_sent = 0;
+    while (total_bytes_sent < response_msg.size())
     {
-        if (bytes_sent < 0)
-        {
-            be_utils_logger.log("Unable to send message", 40);
-            return -1;
-        }
-        bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
+        int bytes_sent = send(fd, response_msg.data() + total_bytes_sent, response_msg.size() - total_bytes_sent, 0);
+        total_bytes_sent += bytes_sent;
     }
-    return 0;
 }
 
+// ! read might not be correct here, might not be able to read to a string (not sure though)
 std::string BeUtils::read(int fd)
 {
     // read from fd

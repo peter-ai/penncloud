@@ -33,13 +33,13 @@ public:
     static std::atomic<bool> is_primary;     // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
     static int primary_port;                 // primary port (only useful is this server is a secondary)
     static std::vector<int> secondary_ports; // list of secondaries (only useful if this server is a primary)
+    static int primary_fd;                   // fd for communication with primary
+    // ! do we need to ensure secondary_ports and secondary_fds indices correspond? come back to this
+    static std::vector<int> secondary_fds; // fd for communication with secondary
 
 private:
     static int server_sock_fd; // bound server socket's fd
     static int coord_sock_fd;  // fd for communication with coordinator
-    static int primary_fd;     // fd for communication with primary
-    // ! do we need to ensure secondary_ports and secondary_fds indices correspond? come back to this
-    static std::vector<int> secondary_fds; // fd for communication with secondary
 
     // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
