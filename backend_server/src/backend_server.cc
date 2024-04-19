@@ -39,29 +39,16 @@ void BackendServer::run()
     // talk to coordinator to get server assignment (primary/secondary) and key range
     be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
 
-    // create socket for coordinator communication
-    if (open_connection_with_coordinator() < 0)
-    {
-        be_logger.log("Failed to open connection with coordinator. Exiting.", 40);
-        return;
-    }
-
-    // create socket for coordinator communication
-    if (initialize_state_from_coordinator() < 0)
-    {
-        be_logger.log("Failed to initialize server state via coordinator. Exiting.", 40);
-        close(coord_sock_fd);
-        return;
-    }
+    send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
 
     is_primary
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
 
-    initialize_tablets();         // initialize static tablets based on supplied key range
-    send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
-    accept_and_handle_clients();  // run main server loop to accept client connections
+    initialize_tablets(); // initialize static tablets based on supplied key range
+    // send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
+    accept_and_handle_clients(); // run main server loop to accept client connections
 }
 
 int BackendServer::bind_server_socket()
@@ -130,7 +117,7 @@ int BackendServer::open_connection_with_coordinator()
     return 0;
 }
 
-int BackendServer::write_to_coordinator(std::string &msg)
+int BackendServer::write_to_coordinator(const std::string &msg)
 {
     // send msg to coordinator
     int bytes_sent = send(coord_sock_fd, (char *)msg.c_str(), msg.length(), 0);
@@ -295,9 +282,25 @@ void BackendServer::initialize_tablets()
     }
 }
 
+void ping()
+{
+    // Sleep for 5 seconds before sending first heartbeat
+    std::this_thread::sleep_for(std::chrono::seconds(5));
+    while (true)
+    {
+        be_logger.log("Sending heartbeat to coordinator", 20);
+        BackendServer::write_to_coordinator("PING");
+
+        // Sleep for 5 seconds before sending subsequent heartbeat
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+}
+
 void BackendServer::send_coordinator_heartbeat()
 {
-    // create thread and send message to coordinator port
+    // create and detach thread to ping coordinator
+    std::thread heartbeat_thread(ping);
+    heartbeat_thread.detach();
 }
 
 void BackendServer::accept_and_handle_clients()

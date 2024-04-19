@@ -44,20 +44,20 @@ private:
     friend class KVSClient;
     // methods
 public:
-    static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static void run();                                       // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static int write_to_coordinator(const std::string &msg); // write msg to coordinator
 
 private:
     // make default constructor private
     BackendServer() {}
 
-    static int bind_server_socket();                   // bind port to socket
-    static int open_connection_with_coordinator();     // open connection with coordinator
-    static int write_to_coordinator(std::string &msg); // write msg to coordinator
-    static std::string read_from_coordinator();        // read msg from coordinator
-    static int initialize_state_from_coordinator();    // contact coordinator to get information
-    static void initialize_tablets();                  // initialize tablets on this server
-    static void send_coordinator_heartbeat();          // dispatch thread to send heartbeat to coordinator port
-    static void accept_and_handle_clients();           // main server loop to accept and handle clients
+    static int bind_server_socket();                // bind port to socket
+    static int open_connection_with_coordinator();  // open connection with coordinator
+    static std::string read_from_coordinator();     // read msg from coordinator
+    static int initialize_state_from_coordinator(); // contact coordinator to get information
+    static void initialize_tablets();               // initialize tablets on this server
+    static void send_coordinator_heartbeat();       // dispatch thread to send heartbeat to coordinator port
+    static void accept_and_handle_clients();        // main server loop to accept and handle clients
 };
 
 #endif
