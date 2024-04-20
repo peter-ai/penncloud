@@ -56,7 +56,8 @@ std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const
     size_t start = 0;
     size_t end = data.size();
 
-    if (data.size()== 0){
+    if (data.size() == 0)
+    {
         return {{}};
     }
 
@@ -111,7 +112,8 @@ std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
 {
     std::vector<char> output;
 
-    if (vec.size()== 0){
+    if (vec.size() == 0)
+    {
         return output;
     }
 
@@ -258,6 +260,10 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
 
         // path is /api/drive/upload/:parentpath where parent dir is the page that is being displayed
         std::string parentpath_str = req.path.substr(18);
+        if (parentpath_str.back() != '/'){
+            res.set_code(400);
+            return;
+        }
         std::string childpath_str = parentpath_str + filename;
 
         std::vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
@@ -371,5 +377,47 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
     else
     {
         res.set_code(400);
+    }
+}
+
+// deletes file or folder
+// @todo is this a post or a get? I think post with no body?
+void delete_filefolder(const HttpRequest &req, HttpResponse &res)
+{
+
+    // of type /api/drive/delete/* where child directory is being served
+    std::string childpath_str = req.path.substr(18);
+    std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+    // if we are trying to delete a file
+    if (!is_folder(child_path))
+    {
+        // get file name
+        std::string filename;
+        std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
+
+        // comver tto vector<char>
+        std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+        std::vector<char> filename_vec(filename.begin(), filename.end());
+
+        int sockfd = FeUtils::open_socket();
+
+        if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+        {
+            // success
+            res.set_code(200);
+
+            // reload page to show file has been deleted
+            std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, parent_path_vec);
+
+            // content list, remove '+OK<sp>'
+            std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+            std::vector<char> formatted_content = format_folder_contents(contents);
+            res.append_body_bytes(formatted_content.data(), formatted_content.size());
+            res.set_code(200);
+        } else {
+            res.set_code(400);
+        }
     }
 }
