@@ -56,6 +56,10 @@ std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const
     size_t start = 0;
     size_t end = data.size();
 
+    if (data.size()== 0){
+        return {{}};
+    }
+
     while (start < end)
     {
         // Find the next occurrence of delimiter starting from 'start'
@@ -106,6 +110,10 @@ std::vector<std::vector<char>> split_vec_first_delim(const std::vector<char> &da
 std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
 {
     std::vector<char> output;
+
+    if (vec.size()== 0){
+        return output;
+    }
 
     // Iterate over all elements except the last one
     for (size_t i = 0; i < vec.size() - 1; ++i)
@@ -470,5 +478,84 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     {
         // No body found in the request
         res.set_code(400); // Bad Request
+    }
+}
+
+// creates a new folder
+void create_folder(const HttpRequest &req, HttpResponse &res)
+{
+    // uses a post request to add a new folder to the current parent directory.
+
+    // path is /api/drive/create/:parentpath where parent dir is the page that is being displayed
+    std::string parentpath_str = req.path.substr(18);
+
+    std::string req_body = req.body_as_string();
+
+    // check that ody is not empty
+    if (!req_body.empty())
+    {
+        // get name of folder
+        std::string key = "name=";
+        std::vector<std::string> elements = Utils::split_on_first_delim(req_body, key);
+
+        // if key doesn't exist, return 400
+        if (elements.size() < 1)
+        {
+            res.set_code(400);
+            return;
+        }
+
+        std::vector<char> folder_name(elements[0].begin(), elements[0].end());
+        folder_name.push_back('/');
+        std::vector<char> row_name(parentpath_str.begin(), parentpath_str.end());
+
+        // check if folder name is taken
+        int sockfd = FeUtils::open_socket();
+
+        std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_name);
+
+        // content list, remove '+OK<sp>'
+        std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+        // split on delim
+        std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+        std::vector<char> formatted_content = format_folder_contents(contents);
+
+        // if folder name in use
+        if (contains_subseq(formatted_content, folder_name))
+        {
+            // currently returning 400 but not sure what behavior should be
+            res.set_code(400);
+        }
+        else
+        {
+            if (kv_successful(FeUtils::kv_put(sockfd, row_name, folder_name, {})))
+            {
+
+                // create new column for row
+                std::vector<char> folder_row = row_name;
+                folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
+                std::vector<char> kvs_resp = FeUtils::kv_put(sockfd, folder_row, {}, {});
+
+                // get parent folder to show that this folder has been nested
+                folder_content = FeUtils::kv_get_row(sockfd, row_name);
+
+                // content list, remove '+OK<sp>'
+                std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+                contents = split_vector(folder_elements, {'\b'});
+                formatted_content = format_folder_contents(contents);
+                res.append_body_bytes(formatted_content.data(), formatted_content.size());
+                res.set_code(200);
+            }
+            else
+            {
+                // logger error
+                res.set_code(400);
+            }
+        }
+        close(sockfd);
+    }
+    else
+    {
+        res.set_code(400);
     }
 }
