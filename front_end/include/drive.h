@@ -25,6 +25,8 @@ void open_filefolder(const HttpRequest& req, HttpResponse& res);
 
 void upload_file(const HttpRequest& req, HttpResponse& res);
 
+void create_folder(const HttpRequest& req, HttpResponse& res);
+
 
 
 
