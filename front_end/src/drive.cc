@@ -209,7 +209,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 {
                     folder_html += "</div>";
                 }
-                std::cerr << folder_html << std::endl;
             }
             if (item_iter % 9 != (9-1)) folder_html += "</div>";
 
@@ -230,7 +229,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
             "</head>"
 
-            "<body>"
+            "<body onload='setTheme()'>"
             "<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
             "<div class='container-fluid'>"
             "<span class='navbar-brand mb-0 h1 flex-grow-1'>"
@@ -280,15 +279,35 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             "crossorigin='anonymous'></script>"
             "<script>"
             "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-            "if (document.documentElement.getAttribute('data-bs-theme') == 'dark') {"
+            "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
             "document.documentElement.setAttribute('data-bs-theme', 'light');"
             "$('#switchLabel').html('Light Mode');"
+            "sessionStorage.setItem('data-bs-theme', 'light');"
+            ""
             "}"
             "else {"
             "document.documentElement.setAttribute('data-bs-theme', 'dark');"
             "$('#switchLabel').html('Dark Mode');"
+            "sessionStorage.setItem('data-bs-theme', 'dark');"
             "}"
-            "})"
+            "});"
+            "</script>"
+            "<script>"
+            "function setTheme() {"
+            "var theme = sessionStorage.getItem('data-bs-theme');"
+            "if (theme !== null) {"
+            "if (theme === 'dark') {"
+            "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+            "$('#switchLabel').html('Dark Mode');"
+            "$('#flexSwitchCheckReverse').attr('checked', true);"
+            "}"
+            "else {"
+            "document.documentElement.setAttribute('data-bs-theme', 'light');"
+            "$('#switchLabel').html('Light Mode');"
+            "$('#flexSwitchCheckReverse').attr('checked', false);"
+            "}"
+            "}"
+            "};"
             "</script>"
             "</body>"
             "</html>";
