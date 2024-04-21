@@ -258,7 +258,6 @@ void ping(int fd)
     while (true)
     {
         be_logger.log("Sending heartbeat to coordinator", 20);
-        // ! check this
         std::string ping = "PING";
         BeUtils::write_to_coord(ping);
 
@@ -290,8 +289,10 @@ void BackendServer::accept_and_handle_clients()
             continue;
         }
 
-        KVSClient kvs_client(client_fd);
-        be_logger.log("Accepted connection from client __________", 20);
+        // extract port from client connection and initialize KVS_Client object
+        int client_port = ntohs(client_addr.sin_port);
+        KVSClient kvs_client(client_fd, client_port);
+        be_logger.log("Accepted connection from client on port " + client_port, 20);
 
         // launch thread to handle client
         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);

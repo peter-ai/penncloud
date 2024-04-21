@@ -14,12 +14,13 @@ class KVSClient
 {
     // fields
 private:
-    int client_fd; // client's bound fd
+    int client_fd;   // client's bound fd
+    int client_port; // client's port
 
     // methods
 public:
-    // client initialized with an associated file descriptor
-    KVSClient(int client_fd) : client_fd(client_fd){};
+    // client initialized with an associated file descriptor and client's port
+    KVSClient(int client_fd, int client_port) : client_fd(client_fd), client_port(client_port){};
     // disable default constructor - Client should only be created with an associated fd
     KVSClient() = delete;
 
