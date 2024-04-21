@@ -4,6 +4,7 @@
 
 #include "../include/be_utils.h"
 #include "../../utils/include/utils.h"
+#include "../../include/backend_server.h"
 
 // Initialize logger with info about start and end of key range
 Logger be_utils_logger = Logger("BE Utils");
@@ -35,46 +36,29 @@ int BeUtils::open_connection(int port)
     return sock_fd;
 }
 
-// int BeUtils::write(const int fd, const std::string &msg)
-// {
-//     // send msg to coordinator
-//     int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
-//     while (bytes_sent != msg.length())
-//     {
-//         if (bytes_sent < 0)
-//         {
-//             be_utils_logger.log("Unable to send message", 40);
-//             return -1;
-//         }
-//         bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
-//     }
-//     return 0;
-// }
+/**
+ * COORDINATOR COMMUNICATION
+ */
 
-// ! add error checks in here
-int BeUtils::write(const int fd, std::vector<char> &response_msg)
+int BeUtils::write_to_coord(std::string &msg)
 {
-    // set size of response in first 4 bytes of vector
-    // convert to network order and interpret msg_size as bytes
-    uint32_t msg_size = htonl(response_msg.size());
-    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
-    // Copy bytes from msg_size into the size_prefix vector
-    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
-
-    // Insert the size prefix at the beginning of the original response msg vector
-    response_msg.insert(response_msg.begin(), size_prefix.begin(), size_prefix.end());
-
-    // write response to client as bytes
-    size_t total_bytes_sent = 0;
-    while (total_bytes_sent < response_msg.size())
+    // append delimiter to end of coordinator msg
+    msg += "\r\n";
+    // send msg to coordinator
+    int bytes_sent = send(BackendServer::coord_sock_fd, (char *)msg.c_str(), msg.length(), 0);
+    while (bytes_sent != msg.length())
     {
-        int bytes_sent = send(fd, response_msg.data() + total_bytes_sent, response_msg.size() - total_bytes_sent, 0);
-        total_bytes_sent += bytes_sent;
+        if (bytes_sent < 0)
+        {
+            be_utils_logger.log("Unable to send message to coordinator", 40);
+            return -1;
+        }
+        bytes_sent += send(BackendServer::coord_sock_fd, (char *)msg.c_str(), msg.length(), 0);
     }
+    return 0;
 }
 
-// ! read might not be correct here, might not be able to read to a string (not sure though)
-std::string BeUtils::read(int fd)
+std::string BeUtils::read_from_coord()
 {
     // read from fd
     std::string response;
@@ -83,18 +67,18 @@ std::string BeUtils::read(int fd)
     while (true)
     {
         char buf[1024]; // size of buffer for CURRENT read
-        bytes_recvd = recv(fd, buf, sizeof(buf), 0);
+        bytes_recvd = recv(BackendServer::coord_sock_fd, buf, sizeof(buf), 0);
 
         // error while reading from coordinator
         if (bytes_recvd < 0)
         {
-            be_utils_logger.log("Unable to receive message", 40);
+            be_utils_logger.log("Unable to receive message from coordinator", 40);
             break;
         }
         // check condition where connection was preemptively closed by coordinator
         else if (bytes_recvd == 0)
         {
-            be_utils_logger.log("Connection closed", 40);
+            be_utils_logger.log("Connection to coordinator closed", 50);
             break;
         }
 
@@ -116,4 +100,30 @@ std::string BeUtils::read(int fd)
         return "";
     }
     return response;
+}
+
+/**
+ * INTER-GROUP COMMUNICATION
+ */
+
+// ! add error checks in here
+int BeUtils::write(const int fd, std::vector<char> &response_msg)
+{
+    // set size of response in first 4 bytes of vector
+    // convert to network order and interpret msg_size as bytes
+    uint32_t msg_size = htonl(response_msg.size());
+    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
+    // Copy bytes from msg_size into the size_prefix vector
+    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
+
+    // Insert the size prefix at the beginning of the original response msg vector
+    response_msg.insert(response_msg.begin(), size_prefix.begin(), size_prefix.end());
+
+    // write response to client as bytes
+    size_t total_bytes_sent = 0;
+    while (total_bytes_sent < response_msg.size())
+    {
+        int bytes_sent = send(fd, response_msg.data() + total_bytes_sent, response_msg.size() - total_bytes_sent, 0);
+        total_bytes_sent += bytes_sent;
+    }
 }
