@@ -37,14 +37,12 @@ public:
     // ! do we need to ensure secondary_ports and secondary_fds indices correspond? come back to this
     static std::vector<int> secondary_fds; // fd for communication with secondary
 
-private:
     static int server_sock_fd; // bound server socket's fd
     static int coord_sock_fd;  // fd for communication with coordinator
 
     // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
 
-    friend class KVSClient;
     // methods
 public:
     static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)

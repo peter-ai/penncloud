@@ -28,7 +28,7 @@ std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 
 void BackendServer::run()
 {
-    //     // re-initialize logger to display key range
+    // // re-initialize logger to display key range
     // be_logger = Logger("Backend server " + BackendServer::range_start + ":" + BackendServer::range_end);
 
     // Bind storage server to its port
@@ -39,21 +39,10 @@ void BackendServer::run()
     }
     be_logger.log("Backend server bound on port " + std::to_string(BackendServer::port), 20);
 
-    // talk to coordinator to get server assignment (primary/secondary) and key range
-    be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
-
-    // create socket for coordinator communication
-    coord_sock_fd = BeUtils::open_connection(coord_port);
-    if (coord_sock_fd < 0)
-    {
-        be_logger.log("Failed to open connection with coordinator. Exiting.", 40);
-        return;
-    }
-
     // initialize server's state from coordinator
     if (initialize_state_from_coordinator() < 0)
     {
-        be_logger.log("Failed to initialize server state via coordinator. Exiting.", 40);
+        be_logger.log("Failed to initialize server state from coordinator. Exiting.", 40);
         close(coord_sock_fd);
         return;
     }
@@ -61,11 +50,6 @@ void BackendServer::run()
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
-
-    // // ! GET RID OF THIS AFTER COMMUNICATION WITH COORDINATOR IS ESTABLISHED
-    // is_primary = true;
-    // range_start = "a";
-    // range_end = "z";
 
     // create sockets to communicate with primaries/secondaries, depending on server responsibility
     if (initialize_intergroup_communication() < 0)
@@ -120,22 +104,35 @@ int BackendServer::bind_server_socket()
 
 int BackendServer::initialize_state_from_coordinator()
 {
-    // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string msg = "INIT 127.0.0.1:" + std::to_string(port) + "\r\n";
-    if (BeUtils::write(coord_sock_fd, msg) < 0)
+    // talk to coordinator to get server assignment (primary/secondary) and key range
+    be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
+
+    // create socket for coordinator communication
+    coord_sock_fd = BeUtils::open_connection(coord_port);
+    if (coord_sock_fd < 0)
     {
+        be_logger.log("Failed to open connection with coordinator. Exiting", 40);
         return -1;
     }
 
-    std::string coord_response = BeUtils::read(coord_sock_fd);
+    // send initialization message to coordinator to inform coordinator that this server is starting up
+    std::string msg = "INIT";
+    if (BeUtils::write_to_coord(msg) < 0)
+    {
+        be_logger.log("Failure while sending INIT message to coordinator", 40);
+        return -1;
+    }
+
+    std::string coord_response = BeUtils::read_from_coord();
     // coordinator didn't send back a full response (\r\n at the end)
     if (coord_response.empty())
     {
+        be_logger.log("Failed to receive initialization details from coordinator", 40);
         return -1;
     }
 
     // split response into tokens and extract data
-    // Assume message is of the form "PRIMARY/SECONDARY<SP>START_RANGE:END_RANGE<SP>PRIMARY_ADDRESS<SP>SECONDARY1\r\n"
+    // Assume message is of the form "P/S<SP>START_RANGE:END_RANGE<SP>PRIMARY_ADDRESS<SP>SECONDARY1\r\n"
     std::vector<std::string> res_tokens = Utils::split(coord_response, " ");
 
     // basic check, tokens should be at least 4 tokens long (assumes at least 1 secondary)
@@ -146,11 +143,11 @@ int BackendServer::initialize_state_from_coordinator()
     }
 
     // set if server is primary or secondary
-    if (res_tokens.at(0) == "PRIMARY")
+    if (res_tokens.at(0) == "P")
     {
         is_primary = true;
     }
-    else if (res_tokens.at(0) == "SECONDARY")
+    else if (res_tokens.at(0) == "S")
     {
         is_primary = false;
     }
@@ -163,7 +160,7 @@ int BackendServer::initialize_state_from_coordinator()
 
     // set start and end range
     std::vector<std::string> range = Utils::split(res_tokens.at(1), ":");
-    // basic check, tokens should be at least 4 tokens long (assumes at least 1 secondary)
+    // start and end of key range should have exactly two tokens
     if (range.size() != 2)
     {
         be_logger.log("Malformed key range", 40);
@@ -256,15 +253,17 @@ void BackendServer::initialize_tablets()
 
 void ping(int fd)
 {
-    // Sleep for 5 seconds before sending first heartbeat
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    // Sleep for 1 seconds before sending first heartbeat
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     while (true)
     {
         be_logger.log("Sending heartbeat to coordinator", 20);
-        BeUtils::write(fd, "PING");
+        // ! check this
+        std::string ping = "PING";
+        BeUtils::write_to_coord(ping);
 
         // Sleep for 5 seconds before sending subsequent heartbeat
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 
