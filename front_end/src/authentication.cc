@@ -980,7 +980,7 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
         // delete associated sid from kvs server
         std::vector<char> row_key(username.begin(), username.end());
         row_key.push_back('/');
-        std::vector<char> col_key(sid.begin(), sid.end());
+        std::vector<char> col_key({'s', 'i', 'd'});
         std::vector<char> kvs_res = FeUtils::kv_put(kvs_sock, row_key, col_key, std::vector<char>({'-', '1'}));
 
         // clear user from local cache of kvs addresses
