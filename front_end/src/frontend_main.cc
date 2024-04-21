@@ -19,15 +19,22 @@ void contactLoadBalancer()
 
 int main()
 {
+	/* Public GET API */
 	HttpServer::get("/home", home_handler);
+	HttpServer::get("/account", account_handler);
+	HttpServer::get("/update_success", update_password_success_handler);
+	HttpServer::get("/409", error_409_handler); // Conflict
+	HttpServer::get("/401", error_401_handler); // Unauthorized
+	HttpServer::get("/400", error_400_handler); // Bad API request
+	
 
 	/* Mail Routes */
 	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);		// send an email
 	HttpServer::post("/api/:user/mbox/reply?", replyEmail_handler);		// respond to an email
 	HttpServer::post("/api/:user/mbox/forward?", forwardEmail_handler); // forward an email
 	HttpServer::post("/api/:user/mbox/delete?", deleteEmail_handler);	// delete an email
-	HttpServer::get("/:user/mbox", mailbox_handler);				// get mailbox
-	HttpServer::get("/:user/mbox?", email_handler);					// get email
+	HttpServer::get("/:user/mbox", mailbox_handler);					// get mailbox
+	HttpServer::get("/:user/mbox?", email_handler);						// get email
 
 	/* Auth Routes */
 	HttpServer::post("/api/signup", signup_handler);				   // signup
@@ -37,7 +44,7 @@ int main()
 
 	/* Drive Routes */
 	HttpServer::post("/api/drive/upload/*", upload_file); // upload file
-	HttpServer::get("/drive/*", open_filefolder);	  // open file/folder
+	HttpServer::get("/drive/*", open_filefolder);		  // open file/folder
 
 	// run HTTPServer
 	HttpServer::run(8000);
