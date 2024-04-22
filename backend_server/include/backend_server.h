@@ -8,18 +8,32 @@
 #include <unordered_set>
 #include <vector>
 #include <memory>
+#include <queue>
 
 #include "tablet.h"
 #include "kvs_client.h"
 #include "../../utils/include/utils.h"
+
+struct HoldbackOperation
+{
+    int seq_num;
+    std::vector<char> msg;
+
+    // comparison operator for HoldbackOperations
+    // ! double check this to ensure it's working as expected
+    bool operator>(const HoldbackOperation &other) const
+    {
+        return seq_num > other.seq_num;
+    }
+};
 
 class BackendServer
 {
     // fields
 public:
     // constants
-    static const std::unordered_set<std::string> supported_commands; // GET, PUT
-    static const int coord_port;                                     // coordinator's port
+    static const int coord_port; // coordinator's port
+    static const std::unordered_set<std::string> commands;
 
     // backend server fields
     static int port; // port server runs on
@@ -42,6 +56,13 @@ public:
 
     // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
+
+    // TODO add fields for all of the stuff below in backendserver.cc
+
+    // ! write sequence number
+    static std::atomic<int> seq_num;
+    // ! priority queue of holdback operations
+    static std::priority_queue<HoldbackOperation> secondary_holdback_operations;
 
     // methods
 public:

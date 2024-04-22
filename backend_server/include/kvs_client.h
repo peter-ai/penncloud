@@ -29,21 +29,31 @@ public:
 private:
     // read first 4 bytes from stream to get command and then call corresponding command
     void handle_command(std::vector<char> &client_stream);
+
+    // remote-writes related methods
+    // Note that inputs is NOT passed by reference because a copy of inputs is needed
+    // a copy is necessary because the inputs passed in will be used by the primary to perform the command after confirmation that all secondaries are done
+    // if we take a reference and modify it, it'll modify the data that primary will use to perform the command after
+    int send_operation_to_secondaries(std::vector<char> inputs);
+    int wait_for_secondary_acks(); // loops and waits for secondaries to send acknowledgements
+    void forward_operation_to_primary(std::vector<char> &inputs);
+
+    // retrieve data tablet to service command
     std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row);
+
+    // send response to client
+    void send_response(std::vector<char> &response_msg);
 
     // read only methods
     void getr(std::vector<char> &inputs);
     void getv(std::vector<char> &inputs);
 
-    // remote-writes related methods
-    void forward_to_primary(std::vector<char> &inputs);
-    int send_operation_to_secondaries(std::vector<char> &inputs);
-    int wait_for_secondary_acks(); // loops and waits for secondaries to send acknowledgements
+    // write methods
+    void call_write_command(std::string command, std::vector<char> &inputs);
     void putv(std::vector<char> &inputs);
     void cput(std::vector<char> &inputs);
     void delr(std::vector<char> &inputs);
     void delv(std::vector<char> &inputs);
-    void send_response(std::vector<char> &response_msg);
 };
 
 #endif

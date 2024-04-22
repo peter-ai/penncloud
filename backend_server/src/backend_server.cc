@@ -9,8 +9,8 @@
 Logger be_logger = Logger("Backend server");
 
 // initialize constant members
-const std::unordered_set<std::string> BackendServer::supported_commands = {"GET", "PUT"};
 const int BackendServer::coord_port = 4999;
+const std::unordered_set<std::string> BackendServer::commands{{"getr", "getv", "putv", "cput", "delr", "delv", "pwrt"}};
 
 // initialize static members to default values
 int BackendServer::port = 0;
@@ -25,6 +25,7 @@ int BackendServer::coord_sock_fd = -1;
 int BackendServer::primary_fd = -1;
 std::vector<int> BackendServer::secondary_fds;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
+std::atomic<int> BackendServer::seq_num = 0;
 
 void BackendServer::run()
 {
