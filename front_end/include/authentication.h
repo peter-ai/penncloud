@@ -31,32 +31,17 @@ void login_handler(const HttpRequest& req, HttpResponse& res);
 /// @brief home page after authentication
 /// @param req HttpRequest object
 /// @param res HttpResponse object
-void home_handler(const HttpRequest &req, HttpResponse &res);
+void home_page(const HttpRequest &req, HttpResponse &res);
 
 /// @brief account page after authentication
 /// @param req HttpRequest object
 /// @param res HttpResponse object
-void account_handler(const HttpRequest &req, HttpResponse &res);
+void update_password_page(const HttpRequest &req, HttpResponse &res);
 
 /// @brief account page after successful password update
 /// @param req HttpRequest object
 /// @param res HttpResponse object
-void update_password_success_handler(const HttpRequest &req, HttpResponse &res);
-
-/// @brief 409 conflict page
-/// @param req HttpRequest object
-/// @param res HttpResponse object
-void error_409_handler(const HttpRequest &req, HttpResponse &res);
-
-/// @brief 401 unauthorized page
-/// @param req HttpRequest object
-/// @param res HttpResponse object
-void error_401_handler(const HttpRequest &req, HttpResponse &res);
-
-/// @brief 400 bad request page
-/// @param req HttpRequest object
-/// @param res HttpResponse object
-void error_400_handler(const HttpRequest &req, HttpResponse &res);
+void update_password_success_page(const HttpRequest &req, HttpResponse &res);
 
 /// @brief handles logout requests on /api/logout route
 /// @param req HttpRequest object

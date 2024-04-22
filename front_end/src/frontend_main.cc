@@ -6,6 +6,7 @@
  */
 #include "../../http_server/include/http_server.h"
 #include "../include/authentication.h"
+#include "../include/response_codes.h"
 #include "../include/mailbox.h"
 #include "../include/drive.h"
 
@@ -20,12 +21,12 @@ void contactLoadBalancer()
 int main()
 {
 	/* Public GET API */
-	HttpServer::get("/home", home_handler);
-	HttpServer::get("/account", account_handler);
-	HttpServer::get("/update_success", update_password_success_handler);
-	HttpServer::get("/409", error_409_handler); // Conflict
-	HttpServer::get("/401", error_401_handler); // Unauthorized
-	HttpServer::get("/400", error_400_handler); // Bad API request
+	HttpServer::get("/home", home_page);
+	HttpServer::get("/account", update_password_page);
+	HttpServer::get("/update_success", update_password_success_page);
+	HttpServer::get("/409", error_409_page); // Conflict
+	HttpServer::get("/401", error_401_page); // Unauthorized
+	HttpServer::get("/400", error_400_page); // Bad API request
 	
 
 	/* Mail Routes */
