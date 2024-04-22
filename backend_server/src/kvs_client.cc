@@ -120,13 +120,14 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
         // client is a frontend server - forward the command to the primary
         if (client_port != BackendServer::primary_port)
         {
-            forward_to_primary(inputs);
-            // send confirmation response back to client once primary completes command
-            send_response();
+            // forward operation to primary and wait for primary's response
+            std::vector<char> primary_res = forward_operation_to_primary(client_stream);
+            // send response back to client that initiated request
+            send_response(primary_res);
             return;
         }
 
-        // Primary is asking secondary to perform write operation on secondary
+        // Primary sent request asking secondary to perform write operation on secondary
         if (command == "pwrt")
         {
             // extract sequence number
@@ -256,28 +257,16 @@ int KVSClient::wait_for_secondary_acks()
     }
 }
 
-void KVSClient::call_write_command(std::string command, std::vector<char> &inputs)
+std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
-    // erase command from beginning of inputs
-    inputs.erase(inputs.begin(), inputs.begin() + 5);
-
-    // call handler for command
-    if (command == "putv")
-    {
-        putv(inputs);
-    }
-    else if (command == "cput")
-    {
-        cput(inputs);
-    }
-    else if (command == "delr")
-    {
-        delr(inputs);
-    }
-    else if (command == "delv")
-    {
-        delv(inputs);
-    }
+    kvs_client_logger.log("Forwarding operation to primary", 20);
+    // forward operation to primary
+    BeUtils::write(BackendServer::primary_fd, inputs);
+    // wait for primary to respond
+    // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
+    // ! This could happen if the primary dies while performing the operation
+    std::vector<char> primary_res = BeUtils::read(BackendServer::primary_fd);
+    return primary_res;
 }
 
 std::shared_ptr<Tablet> KVSClient::retrieve_data_tablet(std::string &row)
@@ -294,20 +283,6 @@ std::shared_ptr<Tablet> KVSClient::retrieve_data_tablet(std::string &row)
     // this should never execute
     kvs_client_logger.log("Could not find tablet for given row - this should NOT occur", 50);
     return nullptr;
-}
-
-void KVSClient::forward_to_primary(std::vector<char> &inputs)
-{
-    kvs_client_logger.log("Forwarding operation to primary", 20);
-
-    // forward operation to primary and wait
-    BeUtils::write(BackendServer::primary_fd, inputs);
-    // wait for primary to respond
-    // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
-    // ! This could happen if the primary dies while performing the operation
-    BeUtils::read(BackendServer::primary_fd);
-
-    // ! send response to client - can send whatever the primary responded with
 }
 
 void KVSClient::send_response(std::vector<char> &response_msg)
@@ -377,6 +352,30 @@ void KVSClient::getv(std::vector<char> &inputs)
 /**
  * WRITE COMMANDS
  */
+
+void KVSClient::call_write_command(std::string command, std::vector<char> &inputs)
+{
+    // erase command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // call handler for command
+    if (command == "putv")
+    {
+        putv(inputs);
+    }
+    else if (command == "cput")
+    {
+        cput(inputs);
+    }
+    else if (command == "delr")
+    {
+        delr(inputs);
+    }
+    else if (command == "delv")
+    {
+        delv(inputs);
+    }
+}
 
 void KVSClient::putv(std::vector<char> &inputs)
 {

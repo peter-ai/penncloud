@@ -36,7 +36,7 @@ private:
     // if we take a reference and modify it, it'll modify the data that primary will use to perform the command after
     int send_operation_to_secondaries(std::vector<char> inputs);
     int wait_for_secondary_acks(); // loops and waits for secondaries to send acknowledgements
-    void forward_operation_to_primary(std::vector<char> &inputs);
+    std::vector<char> forward_operation_to_primary(std::vector<char> &inputs);
 
     // retrieve data tablet to service command
     std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row);
