@@ -107,23 +107,99 @@ std::string BeUtils::read_from_coord()
  */
 
 // ! add error checks in here
-int BeUtils::write(const int fd, std::vector<char> &response_msg)
+int BeUtils::write(const int fd, std::vector<char> &msg)
 {
-    // set size of response in first 4 bytes of vector
+    // set size of message in first 4 bytes of vector
     // convert to network order and interpret msg_size as bytes
-    uint32_t msg_size = htonl(response_msg.size());
-    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
-    // Copy bytes from msg_size into the size_prefix vector
-    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
+    std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
 
     // Insert the size prefix at the beginning of the original response msg vector
-    response_msg.insert(response_msg.begin(), size_prefix.begin(), size_prefix.end());
+    msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
     // write response to client as bytes
     size_t total_bytes_sent = 0;
-    while (total_bytes_sent < response_msg.size())
+    while (total_bytes_sent < msg.size())
     {
-        int bytes_sent = send(fd, response_msg.data() + total_bytes_sent, response_msg.size() - total_bytes_sent, 0);
+        int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
         total_bytes_sent += bytes_sent;
     }
+}
+
+// ! add error checks in here
+std::vector<char> BeUtils::read(const int fd)
+{
+    std::vector<char> byte_stream;
+    uint32_t bytes_left = 0;
+
+    int bytes_recvd;
+    while (true)
+    {
+        char buf[4096];
+        bytes_recvd = recv(fd, buf, 4096, 0);
+        if (bytes_recvd < 0)
+        {
+            be_utils_logger.log("Error reading from source", 40);
+            break;
+        }
+        else if (bytes_recvd == 0)
+        {
+            be_utils_logger.log("Remote socket closed connection", 30);
+            break;
+        }
+
+        // iterate stream read from client and parse out message
+        for (int i = 0; i < bytes_recvd; i++)
+        {
+            // message is not complete, append byte to byte_stream and decrement number of bytes left to read to complete message
+            if (bytes_left != 0)
+            {
+                byte_stream.push_back(buf[i]);
+                bytes_left--;
+
+                // no bytes left in message - stop reading from fd and return byte stream read from fd
+                if (bytes_left == 0)
+                {
+                    return byte_stream;
+                }
+            }
+            // command is complete, we need the next 4 bytes to determine how much bytes are in this command
+            else
+            {
+                // now we have two situations
+                // 1) client stream's size < 4, in which case the bytes left in the command is 0 only because the prev command was completed
+                // 2) client stream's size >= 4
+                if (byte_stream.size() < 4)
+                {
+                    byte_stream.push_back(buf[i]);
+                    // parse size of command once client stream is 4 bytes long and store it in bytes_left
+                    if (byte_stream.size() == 4)
+                    {
+                        // parse size of command from client
+                        bytes_left = network_vector_to_host_num(byte_stream);
+                        // clear the client stream in preparation for the incoming data
+                        byte_stream.clear();
+                    }
+                }
+            }
+        }
+    }
+}
+
+std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)
+{
+    // convert to network order and interpret msg_size as bytes
+    uint32_t num_in_network_order = htonl(num);
+    std::vector<uint8_t> num_vec(sizeof(uint32_t));
+    // Copy bytes from num_in_network_order into the size_prefix vector
+    std::memcpy(num_vec.data(), &num_in_network_order, sizeof(uint32_t));
+    return num_vec;
+}
+
+uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
+{
+    // parse size from first 4 bytes of num vector
+    uint32_t num;
+    std::memcpy(&num, num_vec.data(), sizeof(uint32_t));
+    // convert number received from network order to host order
+    return ntohl(num);
 }
