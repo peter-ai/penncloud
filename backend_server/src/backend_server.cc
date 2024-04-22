@@ -17,15 +17,16 @@ int BackendServer::port = 0;
 std::string BackendServer::range_start = "";
 std::string BackendServer::range_end = "";
 int BackendServer::num_tablets = 0;
-std::atomic<bool> BackendServer::is_primary = false;
+std::atomic<bool> BackendServer::is_primary(false);
 int BackendServer::primary_port = 0;
 std::vector<int> BackendServer::secondary_ports;
-int BackendServer::server_sock_fd = -1;
-int BackendServer::coord_sock_fd = -1;
 int BackendServer::primary_fd = -1;
 std::vector<int> BackendServer::secondary_fds;
+int BackendServer::server_sock_fd = -1;
+int BackendServer::coord_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
-std::atomic<int> BackendServer::seq_num = 0;
+std::atomic<int> BackendServer::seq_num(0);
+std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::secondary_holdback_operations;
 
 void BackendServer::run()
 {
@@ -40,13 +41,21 @@ void BackendServer::run()
     }
     be_logger.log("Backend server bound on port " + std::to_string(BackendServer::port), 20);
 
-    // initialize server's state from coordinator
-    if (initialize_state_from_coordinator() < 0)
-    {
-        be_logger.log("Failed to initialize server state from coordinator. Exiting.", 40);
-        close(coord_sock_fd);
-        return;
-    }
+    // // initialize server's state from coordinator
+    // if (initialize_state_from_coordinator() < 0)
+    // {
+    //     be_logger.log("Failed to initialize server state from coordinator. Exiting.", 40);
+    //     close(coord_sock_fd);
+    //     return;
+    // }
+    // ! DEFAULT VALUES TO SET UP KVS (above is commented out for now)
+    is_primary = true;
+    primary_port = 6001;
+    secondary_ports = {{6000}};
+    range_start = "a";
+    range_end = "z";
+    // ! DEFAULT VALUES TO SET UP KVS
+
     is_primary
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
@@ -252,7 +261,7 @@ void BackendServer::initialize_tablets()
     }
 }
 
-void ping(int fd)
+void ping()
 {
     // Sleep for 1 seconds before sending first heartbeat
     std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -270,7 +279,7 @@ void ping(int fd)
 void BackendServer::send_coordinator_heartbeat()
 {
     // create and detach thread to ping coordinator
-    std::thread heartbeat_thread(ping, coord_sock_fd);
+    std::thread heartbeat_thread(ping);
     heartbeat_thread.detach();
 }
 
@@ -293,7 +302,7 @@ void BackendServer::accept_and_handle_clients()
         // extract port from client connection and initialize KVS_Client object
         int client_port = ntohs(client_addr.sin_port);
         KVSClient kvs_client(client_fd, client_port);
-        be_logger.log("Accepted connection from client on port " + client_port, 20);
+        be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
         // launch thread to handle client
         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);

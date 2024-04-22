@@ -20,7 +20,6 @@ struct HoldbackOperation
     std::vector<char> msg;
 
     // comparison operator for HoldbackOperations
-    // ! double check this to ensure it's working as expected
     bool operator>(const HoldbackOperation &other) const
     {
         return seq_num > other.seq_num;
@@ -57,12 +56,9 @@ public:
     // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
 
-    // TODO add fields for all of the stuff below in backendserver.cc
-
-    // ! write sequence number
-    static std::atomic<int> seq_num;
-    // ! priority queue of holdback operations
-    static std::priority_queue<HoldbackOperation> secondary_holdback_operations;
+    static std::atomic<int> seq_num; // write operation sequence number
+    // holdback queue (min heap) for secondary operation
+    static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> secondary_holdback_operations;
 
     // methods
 public:

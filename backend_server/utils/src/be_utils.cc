@@ -123,6 +123,7 @@ int BeUtils::write(const int fd, std::vector<char> &msg)
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
         total_bytes_sent += bytes_sent;
     }
+    return 0;
 }
 
 // ! add error checks in here
@@ -183,6 +184,7 @@ std::vector<char> BeUtils::read(const int fd)
             }
         }
     }
+    return byte_stream;
 }
 
 std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)

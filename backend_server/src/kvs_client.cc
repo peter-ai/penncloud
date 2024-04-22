@@ -2,6 +2,7 @@
 
 #include "../include/kvs_client.h"
 #include "../utils/include/be_utils.h"
+#include "../include/backend_server.h"
 
 Logger kvs_client_logger("KVS Client");
 
@@ -183,7 +184,7 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     kvs_client_logger.log("Sending operation to all secondaries", 20);
     for (int secondary : BackendServer::secondary_fds)
     {
-        BeUtils::write(BackendServer::primary_fd, inputs);
+        BeUtils::write(secondary, inputs);
     }
 
     // wait for secondary to receive operation and send back confirmation that the operation was completed
@@ -227,7 +228,7 @@ int KVSClient::wait_for_secondary_acks()
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     // loop until time runs out or all secondaries have responded
-    int total_ready = 0;
+    size_t total_ready = 0;
     while (true)
     {
         // Calculate elapsed time since start
@@ -288,7 +289,7 @@ std::shared_ptr<Tablet> KVSClient::retrieve_data_tablet(std::string &row)
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
     BeUtils::write(client_fd, response_msg);
-    kvs_client_logger.log("Response sent to client on port " + client_port, 20);
+    kvs_client_logger.log("Response sent to client on port " + std::to_string(client_port), 20);
 }
 
 /**
@@ -379,11 +380,6 @@ void KVSClient::call_write_command(std::string command, std::vector<char> &input
 
 void KVSClient::putv(std::vector<char> &inputs)
 {
-    // ! Regardless of what server this is, first validate the command
-    // ! If the command was invalid, the secondary could have just figured that out with initiating extra communication
-
-    // ! maybe check if we should be doing this in this order, mabye just fire the command from the beginning
-
     // find index of \b to extract row from inputs
     auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
     // \b not found in index
@@ -418,18 +414,11 @@ void KVSClient::putv(std::vector<char> &inputs)
     // log command and args
     kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
 
-    // ! we've performed basic validation on the command
-
     // retrieve tablet and put value for row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->put_value(row, col, val);
 
     // send response msg to client (+OK)
-    // note that the client could be the primary that told the secondary to ini
-    // The client can be one of three groups
-    // 1. The secondary that forwarded the command
-    // 2. The frontend server that send the command
-    // 3. The primary that asked the write to be completed
     send_response(response_msg);
 }
 
