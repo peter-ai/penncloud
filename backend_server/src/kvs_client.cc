@@ -258,10 +258,9 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     for (int secondary_port : BackendServer::secondary_ports)
     {
         // open connection to each secondary, store fd, and write operation to secondary
-        int secondary_fd = BeUtils::open_connection(secondary_port);
+        BeUtils::open_connection(secondary_port, BackendServer::server_sock_fd);
         // ! perform error check for writes
-        BeUtils::write(secondary_fd, inputs);
-        close(secondary_fd);
+        BeUtils::write(BackendServer::server_sock_fd, inputs);
     }
 
     return 0;
@@ -346,16 +345,15 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
 std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
     // open connection with primary and forward operation to primary
-    int primary_fd = BeUtils::open_connection(BackendServer::primary_port);
-    BeUtils::write(primary_fd, inputs);
+    BeUtils::open_connection(BackendServer::primary_port, BackendServer::server_sock_fd);
+    BeUtils::write(BackendServer::server_sock_fd, inputs);
 
     // wait for primary to respond
     // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
     // ! This could happen if the primary dies while performing the operation
     kvs_client_logger.log("Waiting for response from primary", 20);
-    std::vector<char> primary_res = BeUtils::read(primary_fd);
+    std::vector<char> primary_res = BeUtils::read(BackendServer::server_sock_fd);
     kvs_client_logger.log("Received response from primary - sending response to client", 20);
-    close(primary_fd);
     return primary_res;
 }
 
@@ -417,8 +415,7 @@ std::vector<char> KVSClient::getv(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to GETV(R,C) - delimiter after row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string row = getv_args.substr(0, col_index);
     std::string col = getv_args.substr(col_index + 1);
@@ -471,8 +468,7 @@ std::vector<char> KVSClient::putv(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string row(inputs.begin(), row_end);
 
@@ -485,8 +481,7 @@ std::vector<char> KVSClient::putv(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string col(row_end + 1, col_end);
 
@@ -513,8 +508,7 @@ std::vector<char> KVSClient::cput(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string row(inputs.begin(), row_end);
 
@@ -527,8 +521,7 @@ std::vector<char> KVSClient::cput(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string col(row_end + 1, col_end);
 
@@ -586,8 +579,7 @@ std::vector<char> KVSClient::delv(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to DELV(R,C) - delimiter after row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string row = delv_args.substr(0, col_index);
     std::string col = delv_args.substr(col_index + 1);

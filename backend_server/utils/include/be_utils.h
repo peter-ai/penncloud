@@ -6,8 +6,8 @@
 
 namespace BeUtils
 {
-    // Create a socket and open a connection to the specified port. Returns a file descriptor.
-    int open_connection(int port);
+    // Open a connection to the specified port
+    int open_connection(int port, int fd);
 
     // Coordinator and other communication is separate because coordinator uses \r\n as delimiter in communication
 
@@ -18,9 +18,9 @@ namespace BeUtils
 
     // Coordinator communication
     // Write message to coordinator
-    int write_to_coord(std::string &msg);
+    int write_to_coord(int fd, std::string &msg);
     // Read message from coordinator
-    std::string read_from_coord();
+    std::string read_from_coord(int fd);
 
     // host number <-> network vector conversion
     std::vector<uint8_t> host_num_to_network_vector(uint32_t num);

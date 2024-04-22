@@ -6,46 +6,50 @@
 #include "../../utils/include/utils.h"
 #include "../../include/backend_server.h"
 
-// Initialize logger with info about start and end of key range
 Logger be_utils_logger = Logger("BE Utils");
 
-int BeUtils::open_connection(int port)
+int BeUtils::open_connection(int port, int fd)
 {
-    // Create socket to speak to port
-    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock_fd == -1)
-    {
-        be_utils_logger.log("Unable to create socket for communication", 40);
-        return -1;
-    }
+    be_utils_logger.log("Opening connection with port " + std::to_string(port), 20);
 
-    // set up address struct
+    // // Create socket to speak to port
+    // int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    // if (sock_fd == -1)
+    // {
+    //     be_utils_logger.log("Unable to create socket for communication", 40);
+    //     return -1;
+    // }
+
+    // set up address struct for destination
     sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    std::string address = "127.0.0.1";
-    inet_pton(AF_INET, address.c_str(), &addr.sin_addr);
-
-    // Connect to port
-    if (connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+    std::string ip = "127.0.0.1";
+    if (inet_pton(AF_INET, ip.c_str(), &addr.sin_addr) != 1)
     {
-        be_utils_logger.log("Unable to establish connection", 40);
-        close(sock_fd);
+        be_utils_logger.log("Invalid remote IP address", 40);
         return -1;
     }
-    return sock_fd;
+
+    // Connect to port
+    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+    {
+        be_utils_logger.log("Unable to establish connection", 40);
+        return -1;
+    }
+    return 0;
 }
 
 /**
  * COORDINATOR COMMUNICATION
  */
 
-int BeUtils::write_to_coord(std::string &msg)
+int BeUtils::write_to_coord(int fd, std::string &msg)
 {
     // append delimiter to end of coordinator msg
     msg += "\r\n";
     // send msg to coordinator
-    int bytes_sent = send(BackendServer::coord_sock_fd, (char *)msg.c_str(), msg.length(), 0);
+    int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
     while (bytes_sent != msg.length())
     {
         if (bytes_sent < 0)
@@ -53,12 +57,12 @@ int BeUtils::write_to_coord(std::string &msg)
             be_utils_logger.log("Unable to send message to coordinator", 40);
             return -1;
         }
-        bytes_sent += send(BackendServer::coord_sock_fd, (char *)msg.c_str(), msg.length(), 0);
+        bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
     }
     return 0;
 }
 
-std::string BeUtils::read_from_coord()
+std::string BeUtils::read_from_coord(int fd)
 {
     // read from fd
     std::string response;
@@ -67,7 +71,7 @@ std::string BeUtils::read_from_coord()
     while (true)
     {
         char buf[1024]; // size of buffer for CURRENT read
-        bytes_recvd = recv(BackendServer::coord_sock_fd, buf, sizeof(buf), 0);
+        bytes_recvd = recv(fd, buf, sizeof(buf), 0);
 
         // error while reading from coordinator
         if (bytes_recvd < 0)
@@ -107,7 +111,7 @@ std::string BeUtils::read_from_coord()
  */
 
 // ! add error checks in here
-int BeUtils::write(const int fd, std::vector<char> &msg)
+int BeUtils::write(int fd, std::vector<char> &msg)
 {
     // set size of message in first 4 bytes of vector
     // convert to network order and interpret msg_size as bytes
@@ -127,7 +131,7 @@ int BeUtils::write(const int fd, std::vector<char> &msg)
 }
 
 // ! add error checks in here
-std::vector<char> BeUtils::read(const int fd)
+std::vector<char> BeUtils::read(int fd)
 {
     std::vector<char> byte_stream;
     uint32_t bytes_left = 0;

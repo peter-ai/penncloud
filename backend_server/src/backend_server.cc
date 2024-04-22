@@ -21,7 +21,6 @@ std::atomic<bool> BackendServer::is_primary(false);
 int BackendServer::primary_port = 0;
 std::vector<int> BackendServer::secondary_ports;
 int BackendServer::server_sock_fd = -1;
-int BackendServer::coord_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 std::atomic<int> BackendServer::seq_num(0);
 std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::holdback_operations;
@@ -38,7 +37,6 @@ void BackendServer::run()
         be_logger.log("Failed to initialize server. Exiting.", 40);
         return;
     }
-    be_logger.log("Backend server bound on port " + std::to_string(BackendServer::port), 20);
 
     // // initialize server's state from coordinator
     // if (initialize_state_from_coordinator() < 0)
@@ -83,10 +81,11 @@ int BackendServer::bind_server_socket()
     }
 
     // bind server socket to server's port
-    struct sockaddr_in server_addr;
+    sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = htons(INADDR_ANY);
+    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     int opt = 1;
     if ((setsockopt(BackendServer::server_sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
@@ -109,6 +108,8 @@ int BackendServer::bind_server_socket()
         be_logger.log("Unable to listen for client connections.", 40);
         return -1;
     }
+
+    be_logger.log("Backend server bound on port " + std::to_string(BackendServer::port), 20);
     return 0;
 }
 
@@ -117,9 +118,8 @@ int BackendServer::initialize_state_from_coordinator()
     // talk to coordinator to get server assignment (primary/secondary) and key range
     be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
 
-    // create socket for coordinator communication
-    coord_sock_fd = BeUtils::open_connection(coord_port);
-    if (coord_sock_fd < 0)
+    // open connection with coordinator
+    if (BeUtils::open_connection(coord_port, BackendServer::server_sock_fd) < 0)
     {
         be_logger.log("Failed to open connection with coordinator. Exiting", 40);
         return -1;
@@ -127,13 +127,13 @@ int BackendServer::initialize_state_from_coordinator()
 
     // send initialization message to coordinator to inform coordinator that this server is starting up
     std::string msg = "INIT";
-    if (BeUtils::write_to_coord(msg) < 0)
+    if (BeUtils::write_to_coord(BackendServer::server_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
         return -1;
     }
 
-    std::string coord_response = BeUtils::read_from_coord();
+    std::string coord_response = BeUtils::read_from_coord(BackendServer::server_sock_fd);
     // coordinator didn't send back a full response (\r\n at the end)
     if (coord_response.empty())
     {
@@ -230,14 +230,15 @@ void BackendServer::initialize_tablets()
     }
 }
 
-void ping()
+// ! this might not work as expected
+void ping(int fd)
 {
     // Sleep for 1 seconds before sending first heartbeat
     std::this_thread::sleep_for(std::chrono::seconds(1));
     while (true)
     {
         std::string ping = "PING";
-        BeUtils::write_to_coord(ping);
+        BeUtils::write_to_coord(fd, ping);
 
         // Sleep for 5 seconds before sending subsequent heartbeat
         std::this_thread::sleep_for(std::chrono::seconds(1));
@@ -249,7 +250,7 @@ void BackendServer::send_coordinator_heartbeat()
     // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
     // // create and detach thread to ping coordinator
     // be_logger.log("Sending heartbeats to coordinator", 20);
-    // std::thread heartbeat_thread(ping);
+    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
     // heartbeat_thread.detach();
 }
 
@@ -258,7 +259,7 @@ void BackendServer::accept_and_handle_clients()
     be_logger.log("Backend server accepting clients on port " + std::to_string(BackendServer::port), 20);
     while (true)
     {
-        // accept client connection, which returns a fd for the client
+        // accept client connection, which returns a fd to communicate directly with the client
         int client_fd;
         struct sockaddr_in client_addr;
         socklen_t client_addr_size = sizeof(client_addr);
@@ -273,7 +274,6 @@ void BackendServer::accept_and_handle_clients()
         int client_port = ntohs(client_addr.sin_port);
         KVSClient kvs_client(client_fd, client_port);
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
-        be_logger.log("Client's fd is " + std::to_string(client_fd), 20);
 
         // launch thread to handle client
         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
