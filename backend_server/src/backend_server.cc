@@ -227,7 +227,6 @@ void ping()
     std::this_thread::sleep_for(std::chrono::seconds(1));
     while (true)
     {
-        be_logger.log("Sending heartbeat to coordinator", 20);
         std::string ping = "PING";
         BeUtils::write_to_coord(ping);
 
@@ -238,9 +237,11 @@ void ping()
 
 void BackendServer::send_coordinator_heartbeat()
 {
-    // create and detach thread to ping coordinator
-    std::thread heartbeat_thread(ping);
-    heartbeat_thread.detach();
+    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
+    // // create and detach thread to ping coordinator
+    // be_logger.log("Sending heartbeats to coordinator", 20);
+    // std::thread heartbeat_thread(ping);
+    // heartbeat_thread.detach();
 }
 
 void BackendServer::accept_and_handle_clients()
