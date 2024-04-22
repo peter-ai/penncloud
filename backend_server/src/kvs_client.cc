@@ -111,7 +111,8 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
             // ! if sending operation to primaries fails, then we should still send a response back to whoever initiated the command that the write failed
             return;
         }
-        call_write_command();
+        // secondaries successfully completed operation
+        call_write_command(command, client_stream);
     }
     // secondary server
     else
@@ -201,6 +202,7 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     // ! if so, you can complete the write yourself
 
     kvs_client_logger.log("All servers acknowledged operation - completing operation on primary", 20);
+    return 0;
 }
 
 // Poll secondaries and wait for acknowledgement from all secondaries (with timeout)
@@ -256,6 +258,10 @@ int KVSClient::wait_for_secondary_acks()
 
 void KVSClient::call_write_command(std::string command, std::vector<char> &inputs)
 {
+    // erase command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // call handler for command
     if (command == "putv")
     {
         putv(inputs);
