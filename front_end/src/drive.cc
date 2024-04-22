@@ -119,7 +119,7 @@ std::vector<char> format_folder_contents(std::vector<std::vector<char>> &vec)
 
     return output;
 }
-//3431416482696731938431374517029964808742144996087957558348317691
+// 3431416482696731938431374517029964808742144996087957558348317691
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // @PETER ADDED
@@ -319,20 +319,22 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                 // @PETER ADDED - reset cookies of user
                 FeUtils::set_cookies(res, username, sid);
-
                 res.append_body_str(page);
+
                 // res.append_body_bytes(formatted_content.data(), formatted_content.size());
 
                 // append header for content length
+                // @PETER ADDED - SET HEADERS
                 res.set_code(200);
+                res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+                res.set_header("Pragma", "no-cache");
+                res.set_header("Expires", "0");
             }
             else
             {
                 // @PETER ADDED
                 // set response status code
                 res.set_code(303);
-
-                FeUtils::expire_cookies(res, username, sid);
 
                 // set response headers / redirect to 400 error
                 res.set_header("Content-Type", "text/html");
