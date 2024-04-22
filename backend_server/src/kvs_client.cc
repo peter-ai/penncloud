@@ -109,7 +109,11 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
         // send operation to all secondaries
         if (send_operation_to_secondaries(client_stream) < 0)
         {
-            // ! if sending operation to primaries fails, then we should still send a response back to whoever initiated the command that the write failed
+            // log and send error message if secondaries failed to complete command
+            std::string err_msg = "-ER Replicas failed to complete write command";
+            kvs_client_logger.log(err_msg, 40);
+            std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+            send_response(res_bytes);
             return;
         }
         // secondaries successfully completed operation
@@ -182,15 +186,19 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
 
     // send operation to each secondary
     kvs_client_logger.log("Sending operation to all secondaries", 20);
-    for (int secondary : BackendServer::secondary_fds)
+    std::vector<int> secondary_fds;
+    for (int secondary_port : BackendServer::secondary_ports)
     {
-        BeUtils::write(secondary, inputs);
+        // open connection to each secondary, store fd, and write operation to secondary
+        int secondary_fd = BeUtils::open_connection(secondary_port);
+        secondary_fds.push_back(secondary_fd);
+        BeUtils::write(secondary_fd, inputs);
     }
 
     // wait for secondary to receive operation and send back confirmation that the operation was completed
     kvs_client_logger.log("Waiting for confirmation from secondaries", 20);
     // error occurred while waiting for secondary acknowledgement of operation
-    if (wait_for_secondary_acks() < 0)
+    if (wait_for_secondary_acks(secondary_fds) < 0)
     {
         kvs_client_logger.log("One or more secondaries did not send an ACK - command failed", 20);
         // ! how do we handle this situation? shouldn't we tell the secondaries to revert back?
@@ -203,19 +211,25 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     // ! read all of the file descriptors and ensure they were able to perform the put correctly
     // ! if so, you can complete the write yourself
 
+    // iterate all secondary fds and close them
+    for (int secondary_fd : secondary_fds)
+    {
+        close(secondary_fd);
+    }
+
     kvs_client_logger.log("All servers acknowledged operation - completing operation on primary", 20);
     return 0;
 }
 
 // Poll secondaries and wait for acknowledgement from all secondaries (with timeout)
 // ! double check this logic
-int KVSClient::wait_for_secondary_acks()
+int KVSClient::wait_for_secondary_acks(std::vector<int> &secondary_fds)
 {
     // create poll vector containing all secondary fds
-    std::vector<pollfd> poll_secondary_fds(BackendServer::secondary_fds.size());
+    std::vector<pollfd> poll_secondary_fds(secondary_fds.size());
     for (size_t i = 0; i < poll_secondary_fds.size(); i++)
     {
-        poll_secondary_fds[i].fd = BackendServer::secondary_fds[i];
+        poll_secondary_fds[i].fd = secondary_fds[i];
         poll_secondary_fds[i].events = POLLIN;
         poll_secondary_fds[i].revents = 0;
     }
@@ -261,12 +275,15 @@ int KVSClient::wait_for_secondary_acks()
 std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
     kvs_client_logger.log("Forwarding operation to primary", 20);
-    // forward operation to primary
-    BeUtils::write(BackendServer::primary_fd, inputs);
+    // open connection with primary and forward operation to primary
+    int primary_fd = BeUtils::open_connection(BackendServer::primary_port);
+    BeUtils::write(primary_fd, inputs);
+
     // wait for primary to respond
     // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
     // ! This could happen if the primary dies while performing the operation
-    std::vector<char> primary_res = BeUtils::read(BackendServer::primary_fd);
+    std::vector<char> primary_res = BeUtils::read(primary_fd);
+    close(primary_fd);
     return primary_res;
 }
 

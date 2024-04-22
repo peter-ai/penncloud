@@ -46,9 +46,6 @@ public:
     static std::atomic<bool> is_primary;     // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
     static int primary_port;                 // primary port (only useful is this server is a secondary)
     static std::vector<int> secondary_ports; // list of secondaries (only useful if this server is a primary)
-    static int primary_fd;                   // fd for communication with primary
-    // ! do we need to ensure secondary_ports and secondary_fds indices correspond? come back to this
-    static std::vector<int> secondary_fds; // fd for communication with secondary
 
     static int server_sock_fd; // bound server socket's fd
     static int coord_sock_fd;  // fd for communication with coordinator
@@ -68,12 +65,11 @@ private:
     // make default constructor private
     BackendServer() {}
 
-    static int bind_server_socket();                  // bind port to socket
-    static int initialize_state_from_coordinator();   // contact coordinator to get information
-    static int initialize_intergroup_communication(); // set up threads to talk to other servers in group
-    static void initialize_tablets();                 // initialize tablets on this server
-    static void send_coordinator_heartbeat();         // dispatch thread to send heartbeat to coordinator port
-    static void accept_and_handle_clients();          // main server loop to accept and handle clients
+    static int bind_server_socket();                // bind port to socket
+    static int initialize_state_from_coordinator(); // contact coordinator to get information
+    static void initialize_tablets();               // initialize tablets on this server
+    static void send_coordinator_heartbeat();       // dispatch thread to send heartbeat to coordinator port
+    static void accept_and_handle_clients();        // main server loop to accept and handle clients
 };
 
 #endif

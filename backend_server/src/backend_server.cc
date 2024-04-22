@@ -20,8 +20,6 @@ int BackendServer::num_tablets = 0;
 std::atomic<bool> BackendServer::is_primary(false);
 int BackendServer::primary_port = 0;
 std::vector<int> BackendServer::secondary_ports;
-int BackendServer::primary_fd = -1;
-std::vector<int> BackendServer::secondary_fds;
 int BackendServer::server_sock_fd = -1;
 int BackendServer::coord_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
@@ -51,7 +49,7 @@ void BackendServer::run()
     // ! DEFAULT VALUES TO SET UP KVS (above is commented out for now)
     is_primary = true;
     primary_port = 6001;
-    secondary_ports = {{6000}};
+    secondary_ports = {6000};
     range_start = "a";
     range_end = "z";
     // ! DEFAULT VALUES TO SET UP KVS
@@ -60,13 +58,6 @@ void BackendServer::run()
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
-
-    // create sockets to communicate with primaries/secondaries, depending on server responsibility
-    if (initialize_intergroup_communication() < 0)
-    {
-        be_logger.log("Failed to establish intergroup communication", 20);
-        return;
-    }
 
     initialize_tablets();         // initialize static tablets based on supplied key range
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
@@ -188,37 +179,6 @@ int BackendServer::initialize_state_from_coordinator()
         be_logger.log("SECONDARY AT 127.0.0.1:" + res_tokens.at(i), 20);
     }
 
-    return 0;
-}
-
-int BackendServer::initialize_intergroup_communication()
-{
-    // if server is primary, it needs to open a socket to communicate with each secondary
-    if (is_primary)
-    {
-        be_logger.log("Primary opening socket for communication with all secondaries", 20);
-        // iterate secondary ports and open connection with each one
-        for (int port : secondary_ports)
-        {
-            int secondary_fd = BeUtils::open_connection(port);
-            if (secondary_fd < 0)
-            {
-                return -1;
-            }
-            secondary_fds.push_back(secondary_fd);
-        }
-    }
-    // secondary just needs to open a connection with its primary
-    else
-    {
-        be_logger.log("Secondary opening socket for communication with primary", 20);
-        primary_fd = BeUtils::open_connection(port);
-        if (primary_fd < 0)
-        {
-            return -1;
-        }
-    }
-    be_logger.log("Successfully established intergroup communication", 20);
     return 0;
 }
 

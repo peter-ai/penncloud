@@ -23,7 +23,7 @@ int BeUtils::open_connection(int port)
     struct sockaddr_in addr;
     addr.sin_family = AF_INET;
     addr.sin_port = htons(port);
-    std::string address = "127.0.0.1:" + std::to_string(port);
+    std::string address = "127.0.0.1";
     inet_pton(AF_INET, address.c_str(), &addr.sin_addr);
 
     // Connect to port
