@@ -47,15 +47,15 @@ private:
     void send_response(std::vector<char> &response_msg);
 
     // read only methods
-    void getr(std::vector<char> &inputs);
-    void getv(std::vector<char> &inputs);
+    std::vector<char> getr(std::vector<char> &inputs);
+    std::vector<char> getv(std::vector<char> &inputs);
 
     // write methods
-    void call_write_command(std::string command, std::vector<char> &inputs);
-    void putv(std::vector<char> &inputs);
-    void cput(std::vector<char> &inputs);
-    void delr(std::vector<char> &inputs);
-    void delv(std::vector<char> &inputs);
+    std::vector<char> call_write_command(std::string command, std::vector<char> &inputs);
+    std::vector<char> putv(std::vector<char> &inputs);
+    std::vector<char> cput(std::vector<char> &inputs);
+    std::vector<char> delr(std::vector<char> &inputs);
+    std::vector<char> delv(std::vector<char> &inputs);
 };
 
 #endif

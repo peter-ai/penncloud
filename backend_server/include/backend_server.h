@@ -54,9 +54,10 @@ public:
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
 
     static std::atomic<int> seq_num; // write operation sequence number
-    // holdback queue (min heap) for secondary operation
-    static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> secondary_holdback_operations;
-
+    // holdback queue (min heap)
+    static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> holdback_operations;
+    static std::unordered_map<int, std::unordered_set<int>> msg_acks_recvd;  // map of seq num to secondaries that have sent an acknowledgement for that secondary
+    static std::unordered_map<int, std::unordered_set<int>> original_sender; // map of seq num to original secondary that sent it
     // methods
 public:
     static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)

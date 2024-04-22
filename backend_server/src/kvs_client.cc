@@ -89,12 +89,14 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     // These can be performed by any server - call command handler directly, send response back to client, and return
     if (command == "getr")
     {
-        getr(client_stream);
+        std::vector<char> read_res = getr(client_stream);
+        send_response(read_res);
         return;
     }
     else if (command == "getv")
     {
-        getv(client_stream);
+        std::vector<char> read_res = getv(client_stream);
+        send_response(read_res);
         return;
     }
 
@@ -104,19 +106,54 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     // primary server
     if (BackendServer::is_primary)
     {
+        // if the operation is a secn or secy, it should update which server it received the acknowledgement from
+        // ! assuming only secy for now
+        if (command == "secy" || command == "secn")
+        {
+            // erase command from start of client stream
+            client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
+            // extract sequence number from secondary
+            int cmd_seq_num = BeUtils::network_vector_to_host_num(client_stream);
+            // insert port of secondary that sent acknowledgement
+            BackendServer::msg_acks_recvd.at(cmd_seq_num).insert(client_port);
+
+            // check if the message at the front of the holdback queue has as many acknowledgements as there are secondaries
+            HoldbackOperation next_operation = BackendServer::holdback_operations.top();
+            while (BackendServer::msg_acks_recvd.at(next_operation.seq_num).size() == BackendServer::secondary_ports.size())
+            {
+                // pop this operation from secondary_holdback_operations
+                BackendServer::holdback_operations.pop();
+                // erase seq number acknowledgements from map
+                BackendServer::msg_acks_recvd.erase(next_operation.seq_num);
+                // extract command from first 4 bytes
+                std::string operation_cmd(next_operation.msg.begin(), next_operation.msg.begin() + 4);
+                // convert command to lowercase to standardize command
+                operation_cmd = Utils::to_lowercase(operation_cmd);
+                // perform write operation on primary server
+                std::vector<char> response_msg = call_write_command(operation_cmd, next_operation.msg);
+                // TODO this won't work - response will just go to last secondary that sent the response
+                send_response(response_msg);
+                // exit if no more operations left in holdback queue
+                if (BackendServer::holdback_operations.size() == 0)
+                {
+                    break;
+                }
+                next_operation = BackendServer::holdback_operations.top();
+            }
+            return;
+        }
+
         // send operation to all secondaries
         kvs_client_logger.log("Received " + command + " - sending operation to secondaries", 20);
         if (send_operation_to_secondaries(client_stream) < 0)
         {
-            // log and send error message if secondaries failed to complete command
-            std::string err_msg = "-ER Replicas failed to complete write command";
+            // log and send error message if failure occurred while sending operation to secondaries
+            std::string err_msg = "-ER Failed to send operation to all secondaries";
             kvs_client_logger.log(err_msg, 40);
             std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
             send_response(res_bytes);
             return;
         }
-        // secondaries successfully completed operation
-        call_write_command(command, client_stream);
     }
     // secondary server
     else
@@ -137,14 +174,14 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
             HoldbackOperation operation;
             operation.seq_num = operation_seq_num;
             operation.msg = client_stream;
-            BackendServer::secondary_holdback_operations.push(operation);
+            BackendServer::holdback_operations.push(operation);
 
             // iterate holdback queue and figure out if the command at the front is the command you want to perform next (1 + seq_num)
-            HoldbackOperation next_operation = BackendServer::secondary_holdback_operations.top();
+            HoldbackOperation next_operation = BackendServer::holdback_operations.top();
             while (next_operation.seq_num == BackendServer::seq_num + 1)
             {
                 // pop this operation from secondary_holdback_operations
-                BackendServer::secondary_holdback_operations.pop();
+                BackendServer::holdback_operations.pop();
                 // increment sequence number on secondary
                 BackendServer::seq_num += 1;
                 // extract command from first 4 bytes
@@ -152,13 +189,33 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
                 // convert command to lowercase to standardize command
                 operation_cmd = Utils::to_lowercase(operation_cmd);
                 // perform write operation on secondary server
-                call_write_command(operation_cmd, next_operation.msg);
+                std::vector<char> response_msg = call_write_command(operation_cmd, next_operation.msg);
+
+                // ! if the operation was successful, send SECY, otherwise send SECN
+                std::vector<char> primary_res_msg;
+                if (response_msg.front() == '+')
+                {
+                    std::string success_cmd = "SECY ";
+                    primary_res_msg.insert(primary_res_msg.begin(), success_cmd.begin(), success_cmd.end());
+                }
+                else
+                {
+                    std::string err_cmd = "SECN ";
+                    primary_res_msg.insert(primary_res_msg.begin(), err_cmd.begin(), err_cmd.end());
+                }
+                // insert sequence number at the end of the command so the primary knows which operation it received an acknowledgement for
+                std::vector<uint8_t> msg_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+                primary_res_msg.insert(primary_res_msg.end(), msg_seq_num.begin(), msg_seq_num.end());
+                // send response back to client (primary who initiated request)
+                std::vector<uint8_t> res_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+                send_response(primary_res_msg);
+
                 // exit if no more operations left in holdback queue
-                if (BackendServer::secondary_holdback_operations.size() == 0)
+                if (BackendServer::holdback_operations.size() == 0)
                 {
                     break;
                 }
-                next_operation = BackendServer::secondary_holdback_operations.top();
+                next_operation = BackendServer::holdback_operations.top();
             }
         }
         // operation was sent by a non-primary server - forward to primary
@@ -174,6 +231,7 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     }
 }
 
+// ! check this logic below again about passing by ref vs value
 // Note that inputs is NOT passed by reference because a copy of inputs is needed
 // a copy is necessary because the inputs passed in will be used by the primary to perform the command after confirmation that all secondaries are done
 // if we take a reference and modify it, it'll modify the data that primary will use to perform the command after
@@ -181,6 +239,12 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
 {
     // Primary increments write sequence number on its server before sending message to all secondaries
     BackendServer::seq_num += 1;
+
+    // place operation in your holdback queue to complete after all secondaries respond
+    HoldbackOperation operation;
+    operation.seq_num = BackendServer::seq_num;
+    operation.msg = inputs;
+    BackendServer::holdback_operations.push(operation);
 
     // convert seq number to vector and append to inputs
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
@@ -191,91 +255,93 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     inputs.insert(inputs.begin(), primary_cmd.begin(), primary_cmd.end());
 
     // send operation to each secondary
-    std::vector<int> secondary_fds;
     for (int secondary_port : BackendServer::secondary_ports)
     {
         // open connection to each secondary, store fd, and write operation to secondary
         int secondary_fd = BeUtils::open_connection(secondary_port);
-        secondary_fds.push_back(secondary_fd);
+        // ! perform error check for writes
         BeUtils::write(secondary_fd, inputs);
-    }
-
-    // wait for secondary to receive operation and send back confirmation that the operation was completed
-    kvs_client_logger.log("Waiting for confirmation from secondaries", 20);
-    // error occurred while waiting for secondary acknowledgement of operation
-    if (wait_for_secondary_acks(secondary_fds) < 0)
-    {
-        kvs_client_logger.log("One or more secondaries did not send an ACK - command failed", 20);
-        // ! how do we handle this situation? shouldn't we tell the secondaries to revert back?
-        // ! or should we get all the acks, then respond with ok to actually finish the write?
-        // ! maybe add another error message here
-        return -1;
-    }
-
-    // all acks received
-    // ! read all of the file descriptors and ensure they were able to perform the put correctly
-    // ! if so, you can complete the write yourself
-
-    // iterate all secondary fds and close them
-    for (int secondary_fd : secondary_fds)
-    {
         close(secondary_fd);
     }
 
-    kvs_client_logger.log("All servers acknowledged operation - completing operation on primary", 20);
     return 0;
+
+    // // wait for secondary to receive operation and send back confirmation that the operation was completed
+    // kvs_client_logger.log("Waiting for confirmation from secondaries", 20);
+    // // error occurred while waiting for secondary acknowledgement of operation
+    // if (wait_for_secondary_acks(secondary_fds) < 0)
+    // {
+    //     kvs_client_logger.log("One or more secondaries did not send an ACK - command failed", 20);
+    //     // ! how do we handle this situation? shouldn't we tell the secondaries to revert back?
+    //     // ! or should we get all the acks, then respond with ok to actually finish the write?
+    //     // ! maybe add another error message here
+    //     return -1;
+    // }
+
+    // // all acks received
+    // // ! read all of the file descriptors and ensure they were able to perform the put correctly
+    // // ! if so, you can complete the write yourself
+
+    // // iterate all secondary fds and close them
+    // for (int secondary_fd : secondary_fds)
+    // {
+    //     close(secondary_fd);
+    // }
+
+    // kvs_client_logger.log("All servers acknowledged operation - completing operation on primary", 20);
+    // return 0;
 }
 
-// Poll secondaries and wait for acknowledgement from all secondaries (with timeout)
-// ! double check this logic
-int KVSClient::wait_for_secondary_acks(std::vector<int> &secondary_fds)
-{
-    // create poll vector containing all secondary fds
-    std::vector<pollfd> poll_secondary_fds(secondary_fds.size());
-    for (size_t i = 0; i < poll_secondary_fds.size(); i++)
-    {
-        poll_secondary_fds[i].fd = secondary_fds[i];
-        poll_secondary_fds[i].events = POLLIN;
-        poll_secondary_fds[i].revents = 0;
-    }
+// // Poll secondaries and wait for acknowledgement from all secondaries (with timeout)
+// // ! double check this logic
+// int KVSClient::wait_for_secondary_acks(std::vector<int> &secondary_fds)
+// {
+//     // create poll vector containing all secondary fds
+//     std::vector<pollfd> poll_secondary_fds(secondary_fds.size());
+//     for (size_t i = 0; i < poll_secondary_fds.size(); i++)
+//     {
+//         poll_secondary_fds[i].fd = secondary_fds[i];
+//         poll_secondary_fds[i].events = POLLIN;
+//         poll_secondary_fds[i].revents = 0;
+//     }
 
-    // wait a total of 2 seconds for secondaries to respond
-    int timeout_ms = 2000;
-    // track start time and current time
-    struct timespec start_time;
-    struct timespec current_time;
-    clock_gettime(CLOCK_MONOTONIC, &start_time);
+//     // wait a total of 2 seconds for secondaries to respond
+//     int timeout_ms = 2000;
+//     // track start time and current time
+//     struct timespec start_time;
+//     struct timespec current_time;
+//     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
-    // loop until time runs out or all secondaries have responded
-    size_t total_ready = 0;
-    while (true)
-    {
-        // Calculate elapsed time since start
-        clock_gettime(CLOCK_MONOTONIC, &current_time);
-        int elapsed_ms = (current_time.tv_sec - start_time.tv_sec) * 1000 +
-                         (current_time.tv_nsec - start_time.tv_nsec) / 1000000;
+//     // loop until time runs out or all secondaries have responded
+//     size_t total_ready = 0;
+//     while (true)
+//     {
+//         // Calculate elapsed time since start
+//         clock_gettime(CLOCK_MONOTONIC, &current_time);
+//         int elapsed_ms = (current_time.tv_sec - start_time.tv_sec) * 1000 +
+//                          (current_time.tv_nsec - start_time.tv_nsec) / 1000000;
 
-        // Poll to wait for events on secondary file descriptors with updated timeout
-        int num_ready = poll(poll_secondary_fds.data(), poll_secondary_fds.size(), timeout_ms - elapsed_ms);
+//         // Poll to wait for events on secondary file descriptors with updated timeout
+//         int num_ready = poll(poll_secondary_fds.data(), poll_secondary_fds.size(), timeout_ms - elapsed_ms);
 
-        // file descriptors ready, add the number that were ready for reading on this iteration
-        if (num_ready > 0)
-        {
-            // update total ready by the number ready to read on this iteration
-            total_ready += num_ready;
-            // check if all fds are ready to read from
-            if (total_ready == poll_secondary_fds.size())
-            {
-                return 0;
-            }
-        }
-        // Either timeout occurred, or error occurred while polling - failure in both cases
-        else
-        {
-            return -1;
-        }
-    }
-}
+//         // file descriptors ready, add the number that were ready for reading on this iteration
+//         if (num_ready > 0)
+//         {
+//             // update total ready by the number ready to read on this iteration
+//             total_ready += num_ready;
+//             // check if all fds are ready to read from
+//             if (total_ready == poll_secondary_fds.size())
+//             {
+//                 return 0;
+//             }
+//         }
+//         // Either timeout occurred, or error occurred while polling - failure in both cases
+//         else
+//         {
+//             return -1;
+//         }
+//     }
+// }
 
 std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
@@ -319,7 +385,7 @@ void KVSClient::send_response(std::vector<char> &response_msg)
  * READ-ONLY COMMANDS
  */
 
-void KVSClient::getr(std::vector<char> &inputs)
+std::vector<char> KVSClient::getr(std::vector<char> &inputs)
 {
     // erase command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
@@ -332,15 +398,10 @@ void KVSClient::getr(std::vector<char> &inputs)
     // retrieve tablet and read row
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_row(row);
-
-    // log client response since all values are string values
-    kvs_client_logger.log("GETR Response - " + std::string(response_msg.begin(), response_msg.end()), 20);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::getv(std::vector<char> &inputs)
+std::vector<char> KVSClient::getv(std::vector<char> &inputs)
 {
     // erase command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
@@ -368,16 +429,14 @@ void KVSClient::getv(std::vector<char> &inputs)
     // retrieve tablet and read value from row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_value(row, col);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
 /**
  * WRITE COMMANDS
  */
 
-void KVSClient::call_write_command(std::string command, std::vector<char> &inputs)
+std::vector<char> KVSClient::call_write_command(std::string command, std::vector<char> &inputs)
 {
     // erase command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
@@ -385,23 +444,23 @@ void KVSClient::call_write_command(std::string command, std::vector<char> &input
     // call handler for command
     if (command == "putv")
     {
-        putv(inputs);
+        return putv(inputs);
     }
     else if (command == "cput")
     {
-        cput(inputs);
+        return cput(inputs);
     }
     else if (command == "delr")
     {
-        delr(inputs);
+        return delr(inputs);
     }
     else if (command == "delv")
     {
-        delv(inputs);
+        return delv(inputs);
     }
 }
 
-void KVSClient::putv(std::vector<char> &inputs)
+std::vector<char> KVSClient::putv(std::vector<char> &inputs)
 {
     // find index of \b to extract row from inputs
     auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
@@ -440,12 +499,10 @@ void KVSClient::putv(std::vector<char> &inputs)
     // retrieve tablet and put value for row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->put_value(row, col, val);
-
-    // send response msg to client (+OK)
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::cput(std::vector<char> &inputs)
+std::vector<char> KVSClient::cput(std::vector<char> &inputs)
 {
     // find index of \b to extract row from inputs
     auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
@@ -500,12 +557,10 @@ void KVSClient::cput(std::vector<char> &inputs)
     // retrieve tablet and call CPUT on tablet
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->cond_put_value(row, col, val1, val2);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::delr(std::vector<char> &inputs)
+std::vector<char> KVSClient::delr(std::vector<char> &inputs)
 {
     // extract row as string from inputs
     std::string row(inputs.begin(), inputs.end());
@@ -515,12 +570,10 @@ void KVSClient::delr(std::vector<char> &inputs)
     // retrieve tablet and delete row
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->delete_row(row);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::delv(std::vector<char> &inputs)
+std::vector<char> KVSClient::delv(std::vector<char> &inputs)
 {
     // convert vector to string since row and column are string-compatible values and split on delimiter
     std::string delv_args(inputs.begin(), inputs.end());
@@ -545,7 +598,5 @@ void KVSClient::delv(std::vector<char> &inputs)
     // retrieve tablet and delete value from row and col combination
     std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->delete_value(row, col);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }

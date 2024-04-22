@@ -10,7 +10,7 @@ Logger be_logger = Logger("Backend server");
 
 // initialize constant members
 const int BackendServer::coord_port = 4999;
-const std::unordered_set<std::string> BackendServer::commands{{"getr", "getv", "putv", "cput", "delr", "delv", "pwrt"}};
+const std::unordered_set<std::string> BackendServer::commands{{"getr", "getv", "putv", "cput", "delr", "delv", "pwrt", "secy", "secn"}};
 
 // initialize static members to default values
 int BackendServer::port = 0;
@@ -24,7 +24,8 @@ int BackendServer::server_sock_fd = -1;
 int BackendServer::coord_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 std::atomic<int> BackendServer::seq_num(0);
-std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::secondary_holdback_operations;
+std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::holdback_operations;
+std::unordered_map<int, std::unordered_set<int>> BackendServer::msg_acks_recvd;
 
 void BackendServer::run()
 {
