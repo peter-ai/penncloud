@@ -248,6 +248,8 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void home_handler(const HttpRequest &req, HttpResponse &res)
 {
+    Logger logger("Home");
+    logger.log("Resource Requested!", LOGGER_DEBUG);
     // get cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
     if (cookies.count("user") && cookies.count("sid"))
@@ -353,6 +355,9 @@ void home_handler(const HttpRequest &req, HttpResponse &res)
             "</html>";
         res.set_code(200);
         res.append_body_str(page);
+        res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.set_header("Pragma", "no-cache");
+        res.set_header("Expires", "0");
     }
     // unauthorized
     else
@@ -486,6 +491,10 @@ void account_handler(const HttpRequest &req, HttpResponse &res)
 
         res.set_code(200);
         res.append_body_str(page);
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.set_header("Pragma", "no-cache");
+        res.set_header("Expires", "0");
     }
     // unauthorized
     else
@@ -629,6 +638,10 @@ void update_password_success_handler(const HttpRequest &req, HttpResponse &res)
 
         res.set_code(200);
         res.append_body_str(page);
+        res.set_header("Content-Type", "text/html");
+        res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.set_header("Pragma", "no-cache");
+        res.set_header("Expires", "0");
     }
     // unauthorized
     else
@@ -735,6 +748,7 @@ void error_409_handler(const HttpRequest &req, HttpResponse &res)
         "</html>";
     res.set_code(409);
     res.append_body_str(page);
+    res.set_header("Content-Type", "text/html");
 }
 
 /// @brief 401 unauthorized page
@@ -834,6 +848,7 @@ void error_401_handler(const HttpRequest &req, HttpResponse &res)
         "</html>";
     res.set_code(401);
     res.append_body_str(page);
+    res.set_header("Content-Type", "text/html");
 }
 
 /// @brief 400 bad request page
@@ -933,6 +948,7 @@ void error_400_handler(const HttpRequest &req, HttpResponse &res)
         "</html>";
     res.set_code(400);
     res.append_body_str(page);
+    res.set_header("Content-Type", "text/html");
 }
 
 /// @brief handles logout requests on /api/logout route
@@ -994,7 +1010,6 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
         res.set_code(303);
 
         // set response headers
-        res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/login.html");
 
         // close socket for KVS server
@@ -1007,7 +1022,6 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
         res.set_code(303);
 
         // set response headers
-        res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/401"); // unathorized
     }
 }
@@ -1094,7 +1108,6 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
             res.set_code(303);
 
             // set response headers
-            res.set_header("Content-Type", "text/html");
             res.set_header("Location", "/401");
         }
 
@@ -1106,7 +1119,6 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
         res.set_code(303);
 
         // set response headers
-        res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/401");
     }
 }
