@@ -59,6 +59,14 @@ void BackendServer::run()
         : be_logger.log("Server type [SECONDARY]", 20);
     be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
 
+    be_logger.log("Group primary at " + std::to_string(primary_port), 20);
+    std::string secondaries;
+    for (int secondary_port : secondary_ports)
+    {
+        secondaries += std::to_string(secondary_port) + " ";
+    }
+    be_logger.log("Group secondaries at " + secondaries, 20);
+
     initialize_tablets();         // initialize static tablets based on supplied key range
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
     accept_and_handle_clients();  // run main server loop to accept client connections
@@ -264,6 +272,7 @@ void BackendServer::accept_and_handle_clients()
         int client_port = ntohs(client_addr.sin_port);
         KVSClient kvs_client(client_fd, client_port);
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
+        be_logger.log("Client's fd is " + std::to_string(client_fd), 20);
 
         // launch thread to handle client
         std::thread client_thread(&KVSClient::read_from_network, &kvs_client);

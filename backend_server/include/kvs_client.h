@@ -16,11 +16,13 @@ class KVSClient
 private:
     int client_fd;   // client's bound fd
     int client_port; // client's port
+    Logger kvs_client_logger;
 
     // methods
 public:
     // client initialized with an associated file descriptor and client's port
-    KVSClient(int client_fd, int client_port) : client_fd(client_fd), client_port(client_port){};
+    KVSClient(int client_fd, int client_port) : client_fd(client_fd), client_port(client_port),
+                                                kvs_client_logger("KVS Client [" + std::to_string(client_port) + "]"){};
     // disable default constructor - Client should only be created with an associated fd
     KVSClient() = delete;
 

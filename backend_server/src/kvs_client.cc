@@ -4,8 +4,6 @@
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
 
-Logger kvs_client_logger("KVS Client");
-
 void KVSClient::read_from_network()
 {
     std::vector<char> client_stream;
@@ -23,7 +21,7 @@ void KVSClient::read_from_network()
         }
         else if (bytes_recvd == 0)
         {
-            kvs_client_logger.log("Client closed connection", 30);
+            kvs_client_logger.log("Client closed connection", 20);
             break;
         }
 
@@ -71,13 +69,13 @@ void KVSClient::read_from_network()
 
 void KVSClient::handle_command(std::vector<char> &client_stream)
 {
-    // extract command from first 4 bytes, erase first 5 bytes to remove delimiter after command, and convert command to lowercase
+    // extract command from first 4 bytes and convert command to lowercase
     std::string command(client_stream.begin(), client_stream.begin() + 4);
     // client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
     command = Utils::to_lowercase(command);
 
     // validate command sent by client
-    if (BackendServer::commands.count(command) > 0)
+    if (BackendServer::commands.count(command) == 0)
     {
         kvs_client_logger.log("Unsupported command", 40);
         // send error response msg
@@ -107,6 +105,7 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     if (BackendServer::is_primary)
     {
         // send operation to all secondaries
+        kvs_client_logger.log("Received " + command + " - sending operation to secondaries", 20);
         if (send_operation_to_secondaries(client_stream) < 0)
         {
             // log and send error message if secondaries failed to complete command
@@ -122,20 +121,15 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     // secondary server
     else
     {
-        // client is a frontend server - forward the command to the primary
-        if (client_port != BackendServer::primary_port)
-        {
-            // forward operation to primary and wait for primary's response
-            std::vector<char> primary_res = forward_operation_to_primary(client_stream);
-            // send response back to client that initiated request
-            send_response(primary_res);
-            return;
-        }
-
         // Primary sent request asking secondary to perform write operation on secondary
         if (command == "pwrt")
         {
-            // extract sequence number
+            kvs_client_logger.log("Primary requested write", 20);
+
+            // erase command from beginning of inputs
+            client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
+
+            // extract sequence number and erase from stream
             uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(client_stream);
             client_stream.erase(client_stream.begin(), client_stream.begin() + 4);
 
@@ -155,15 +149,27 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
                 BackendServer::seq_num += 1;
                 // extract command from first 4 bytes
                 std::string operation_cmd(next_operation.msg.begin(), next_operation.msg.begin() + 4);
-                // remove first 5 bytes to remove delimiter after command
-                next_operation.msg.erase(next_operation.msg.begin(), next_operation.msg.begin() + 5);
                 // convert command to lowercase to standardize command
                 operation_cmd = Utils::to_lowercase(operation_cmd);
                 // perform write operation on secondary server
                 call_write_command(operation_cmd, next_operation.msg);
-                // get next operation in holdback queue
+                // exit if no more operations left in holdback queue
+                if (BackendServer::secondary_holdback_operations.size() == 0)
+                {
+                    break;
+                }
                 next_operation = BackendServer::secondary_holdback_operations.top();
             }
+        }
+        // operation was sent by a non-primary server - forward to primary
+        else
+        {
+            // forward operation to primary and wait for primary's response
+            kvs_client_logger.log("Received " + command + " - forwarding operation to primary", 20);
+            std::vector<char> primary_res = forward_operation_to_primary(client_stream);
+            // send response back to client that initiated request
+            send_response(primary_res);
+            return;
         }
     }
 }
@@ -185,7 +191,6 @@ int KVSClient::send_operation_to_secondaries(std::vector<char> inputs)
     inputs.insert(inputs.begin(), primary_cmd.begin(), primary_cmd.end());
 
     // send operation to each secondary
-    kvs_client_logger.log("Sending operation to all secondaries", 20);
     std::vector<int> secondary_fds;
     for (int secondary_port : BackendServer::secondary_ports)
     {
@@ -274,7 +279,6 @@ int KVSClient::wait_for_secondary_acks(std::vector<int> &secondary_fds)
 
 std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
-    kvs_client_logger.log("Forwarding operation to primary", 20);
     // open connection with primary and forward operation to primary
     int primary_fd = BeUtils::open_connection(BackendServer::primary_port);
     BeUtils::write(primary_fd, inputs);
@@ -282,7 +286,9 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
     // wait for primary to respond
     // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
     // ! This could happen if the primary dies while performing the operation
+    kvs_client_logger.log("Waiting for response from primary", 20);
     std::vector<char> primary_res = BeUtils::read(primary_fd);
+    kvs_client_logger.log("Received response from primary - sending response to client", 20);
     close(primary_fd);
     return primary_res;
 }
