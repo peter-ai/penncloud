@@ -81,7 +81,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         // write operation forwarded from a server
         if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
         {
-            initiate_two_phase_commit(byte_stream);
+            execute_two_phase_commit(byte_stream);
         }
     }
     // secondary server
@@ -107,24 +107,89 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
  */
 
 // @brief Coordinates 2PC for client that requested a write operation
-void KVSGroupServer::initiate_two_phase_commit(std::vector<char> &inputs)
+void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 {
-    // Primary received a write command
-    // It should increment the sequence number,
-    // construct a PREP command,
-    // open a connection with all secondaries
-    // poll and wait 3 seconds for a response
-    // continue to next step
-
     // Increments write sequence number on primary for operation
     // ! need to be careful about how seq num fits into failure scenarios (like if we can't find the row in the command)
+
+    // acquire lock for sequence number, increment sequence number, and save this operation's seq_num
+    BackendServer::seq_num_lock.lock();
     BackendServer::seq_num += 1;
+    int operation_seq_num = BackendServer::seq_num;
+    BackendServer::seq_num_lock.unlock();
 
     // place operation in holdback queue to complete after all secondaries respond
     // ! figure out if we need to do this first
-    HoldbackOperation operation(BackendServer::seq_num, inputs);
+    HoldbackOperation operation(operation_seq_num, inputs);
     BackendServer::holdback_operations.push(operation);
 
+    // TODO you need to create an entry in the votes_recvd vector for this seq_num
+
+    // ! what happens if we can't open a connection with all secondaries? Error check length of secondary_fds
+    std::vector<int> secondary_fds = open_connection_with_secondary_fds();
+    construct_and_send_prepare_cmd(operation_seq_num, inputs, secondary_fds);
+
+    // once you send the message out to all of your secondaries, wait for a response for up to 2 seconds
+    // ! how long should this duration be?
+    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+    {
+        // ! timeout occurred while waiting, meaning some server responded or some failure occurred
+    }
+
+    // read from all secondary fds
+    for (int secondary_fd : secondary_fds)
+    {
+        BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
+        if (msg_from_secondary.error_code != 0)
+        {
+            // ! error occurred while reading from secondary fds
+        }
+        // process vote sent by secondary
+        handle_secondary_vote(msg_from_secondary.byte_stream);
+    }
+
+    // iterate votes_recvd and check that all votes were a SECY
+    // ! might not need a lock for this since all votes for that seq num are done and no one is writing there anymore
+    bool all_secondaries_in_favor = true;
+    for (std::string &vote : BackendServer::votes_recvd[operation_seq_num])
+    {
+        if (vote == "secn")
+        {
+            all_secondaries_in_favor = false;
+            break;
+        }
+    }
+
+    // handle scenario where not all secondaries voted yes
+    if (!all_secondaries_in_favor)
+    {
+        // send abort message to secondaries
+        // this should cause them to release their locks
+        // then you respond to the client from here
+    }
+
+    // all secondaries voted yes - perform the operation
+    execute_write_operation();
+}
+
+// @brief Open connection with each secondary port and save fd for each connection
+std::vector<int> KVSGroupServer::open_connection_with_secondary_fds()
+{
+    std::vector<int> secondary_fds;
+    for (int secondary_port : BackendServer::secondary_ports)
+    {
+        // ! note that opening a connection might fail too, so maybe separate opening connection with writing
+        int secondary_fd = BeUtils::open_connection(secondary_port);
+        if (secondary_fd < 0)
+            secondary_fds.push_back(secondary_fd);
+    }
+    return secondary_fds;
+}
+
+// @brief Constructs prepare command to send to secondary servers
+// Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
+void KVSGroupServer::construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds)
+{
     // extract row from inputs (start at inputs.begin() + 5 to ignore command)
     auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
     // \b not found in index
@@ -139,60 +204,21 @@ void KVSGroupServer::initiate_two_phase_commit(std::vector<char> &inputs)
     }
     std::string row(inputs.begin(), row_end);
 
-    // construct prepare command to send to each secondary
-    std::vector<char> prepare_cmd = construct_prepare_cmd(row);
-    std::vector<int> secondary_fds;
-    // open connection to each secondary, write prepare_cmd, and save fd for each connection
-    for (int secondary_port : BackendServer::secondary_ports)
-    {
-        int secondary_fd = BeUtils::open_connection(secondary_port);
-        if (BeUtils::write(secondary_fd, prepare_cmd) < 0)
-        {
-            // ! figure out how to properly handle this scenario where write to secondary fails
-        }
-        secondary_fds.push_back(secondary_fd);
-    }
-
-    // once you send the message out to all of your secondaries, wait for a response for up to 2 seconds
-    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
-    {
-        // ! timeout occurred while waiting, meaning some server responded or some failure occurred
-    }
-
-    // read from all secondary fds
-    for (int secondary_fd : secondary_fds)
-    {
-        BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
-        if (msg_from_secondary.error_code != 0)
-        {
-            // ! error occurred while reading
-        }
-        // process vote sent by secondary
-        handle_secondary_vote(msg_from_secondary.byte_stream);
-    }
-
-    // // if the operation has as many votes as there are secondaries, notify the primary thread waiting on this condition
-    // if (BackendServer::votes_recvd[seq_num].size() == BackendServer::secondary_ports.size())
-    // {
-    //     // send signal to primary thread waiting for this operation to complete
-    //     BackendServer::votes_recvd_cv[seq_num].notify_one();
-    // }
-}
-
-// @brief Constructs prepare command to send to secondary servers
-// Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
-std::vector<char> KVSGroupServer::construct_prepare_cmd(std::string &row)
-{
     // send prepare command to all secondaries
-    std::vector<char> prepare_msg;
-    std::string cmd = "PREP ";
-    // insert command into msg
-    prepare_msg.insert(prepare_msg.end(), cmd.begin(), cmd.end());
+    std::vector<char> prepare_msg = {'P', 'R', 'E', 'P', ' '};
     // convert seq number to vector and append to prepare_msg
-    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(seq_num);
     prepare_msg.insert(prepare_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
     // append row to prepare_msg
     prepare_msg.insert(prepare_msg.end(), row.begin(), row.end());
+
+    for (int secondary_fd : BackendServer::secondary_ports)
+    {
+        if (BeUtils::write(secondary_fd, prepare_msg) < 0)
+        {
+            // ! figure out how to properly handle this scenario where write to secondary fails
+        }
+    }
 }
 
 // @brief Handles primary thread receiving vote from secondary
@@ -201,42 +227,35 @@ void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
     // extract vote from beginning of inputs
     std::string vote(inputs.begin(), inputs.begin() + 4);
     inputs.erase(inputs.begin(), inputs.begin() + 5);
+    // extract sequence number
+    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
 
-    // extract sequence number and erase from inputs
-    uint32_t seq_num = BeUtils::network_vector_to_host_num(inputs);
-
-    kvs_group_server_logger.log("Received " + vote + " for operation " + std::to_string(seq_num), 20);
+    // log vote
+    kvs_group_server_logger.log("Received " + vote + " for operation " + std::to_string(operation_seq_num), 20);
 
     // acquire mutex to add vote for sequence number
-    BackendServer::votes_recvd_mutex.lock();
-    BackendServer::votes_recvd[seq_num].push_back(vote);
+    BackendServer::votes_recvd_lock.lock();
+    BackendServer::votes_recvd[operation_seq_num].push_back(vote);
     // release mutex after vote has been added
-    BackendServer::votes_recvd_mutex.unlock();
+    BackendServer::votes_recvd_lock.unlock();
 }
 
-// @brief Handles primary thread receiving ACK from secondary
-void KVSGroupServer::handle_secondary_acks(std::vector<char> &inputs)
+// @brief Handles primary thread receiving ACKN from secondary
+void KVSGroupServer::handle_secondary_ack(std::vector<char> &inputs)
 {
     // erase ackn from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
-
     // extract sequence number
-    uint32_t seq_num = BeUtils::network_vector_to_host_num(inputs);
+    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
 
-    kvs_group_server_logger.log("Received ackn for operation " + std::to_string(seq_num), 20);
+    // log acknowledgement
+    kvs_group_server_logger.log("Received ackn for operation " + std::to_string(operation_seq_num), 20);
 
-    // acquire mutex to increment number of acks for sequence number
-    BackendServer::acks_recvd_mutex.lock();
-    BackendServer::acks_recvd[seq_num] += 1;
-
-    // if the operation has as many acks as there are secondaries, notify the primary thread waiting on this condition
-    if (BackendServer::acks_recvd[seq_num] == BackendServer::secondary_ports.size())
-    {
-        // send signal to primary thread waiting for this operation to complete
-        BackendServer::acks_recvd_cv[seq_num].notify_one();
-    }
+    // acquire mutex to add vote for sequence number
+    BackendServer::acks_recvd_lock.lock();
+    BackendServer::acks_recvd[operation_seq_num] += 1;
     // release mutex after vote has been added
-    BackendServer::acks_recvd_mutex.unlock();
+    BackendServer::acks_recvd_lock.unlock();
 }
 
 /**
@@ -297,4 +316,12 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
         }
         next_operation = BackendServer::holdback_operations.top();
     }
+}
+
+/**
+ * WRITE METHODS
+ */
+
+void KVSGroupServer::execute_write_operation(std::vector<char> &inputs)
+{
 }

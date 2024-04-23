@@ -29,24 +29,29 @@ public:
     void read_from_group_server(); // read data from group server
 
 private:
-    // read first 4 bytes from stream to get command and then call corresponding command
+    // read first 4 bytes from stream to get command and then handle command accordingly
     void handle_command(std::vector<char> &byte_stream);
 
-    // helpers
-    std::vector<char> construct_prepare_cmd(std::string &row);
+    /**
+     * GROUP COMMUNICATION METHODS
+     */
 
-    // group communication methods
     // methods used by PRIMARY
-    void initiate_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
-    void handle_secondary_vote(std::vector<char> &inputs);     // handle vote (secy/secn) from secondary
-    void handle_secondary_acks(std::vector<char> &inputs);     // handle ack from secondary
+    void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
+    std::vector<int> open_connection_with_secondary_fds();    // opens connection with each secondary port. Returns list of fds for each connection.
+    void construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds);
+    void handle_secondary_vote(std::vector<char> &inputs); // handle vote (secy/secn) from secondary
+    void handle_secondary_ack(std::vector<char> &inputs);  // handle ack from secondary
 
     // methods used by SECONDARY
     void prepare(std::vector<char> &inputs); // handle prepare msg from primary
     void commit(std::vector<char> &inputs);  // handle prepare msg from primary
     void abort(std::vector<char> &inputs);   // handle prepare msg from primary
 
-    // write methods
+    /**
+     * WRITE METHODS
+     */
+    void execute_write_operation(std::vector<char> &inputs);
     std::vector<char> putv(std::vector<char> &inputs);
     std::vector<char> cput(std::vector<char> &inputs);
     std::vector<char> delr(std::vector<char> &inputs);
