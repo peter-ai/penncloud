@@ -12,4 +12,4 @@ cd ..
 cd backend_server
 make clean
 make
-./backend_main -c 4999 -p 6000 -s a -e z -t 5
+./backend_main -p 6000 -t 5
