@@ -63,7 +63,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
         res.set_code(303);
 
         // set response headers
-        res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/400");
 
         return;
@@ -123,7 +122,6 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
         res.set_code(303);
 
         // set response headers
-        res.set_header("Content-Type", "text/html");
         res.set_header("Location", "/home");
     }
     // account already exists - 409 conflict
@@ -266,6 +264,7 @@ void home_page(const HttpRequest &req, HttpResponse &res)
             "<meta name='description' content='CIS 5050 Spr24'>"
             "<meta name='keywords' content='Home'>"
             "<title>Home - PennCloud.com</title>"
+            "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
             "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
             "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
             "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
@@ -315,7 +314,6 @@ void home_page(const HttpRequest &req, HttpResponse &res)
             "</div>"
             "</div>"
 
-            "<script src='http://ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js'></script>"
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
             "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
             "crossorigin='anonymous'></script>"
@@ -388,6 +386,7 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
             "<meta name='description' content='CIS 5050 Spr24'>"
             "<meta name='keywords' content='SignUp'>"
             "<title>Sign Up - PennCloud.com</title>"
+            "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
             "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
             "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
             "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
@@ -451,7 +450,7 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
             "<div class='col-3'></div>"
             "</div>"
             "</div>"
-            "<script src='http://ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js'></script>"
+
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
             "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
             "crossorigin='anonymous'></script>"
@@ -525,6 +524,7 @@ void update_password_success_page(const HttpRequest &req, HttpResponse &res)
             "<meta name='description' content='CIS 5050 Spr24'>"
             "<meta name='keywords' content='SignUp'>"
             "<title>Sign Up - PennCloud.com</title>"
+            "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
             "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
             "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
             "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
@@ -598,7 +598,6 @@ void update_password_success_page(const HttpRequest &req, HttpResponse &res)
             "<div class='col-3'></div>"
             "</div>"
             "</div>"
-            "<script src='http://ajax.googleapis.com/ajax/libs/jquery/2.0.3/jquery.min.js'></script>"
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
             "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
             "crossorigin='anonymous'></script>"
