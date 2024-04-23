@@ -110,21 +110,22 @@ std::string BeUtils::read_from_coord(int fd)
  * INTER-GROUP COMMUNICATION
  */
 
-// ! add error checks in here
 int BeUtils::write(int fd, std::vector<char> &msg)
 {
-    // set size of message in first 4 bytes of vector
-    // convert to network order and interpret msg_size as bytes
+    // Insert size of message at beginning of msg
     std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
-
-    // Insert the size prefix at the beginning of the original response msg vector
     msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
-    // write response to client as bytes
+    // write response to provided fd until all bytes in vector are sent
     size_t total_bytes_sent = 0;
     while (total_bytes_sent < msg.size())
     {
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
+        if (bytes_sent < 0)
+        {
+            be_utils_logger.log("Unable to send message", 40);
+            return -1;
+        }
         total_bytes_sent += bytes_sent;
     }
     return 0;
