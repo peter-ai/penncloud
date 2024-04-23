@@ -1,6 +1,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
 #include "../include/be_utils.h"
 #include "../../utils/include/utils.h"
@@ -200,34 +201,34 @@ BeUtils::ReadResult BeUtils::read(int fd)
     return result;
 }
 
-// @brief Read byte stream from fd with timeout for read
-BeUtils::ReadResult BeUtils::read_with_timeout(int fd, int timeout_s)
-{
-    // initialize fd set to monitor for reads
-    fd_set read_fds;
-    FD_ZERO(&read_fds);
-    FD_SET(fd, &read_fds);
+// // @brief Read byte stream from fd with timeout for read
+// BeUtils::ReadResult BeUtils::read_with_timeout(int fd, int timeout_s)
+// {
+//     // initialize fd set to monitor for reads
+//     fd_set read_fds;
+//     FD_ZERO(&read_fds);
+//     FD_SET(fd, &read_fds);
 
-    // set timeout duration
-    struct timeval timeout;
-    timeout.tv_sec = timeout_s;
-    timeout.tv_usec = 0;
+//     // set timeout duration
+//     struct timeval timeout;
+//     timeout.tv_sec = timeout_s;
+//     timeout.tv_usec = 0;
 
-    BeUtils::ReadResult read_result;
+//     BeUtils::ReadResult read_result;
 
-    // call select with specified timeout
-    int result = select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
-    // error or timeout occurred during select call
-    if (result <= 0)
-    {
-        read_result.error_code = -1;
-        return read_result;
-    }
+//     // call select with specified timeout
+//     int result = select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
+//     // error or timeout occurred during select call
+//     if (result <= 0)
+//     {
+//         read_result.error_code = -1;
+//         return read_result;
+//     }
 
-    // data in fd - call read utility method to read from fd
-    read_result = read(fd);
-    return read_result;
-}
+//     // data in fd - call read utility method to read from fd
+//     read_result = read(fd);
+//     return read_result;
+// }
 
 std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)
 {
@@ -246,4 +247,71 @@ uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
     std::memcpy(&num, num_vec.data(), sizeof(uint32_t));
     // convert number received from network order to host order
     return ntohl(num);
+}
+
+// Waits for an event on a set of fds. Returns 0 if all fds responded. Returns -1 for error or timeout.
+int BeUtils::wait_for_events(std::vector<int> &fds, int timeout_ms)
+{
+    // create poll vector containing all input fds
+    std::vector<pollfd> pollfds;
+    for (int fd : fds)
+    {
+        pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = POLLIN; // Waiting for input event to fd
+        pollfds.push_back(pfd);
+    }
+
+    // set start time for polling and time left until polling expires
+    auto start = std::chrono::system_clock::now();
+    auto end = start + std::chrono::milliseconds(timeout_ms);
+    int remaining_ms = timeout_ms;
+
+    // loop until event is recorded on each fd or timeout occurs
+    while (true)
+    {
+        int result = poll(pollfds.data(), pollfds.size(), remaining_ms);
+        // error occurred
+        if (result == -1)
+        {
+            be_utils_logger.log("Error occurred while polling", 40);
+            return -1;
+        }
+        // timeout occurred
+        else if (result == 0)
+        {
+            be_utils_logger.log("Timeout occurred while polling", 20);
+            return -1;
+        }
+        else
+        {
+            // check if an event was recorded on all fds
+            bool all_fds_responded = true;
+            for (const auto &pfd : pollfds)
+            {
+                // read event did not occur on this file descriptor - need to continue reading
+                if (!(pfd.revents & POLLIN))
+                {
+                    all_fds_responded = false;
+                    break;
+                }
+            }
+            // read event occurred on all fds, return 0
+            if (all_fds_responded)
+            {
+                be_utils_logger.log("Read event available on all fds", 20);
+                return 0;
+            }
+
+            // Update remaining timeout
+            auto now = std::chrono::system_clock::now();
+            remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count();
+            // no timeout left, return
+            if (remaining_ms <= 0)
+            {
+                be_utils_logger.log("Timeout occurred while polling", 20);
+                return -1;
+            }
+        }
+    }
 }

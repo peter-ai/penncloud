@@ -25,9 +25,9 @@ namespace BeUtils
         int error_code = 0; // default error code of 0 (no error), -1 otherwise
     };
 
-    std::string read_from_coord(int fd);                 // Read message from coordinator
-    ReadResult read(int fd);                             // Read byte stream from fd
-    ReadResult read_with_timeout(int fd, int timeout_s); // Read byte stream from fd with timeout for read
+    std::string read_from_coord(int fd);                        // Read message from coordinator
+    ReadResult read(int fd);                                    // Read byte stream from fd
+    int wait_for_events(std::vector<int> &fds, int timeout_ms); // Waits for event to occur on all fds within specified timeout
 
     // host number <-> network vector conversion
     std::vector<uint8_t> host_num_to_network_vector(uint32_t num);
