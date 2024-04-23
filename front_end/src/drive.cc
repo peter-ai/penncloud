@@ -209,186 +209,202 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
                 std::vector<char> formatted_content = format_folder_contents(contents);
 
-                    // @PETER ADDED
-                    std::string folder_contents(formatted_content.begin(), formatted_content.end());
-                    std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
-                    std::string folder_html = "";
-                    size_t item_iter;
-                    for (item_iter = 0; item_iter < folder_items.size(); item_iter++)
+                // @PETER ADDED
+                std::string folder_contents(formatted_content.begin(), formatted_content.end());
+                std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
+                std::string folder_html = "";
+                size_t item_iter;
+                for (item_iter = 0; item_iter < folder_items.size(); item_iter++)
+                {
+
+                    std::string item = folder_items[item_iter];
+
+                    // start row
+                    if (item_iter % 9 == 0)
                     {
-
-                        std::string item = folder_items[item_iter];
-
-                        // start row
-                        if (item_iter % 9 == 0)
-                        {
-                            folder_html += "<div class='row mx-2 mt-2 align-items-start'>";
-                        }
-
-                        if (item_iter % 9 == 0 || item_iter % 9 == 3 || item_iter % 9 == 6)
-                        {
-                            folder_html += "<div class='col-4'><div class='row align-items-start'>";
-                        }
-
-                        // html to add item to page
-                        if (item.back() == '/')
-                        {
-                            folder_html +=
-                                "<div class='col-4 text-center text-wrap'>"
-                                "<a href='https://google.com' style='color: inherit;'>"
-                                "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
-                                "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
-                                "</svg>"
-                                "</a>"
-                                "<p class='lead text-break'>" +
-                                item +
-                                "</p>"
-                                "</div>";
-                        }
-                        else if (item.compare("sid") == 0 || item.compare("pass") == 0)
-                        {
-                            continue;
-                        }
-                        else
-                        {
-                            folder_html +=
-                                "<div class='col-4 text-center text-wrap'>"
-                                "<a href='" + item + "' target='_blank' style='color: inherit;' download>"
-                                "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
-                                "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
-                                "</svg>"
-                                "</a>"
-                                "<p class='lead text-break'>" +
-                                item +
-                                "</p>"
-                                "</div>";
-                        }
-
-                        if (item_iter % 9 == 2 || item_iter % 9 == 5 || item_iter % 9 == (9 - 1))
-                        {
-                            folder_html += "</div></div>";
-                        }
-
-                        if (item_iter % 9 == (9 - 1))
-                        {
-                            folder_html += "</div>";
-                        }
+                        folder_html += "<div class='row mx-2 mt-2 align-items-start'>";
                     }
-                    if (item_iter % 9 != (9 - 1))
+
+                    if (item_iter % 9 == 0 || item_iter % 9 == 3 || item_iter % 9 == 6)
+                    {
+                        folder_html += "<div class='col-4'><div class='row align-items-start'>";
+                    }
+
+                    // html to add item to page
+                    if (item.back() == '/')
+                    {
+                        folder_html +=
+                            "<div class='col-4 text-center text-wrap'>"
+                            "<a href='" +
+                            item + "' style='color: inherit;'>"
+                                   "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
+                                   "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
+                                   "</svg>"
+                                   "</a>"
+                                   "<p class='lead text-break'>" +
+                            item +
+                            "</p>"
+                            "</div>";
+                    }
+                    else if (item.compare("sid") == 0 || item.compare("pass") == 0)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        folder_html +=
+                            "<div class='col-4 text-center text-wrap'>"
+                            "<a href='" +
+                            item + "' target='_blank' style='color: inherit;' download>"
+                                   "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
+                                   "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
+                                   "</svg>"
+                                   "</a>"
+                                   "<p class='text-break'>"
+                                   "<a href='http://google.com'>"
+                                   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                   "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                   "</svg>"
+                                   "</a>" +
+                            item +
+                            "</p>"
+                            "</div>";
+                    }
+
+                    if (item_iter % 9 == 2 || item_iter % 9 == 5 || item_iter % 9 == (9 - 1))
+                    {
+                        folder_html += "</div></div>";
+                    }
+
+                    if (item_iter % 9 == (9 - 1))
+                    {
                         folder_html += "</div>";
+                    }
+                }
+                if (item_iter % 9 != (9 - 1))
+                    folder_html += "</div>";
 
-                    //@todo: update with html!
-                    std::string page =
-                        "<!doctype html>"
-                        "<html lang='en' data-bs-theme='dark'>"
-                        "<head>"
-                        "<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
-                        "<meta content='utf-8' http-equiv='encoding'>"
-                        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
-                        "<meta name='description' content='CIS 5050 Spr24'>"
-                        "<meta name='keywords' content='Home'>"
-                        "<title>Home - PennCloud.com</title>"
-                        "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
-                        "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
-                        "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
-                        "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
-                        "</head>"
+                //@todo: update with html!
+                std::string page =
+                    "<!doctype html>"
+                    "<html lang='en' data-bs-theme='dark'>"
+                    "<head>"
+                    "<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+                    "<meta content='utf-8' http-equiv='encoding'>"
+                    "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+                    "<meta name='description' content='CIS 5050 Spr24'>"
+                    "<meta name='keywords' content='Home'>"
+                    "<title>Home - PennCloud.com</title>"
+                    "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
+                    "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
+                    "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
+                    "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+                    "</head>"
 
-                        "<body onload='setTheme()'>"
-                        "<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
-                        "<div class='container-fluid'>"
-                        "<span class='navbar-brand mb-0 h1 flex-grow-1'>"
-                        "<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
-                        "class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
-                        "<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
-                        "</svg>"
-                        "PennCloud"
-                        "</span>"
-                        "<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
-                        "<span class='navbar-toggler-icon'></span>"
-                        "</button>"
-                        "<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
-                        "<div class='navbar-nav'>"
-                        "<a class='nav-link' href='/home'>Home</a>"
-                        "<a class='nav-link active' aria-current='page' href='/drive/" +
-                        username + "/'>Drive</a>"
-                                "<a class='nav-link' href='/" +
-                        username + "/mbox'>Email</a>"
-                                "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
-                                "<a class='nav-link' href='/account'>Account</a>"
-                                "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-                                "<input type='hidden' />"
-                                "<button class='btn nav-link' type='submit'>Logout</button>"
-                                "</form>"
-                                "</div>"
-                                "</div>"
-                                "<div class='form-check form-switch form-check-reverse'>"
-                                "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
-                                "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
-                                "</div>"
-                                "</div>"
-                                "</nav>"
+                    "<body onload='setTheme()'>"
+                    "<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
+                    "<div class='container-fluid'>"
+                    "<span class='navbar-brand mb-0 h1 flex-grow-1'>"
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
+                    "class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
+                    "<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
+                    "</svg>"
+                    "PennCloud"
+                    "</span>"
+                    "<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
+                    "<span class='navbar-toggler-icon'></span>"
+                    "</button>"
+                    "<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
+                    "<div class='navbar-nav'>"
+                    "<a class='nav-link' href='/home'>Home</a>"
+                    "<a class='nav-link active' aria-current='page' href='/drive/" +
+                    username + "/'>Drive</a>"
+                               "<a class='nav-link' href='/" +
+                    username + "/mbox'>Email</a>"
+                               "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+                               "<a class='nav-link' href='/account'>Account</a>"
+                               "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+                               "<input type='hidden' />"
+                               "<button class='btn nav-link' type='submit'>Logout</button>"
+                               "</form>"
+                               "</div>"
+                               "</div>"
+                               "<div class='form-check form-switch form-check-reverse'>"
+                               "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+                               "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+                               "</div>"
+                               "</div>"
+                               "</nav>"
 
-                                "<div class='container-fluid text-start'>"
-                                "<div class='row mx-2 mt-3 mb-4'>"
-                                "<h1 class='display-6'>"
-                                "Drive: " +
-                        childpath_str +
-                        "</h1>"
-                        "</div>" +
-                        folder_html +
-                        "</div>"
+                               "<div class='container-fluid text-start'>"
+                               "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
+                               "<div class='col-4'>"
+                               "<h1 class='display-6'>"
+                               "Drive: " +
+                    childpath_str +
+                    "</h1>"
+                    "</div>"
+                    "<div class='col-8'>"
+                    "<form class='d-flex' role='upload' method='POST' enctype='multipart/form-data' action='/api/drive/upload/" +
+                    childpath_str + "'>"
+                                    "<input class='form-control' style='height: 80%;' type='file' id='formFile' name='file'>"
+                                    "<button class='btn' type='submit'>Upload</button>"
+                                    "</form>" // place upload button here
+                                    "</div>"
+                                    "</div>" +
+                    folder_html +
+                    "</div>"
 
-                        "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                        "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                        "crossorigin='anonymous'></script>"
-                        "<script>"
-                        "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                        "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                        "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                        "$('#switchLabel').html('Light Mode');"
-                        "sessionStorage.setItem('data-bs-theme', 'light');"
-                        ""
-                        "}"
-                        "else {"
-                        "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                        "$('#switchLabel').html('Dark Mode');"
-                        "sessionStorage.setItem('data-bs-theme', 'dark');"
-                        "}"
-                        "});"
-                        "</script>"
-                        "<script>"
-                        "function setTheme() {"
-                        "var theme = sessionStorage.getItem('data-bs-theme');"
-                        "if (theme !== null) {"
-                        "if (theme === 'dark') {"
-                        "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                        "$('#switchLabel').html('Dark Mode');"
-                        "$('#flexSwitchCheckReverse').attr('checked', true);"
-                        "}"
-                        "else {"
-                        "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                        "$('#switchLabel').html('Light Mode');"
-                        "$('#flexSwitchCheckReverse').attr('checked', false);"
-                        "}"
-                        "}"
-                        "};"
-                        "</script>"
-                        "</body>"
-                        "</html>";
+                    "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                    "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                    "crossorigin='anonymous'></script>"
+                    "<script>"
+                    "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                    "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                    "$('#switchLabel').html('Light Mode');"
+                    "sessionStorage.setItem('data-bs-theme', 'light');"
+                    ""
+                    "}"
+                    "else {"
+                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                    "$('#switchLabel').html('Dark Mode');"
+                    "sessionStorage.setItem('data-bs-theme', 'dark');"
+                    "}"
+                    "});"
+                    "</script>"
+                    "<script>"
+                    "function setTheme() {"
+                    "var theme = sessionStorage.getItem('data-bs-theme');"
+                    "if (theme !== null) {"
+                    "if (theme === 'dark') {"
+                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                    "$('#switchLabel').html('Dark Mode');"
+                    "$('#flexSwitchCheckReverse').attr('checked', true);"
+                    "}"
+                    "else {"
+                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                    "$('#switchLabel').html('Light Mode');"
+                    "$('#flexSwitchCheckReverse').attr('checked', false);"
+                    "}"
+                    "}"
+                    "};"
+                    "</script>"
+                    "</body>"
+                    "</html>";
 
-                    // @PETER ADDED - reset cookies of user
-                    FeUtils::set_cookies(res, username, sid);
-                    res.append_body_str(page);
+                // @PETER ADDED - reset cookies of user
+                FeUtils::set_cookies(res, username, sid);
+                res.append_body_str(page);
 
-                    // res.append_body_bytes(formatted_content.data(), formatted_content.size());
+                // res.append_body_bytes(formatted_content.data(), formatted_content.size());
 
-                    // append header for content length
-                    // @PETER ADDED - SET HEADERS
-                    res.set_code(200);
-                    res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
-                    res.set_header("Pragma", "no-cache");
-                    res.set_header("Expires", "0");
+                // append header for content length
+                // @PETER ADDED - SET HEADERS
+                res.set_code(200);
+                res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+                res.set_header("Pragma", "no-cache");
+                res.set_header("Expires", "0");
             }
             else
             {
@@ -465,7 +481,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     // path is /api/drive/upload/:parentpath where parent dir is the page that is being displayed
     string parentpath_str = req.path.substr(18);
     string username = get_username(parentpath_str);
-
     bool present = HttpServer::check_kvs_addr(username);
     std::vector<std::string> kvs_addr;
 
@@ -491,7 +506,10 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     if (valid_session_id.empty())
     {
         // for now, returning code for check on postman
-        res.set_code(401);
+
+        res.set_code(303);
+        res.set_header("Location", "/401");
+
         close(sockfd);
         return;
     }
@@ -499,7 +517,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     // Check if the request contains a body
     if (!req.body_as_bytes().empty())
     {
-
+        std::cerr << req.body_as_bytes().data() << std::endl;
         // ------- Get file name and clean up to get file binary ----
         // Get the single file uploaded
         vector<string> headers;
@@ -537,9 +555,10 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
 
         if (parentpath_str.back() != '/')
         {
-            res.set_code(400);
-              // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
+            res.set_code(303);
+            // set cookies on response
+            res.set_header("Location", "/400");
+            FeUtils::expire_cookies(res, username, valid_session_id);
             close(sockfd);
             return;
         }
@@ -553,28 +572,32 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         if (kv_successful(kvs_resp))
         {
             // @todo should we instead get row for the page they are on?
-            res.set_code(200); // OK
-            vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
+            res.set_code(303); // OK
+            res.set_header("Location", "/drive/" + parentpath_str);
+            // vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
 
-            // content list, remove '+OK<sp>'
-            vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-            // split on delim
-            vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
-            vector<char> formatted_content = format_folder_contents(contents);
+            // // content list, remove '+OK<sp>'
+            // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // // split on delim
+            // vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
+            // vector<char> formatted_content = format_folder_contents(contents);
 
-            //@todo: update with html!
-            res.append_body_bytes(formatted_content.data(), formatted_content.size());
+            // //@todo: update with html!
+            // res.append_body_bytes(formatted_content.data(), formatted_content.size());
         }
         else
         {
-            res.set_code(400);
+            res.set_code(303); // Bad Request
+            res.set_header("Location", "/400");
+            FeUtils::expire_cookies(res, username, valid_session_id);
             // maybe retry? tbd
         }
     }
     else
     {
         // No body found in the request
-        res.set_code(400); // Bad Request
+        res.set_code(303); // Bad Request
+        res.set_header("Location", "/400");
     }
 
     // set cookies on response
@@ -688,7 +711,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         res.set_code(400);
     }
 
-      // set cookies on response
+    // set cookies on response
     FeUtils::set_cookies(res, username, valid_session_id);
 
     close(sockfd);
@@ -745,7 +768,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
         vector<char> filename_vec(filename.begin(), filename.end());
 
-
         if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
             // success
@@ -765,10 +787,9 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         {
             res.set_code(400);
         }
-
     }
 
-      // set cookies on response
+    // set cookies on response
     FeUtils::set_cookies(res, username, valid_session_id);
 
     close(sockfd);
