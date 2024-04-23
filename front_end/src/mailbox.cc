@@ -83,17 +83,19 @@ string computeEmailMD5(const string &emailText)
 // takes the a path's request and parses it to user mailbox key "user1-mailbox/"
 string parseMailboxPathToRowKey(const string &path)
 {
-    std::regex pattern("/api/([^/]*)");
-    std::smatch matches;
+	std::regex pattern("/api/([^/]*)");
+	std::smatch matches;
 
-    // Execute the regex search
-    if (std::regex_search(path, matches, pattern)) {
-        if (matches.size() > 1) {  // Check if there is a capturing group
-            return matches[1].str() + "-mailbox/";  // Return the captured username
-        }
-    }
+	// Execute the regex search
+	if (std::regex_search(path, matches, pattern))
+	{
+		if (matches.size() > 1)
+		{										   // Check if there is a capturing group
+			return matches[1].str() + "-mailbox/"; // Return the captured username
+		}
+	}
 
-    return "";  // Return empty string if no username is found
+	return ""; // Return empty string if no username is found
 }
 
 string extractUsernameFromEmailAddress(const string &emailAddress)
@@ -238,7 +240,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				vector<string> recipientsEmails = parseRecipients(emailToStore.to);
 				for (string recipientEmail : recipientsEmails)
 				{
-					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
+					string colKey = emailToStore.time + "\r" + emailToStore.from + "\r" + emailToStore.to + "\r" + emailToStore.subject;
 					vector<char> col(colKey.begin(), colKey.end());
 					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 					vector<char> row(rowKey.begin(), rowKey.end());
@@ -263,7 +265,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				vector<string> recipientsEmails = parseRecipients(emailToStore.to);
 				for (string recipientEmail : recipientsEmails)
 				{
-					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
+					string colKey = emailToStore.time + "\r" + emailToStore.from + "\r" + emailToStore.to + "\r" + emailToStore.subject;
 					vector<char> col(colKey.begin(), colKey.end());
 					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 					vector<char> row(rowKey.begin(), rowKey.end());
@@ -323,13 +325,13 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		for (string recipientEmail : recipientsEmails)
 		{
 			cout << "entering recipient loop" << endl;
-			string colKey = computeEmailMD5(responseEmail.time + responseEmail.from + responseEmail.to + responseEmail.subject);
+			string colKey = responseEmail.time + "\r" + responseEmail.from + "\r" + responseEmail.to + "\r" + responseEmail.subject;
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
 			vector<char> value_response(responseEmail.body.begin(), responseEmail.body.end());
 
-			//we also need to append the original email to the body of the response email
+			// we also need to append the original email to the body of the response email
 			value_response.insert(value_response.end(), value_original.begin(), value_original.end());
 
 			vector<char> kvsPutResponse = FeUtils::kv_put(socket_fd, row, col, value_response);
@@ -400,7 +402,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 	EmailData email = parseEmail(request.body_as_bytes());
 
 	// compute unique hash UIDL (column value) based on email's time, to, from, subject lines
-	string colKey = computeEmailMD5(email.time + email.from + email.to + email.subject);
+	string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
 	string rowKey = extractUsernameFromEmailAddress(email.from) + "-mailbox/";
 
 	vector<char> value = request.body_as_bytes();
@@ -429,9 +431,8 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 void email_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Email Handler");
-    logger.log("Received POST request", LOGGER_INFO);
+	logger.log("Received POST request", LOGGER_INFO);
 	logger.log("Path is: " + request.path, LOGGER_INFO);
-
 
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
@@ -457,7 +458,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_bytes(kvsResponse.data() + 4,
 								   kvsResponse.size() - 4);
 		logger.log("Successful response from KVS received at email handler", LOGGER_DEBUG); // DEBUG
-
 	}
 	else
 	{
@@ -482,7 +482,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 	}
 	// path is: /api/mailbox/{username}/
 
-	//string recipientAddress;
+	// string recipientAddress;
 
 	string rowKey = parseMailboxPathToRowKey(request.path);
 	vector<char> row(rowKey.begin(), rowKey.end());
