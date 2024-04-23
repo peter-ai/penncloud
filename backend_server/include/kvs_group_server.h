@@ -33,7 +33,12 @@ private:
     void handle_command(std::vector<char> &byte_stream);
 
     // group communication methods
-    void send_prepare(std::vector<char> &inputs); // sends prepare msg to all secondaries when a write command is received
+    // methods used by PRIMARY
+    void send_prepare(std::vector<char> &inputs);          // sends prepare msg to all secondaries when a write command is received
+    void handle_secondary_vote(std::vector<char> &inputs); // handle vote (secy/secn) from secondary
+
+    // methods used by SECONDARY
+    void handle_prep(std::vector<char> &inputs); // handle prepare msg from primary
 
     int send_operation_to_secondaries(std::vector<char> inputs);  // send operation to perform on secondary servers
     int wait_for_secondary_acks(std::vector<int> &secondary_fds); // loops and waits for secondaries to send acknowledgements

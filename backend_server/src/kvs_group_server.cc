@@ -83,10 +83,28 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         {
             send_prepare(byte_stream);
         }
+        else if (command == "secy" || command == "secn")
+        {
+            handle_secondary_vote(byte_stream);
+        }
+        else if (command == "ackn")
+        {
+        }
     }
     // secondary server
     else
     {
+        if (command == "prep")
+        {
+            // erase first 5 values to remove command
+            handle_prep(byte_stream);
+        }
+        else if (command == "cmmt")
+        {
+        }
+        else if (command == "abrt")
+        {
+        }
     }
 }
 
@@ -95,6 +113,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
  */
 
 // @brief Primary sends PREP to all secondaries
+// Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
 void KVSGroupServer::send_prepare(std::vector<char> &inputs)
 {
     // Increments write sequence number on primary before sending message to all secondaries
@@ -140,4 +159,94 @@ void KVSGroupServer::send_prepare(std::vector<char> &inputs)
         }
         close(secondary_fd);
     }
+
+    // once you send the message out to all of your secondaries, you need to wait until the sequence number map has all ports
 }
+
+// @brief Primary thread receives vote from secondary
+void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
+{
+    // extract vote from beginning of inputs
+    std::string vote(inputs.begin(), inputs.begin() + 4);
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract sequence number and erase from inputs
+    uint32_t seq_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    kvs_group_server_logger.log("Received " + vote + " for operation " + std::to_string(seq_num), 20);
+
+    // acquire mutex to add vote for sequence number (only need to lock the row )
+    BackendServer::votes_recvd_mutex.lock();
+    BackendServer::votes_recvd[seq_num].push_back(vote);
+
+    // if the operation has as many votes as there are secondaries, notify the primary thread waiting on this condition
+    if (BackendServer::votes_recvd[seq_num].size() == BackendServer::secondary_ports.size())
+    {
+        // send signal to primary thread waiting for this operation to complete
+        BackendServer::votes_recvd_cv[seq_num].notify_one();
+    }
+    // release mutex after vote has been added
+    BackendServer::votes_recvd_mutex.unlock();
+}
+
+// // @brief Primary sends PREP to all secondaries
+// // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
+// void KVSGroupServer::handle_prep(std::vector<char> &inputs)
+// {
+//     // erase PREP command from beginning of inputs
+//     inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+//     // extract sequence number and erase from inputs
+//     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
+//     inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+//     // row is remainder of inputs
+//     std::vector<char> row = inputs;
+
+//     // wrap operation with its sequence number and add to secondary holdback queue
+//     HoldbackOperation operation(operation_seq_num, row);
+//     BackendServer::holdback_operations.push(operation);
+
+//     // iterate holdback queue and figure out if the command at the front is the command you want to perform next (1 + seq_num)
+//     HoldbackOperation next_operation = BackendServer::holdback_operations.top();
+//     while (next_operation.seq_num == BackendServer::seq_num + 1)
+//     {
+//         // pop this operation from secondary_holdback_operations
+//         BackendServer::holdback_operations.pop();
+//         // increment sequence number on secondary
+//         BackendServer::seq_num += 1;
+//         // extract command from first 4 bytes
+//         std::string operation_cmd(next_operation.msg.begin(), next_operation.msg.begin() + 4);
+//         // convert command to lowercase to standardize command
+//         operation_cmd = Utils::to_lowercase(operation_cmd);
+//         // perform write operation on secondary server
+//         std::vector<char> response_msg = call_write_command(operation_cmd, next_operation.msg);
+
+//         // ! if the operation was successful, send SECY, otherwise send SECN
+//         std::vector<char> primary_res_msg;
+//         if (response_msg.front() == '+')
+//         {
+//             std::string success_cmd = "SECY ";
+//             primary_res_msg.insert(primary_res_msg.begin(), success_cmd.begin(), success_cmd.end());
+//         }
+//         else
+//         {
+//             std::string err_cmd = "SECN ";
+//             primary_res_msg.insert(primary_res_msg.begin(), err_cmd.begin(), err_cmd.end());
+//         }
+//         // insert sequence number at the end of the command so the primary knows which operation it received an acknowledgement for
+//         std::vector<uint8_t> msg_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+//         primary_res_msg.insert(primary_res_msg.end(), msg_seq_num.begin(), msg_seq_num.end());
+//         // send response back to client (primary who initiated request)
+//         std::vector<uint8_t> res_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+//         send_response(primary_res_msg);
+
+//         // exit if no more operations left in holdback queue
+//         if (BackendServer::holdback_operations.size() == 0)
+//         {
+//             break;
+//         }
+//         next_operation = BackendServer::holdback_operations.top();
+//     }
+// }

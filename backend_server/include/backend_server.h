@@ -57,7 +57,10 @@ public:
     static std::atomic<int> seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
     // holdback queue (min heap - orders operations by sequence number so the lowest sequence number is at the top of the heap)
     static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> holdback_operations;
-    static std::unordered_map<int, std::unordered_set<int>> msg_acks_recvd; // map of msg seq num to set of secondaries that have sent an ACK for that operation
+    static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a SECY for that operation
+    // ! we could potentially change this to row level locking but might not be worth it
+    static std::mutex votes_recvd_mutex;                                         // map of msg seq num to condition variable that wakes up waiting primary
+    static std::unordered_map<uint32_t, std::condition_variable> votes_recvd_cv; // map of msg seq num to condition variable that wakes up waiting primary
 
     // methods
 public:
