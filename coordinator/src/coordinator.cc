@@ -15,8 +15,8 @@
  *  Launch: ./coordinator [-v verbose mode] [-s # number of server groups] [-b # number of backups per kvs group]
  *
  *  !!! Coordinator starts on 127.0.0.1:4999 !!!
- *  !!! Port pattern for KVS servers is: 5[<0-index server_group#>][<0-indexed server#>]0
- *  !!! E.g.: 127.0.0.1:5000 is the address of the first server in the first server group
+ *  !!! Port pattern for KVS servers is: 6[<0-index server_group#>][<0-indexed server#>]0
+ *  !!! E.g.: 127.0.0.1:6000 is the address of the first server in the first server group
  *
  *  1) kvs_responsibilities - unordered_map
  *      Data structure keeps track of, for each letter/char the ip:port
@@ -314,6 +314,8 @@ int main(int argc, char *argv[])
             if (kvs_health.count(source))
             {
                 struct kvs_args kvs;
+                
+
                 if (pthread_create(&thid, NULL, kvs_thread, (void *)&kvs) != 0)
                 {
                     logger.log("Error, unable to create new thread.", LOGGER_CRITICAL);
