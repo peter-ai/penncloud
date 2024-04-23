@@ -169,7 +169,8 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     }
 
     // all secondaries voted yes - perform the operation
-    execute_write_operation();
+    // ! should this be inputs or what we saved inside our holdback queue?
+    std::vector<char> response_msg = execute_write_operation(inputs);
 }
 
 // @brief Open connection with each secondary port and save fd for each connection
@@ -322,6 +323,163 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
  * WRITE METHODS
  */
 
-void KVSGroupServer::execute_write_operation(std::vector<char> &inputs)
+std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> &inputs)
 {
+    // extract command from beginning of inputs and erase command
+    std::string command(inputs.begin(), inputs.begin() + 4);
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // call handler for command
+    if (command == "putv")
+    {
+        return putv(inputs);
+    }
+    else if (command == "cput")
+    {
+        return cput(inputs);
+    }
+    else if (command == "delr")
+    {
+        return delr(inputs);
+    }
+    else if (command == "delv")
+    {
+        return delv(inputs);
+    }
+}
+
+std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)
+{
+    // find index of \b to extract row from inputs
+    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string row(inputs.begin(), row_end);
+
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string col(row_end + 1, col_end);
+
+    // remainder of input is value
+    std::vector<char> val(col_end + 1, inputs.end());
+
+    // log command and args
+    kvs_group_server_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
+
+    // retrieve tablet and put value for row and col combination
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->put_value(row, col, val);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::cput(std::vector<char> &inputs)
+{
+    // find index of \b to extract row from inputs
+    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - row not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string row(inputs.begin(), row_end);
+
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    // \b not found in index
+    if (row_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string col(row_end + 1, col_end);
+
+    // clear inputs UP TO AND INCLUDING the last \b chara
+    inputs.erase(inputs.begin(), col_end + 1);
+
+    // remainder of input is value1 and value2
+
+    // extract the number in front of val1
+    uint32_t bytes_in_val1 = BeUtils::network_vector_to_host_num(inputs);
+
+    // clear the first 4 bytes from inputs
+    inputs.erase(inputs.begin(), inputs.begin() + sizeof(uint32_t));
+
+    // copy the number of characters in bytes_in_val1 to val1
+    std::vector<char> val1;
+    std::memcpy(&val1, inputs.data(), bytes_in_val1);
+
+    // remaining characters are val2
+    inputs.erase(inputs.begin(), inputs.begin() + bytes_in_val1);
+    std::vector<char> val2 = inputs;
+
+    // log command and args
+    kvs_group_server_logger.log("CPUT R[" + row + "] C[" + col + "]", 20);
+
+    // retrieve tablet and call CPUT on tablet
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->cond_put_value(row, col, val1, val2);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::delr(std::vector<char> &inputs)
+{
+    // extract row as string from inputs
+    std::string row(inputs.begin(), inputs.end());
+    // log command and args
+    kvs_group_server_logger.log("DELR R[" + row + "]", 20);
+
+    // retrieve tablet and delete row
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->delete_row(row);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::delv(std::vector<char> &inputs)
+{
+    // convert vector to string since row and column are string-compatible values and split on delimiter
+    std::string delv_args(inputs.begin(), inputs.end());
+
+    size_t col_index = delv_args.find_first_of('\b');
+    // delimiter not found in string - should be present to split row and column
+    if (col_index == std::string::npos)
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - delimiter after row not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string row = delv_args.substr(0, col_index);
+    std::string col = delv_args.substr(col_index + 1);
+
+    // log command and args
+    kvs_group_server_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->delete_value(row, col);
+    return response_msg;
 }

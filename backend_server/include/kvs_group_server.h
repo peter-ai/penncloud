@@ -51,7 +51,7 @@ private:
     /**
      * WRITE METHODS
      */
-    void execute_write_operation(std::vector<char> &inputs);
+    std::vector<char> execute_write_operation(std::vector<char> &inputs);
     std::vector<char> putv(std::vector<char> &inputs);
     std::vector<char> cput(std::vector<char> &inputs);
     std::vector<char> delr(std::vector<char> &inputs);
