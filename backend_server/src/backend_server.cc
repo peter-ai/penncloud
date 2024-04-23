@@ -306,7 +306,7 @@ void BackendServer::dispatch_group_comm_thread()
     group_comm_thread.detach();
 }
 
-// @brief
+// @brief server loop to accept and handle connections from servers in replica group
 void BackendServer::accept_and_handle_group_comm()
 {
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
@@ -329,12 +329,13 @@ void BackendServer::accept_and_handle_group_comm()
         be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
 
         // launch thread to handle communication with group server
-        std::thread group_server_thread(&KVSGroupServer::read_from_server, &kvs_group_server);
+        std::thread group_server_thread(&KVSGroupServer::read_from_group_server, &kvs_group_server);
         // ! fix this after everything works (manage multithreading)
         group_server_thread.detach();
     }
 }
 
+// @brief main server loop to accept and handle clients
 void BackendServer::accept_and_handle_clients()
 {
     be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
