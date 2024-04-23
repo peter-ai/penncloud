@@ -247,7 +247,7 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 void home_page(const HttpRequest &req, HttpResponse &res)
 {
     Logger logger("Home");
-    logger.log("Resource Requested!", LOGGER_DEBUG);
+    logger.log("Resource Requested!", LOGGER_INFO);
     // get cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
     if (cookies.count("user") && cookies.count("sid"))
@@ -370,6 +370,9 @@ void home_page(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void update_password_page(const HttpRequest &req, HttpResponse &res)
 {
+    Logger logger("Update Password");
+    logger.log("Resource Requested!", LOGGER_INFO);
+
     // get cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
     if (cookies.count("user") && cookies.count("sid"))
@@ -508,6 +511,9 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
 /// @param res HttpResponse object
 void update_password_success_page(const HttpRequest &req, HttpResponse &res)
 {
+    Logger logger("Update Password Success");
+    logger.log("Resource Requested!", LOGGER_INFO);
+
     // get cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
     if (cookies.count("user") && cookies.count("sid"))
