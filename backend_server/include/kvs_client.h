@@ -32,7 +32,6 @@ private:
     std::vector<char> getr(std::vector<char> &inputs);                         // get row from tablet
     std::vector<char> getv(std::vector<char> &inputs);                         // get value from tablet
     std::vector<char> forward_operation_to_primary(std::vector<char> &inputs); // forward non-read operations received from client to primary
-    std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row);            // retrieve data tablet to service read commands
     void send_response(std::vector<char> &response_msg);                       // send response to client
 };
 

@@ -102,6 +102,7 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
  * READ-ONLY COMMAND HANDLERS
  */
 
+// @brief Get row from tablet
 std::vector<char> KVSClient::getr(std::vector<char> &inputs)
 {
     // erase command from beginning of inputs
@@ -113,11 +114,12 @@ std::vector<char> KVSClient::getr(std::vector<char> &inputs)
     kvs_client_logger.log("GETR R[" + row + "]", 20);
 
     // retrieve tablet and read row
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_row(row);
     return response_msg;
 }
 
+// @brief Get value from tablet
 std::vector<char> KVSClient::getv(std::vector<char> &inputs)
 {
     // erase command from beginning of inputs
@@ -143,7 +145,7 @@ std::vector<char> KVSClient::getv(std::vector<char> &inputs)
     kvs_client_logger.log("GETV R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and read value from row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_value(row, col);
     return response_msg;
 }
@@ -152,39 +154,36 @@ std::vector<char> KVSClient::getv(std::vector<char> &inputs)
  * INTER-GROUP COMMUNICATION METHODS
  */
 
+// @brief Forward write operation to primary server
 std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
-    // open connection with primary and forward operation to primary
-    BeUtils::open_connection(BackendServer::primary_port, BackendServer::server_sock_fd);
-    BeUtils::write(BackendServer::server_sock_fd, inputs);
+    // open connection with primary port (intergroup communcation port)
+    int primary_fd = BeUtils::open_connection(BackendServer::primary_port);
+    // failed to open connection with primary - send error response back to client
+    if (primary_fd < 0)
+    {
+        std::string err_msg = "-ER Failed to forward write to primary";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+
+    // write message to primary
+    BeUtils::write(primary_fd, inputs);
 
     // wait for primary to respond
-    // ! This might have to be a poll since we should time out if the primary eventually doesn't respond
-    // ! This could happen if the primary dies while performing the operation
     kvs_client_logger.log("Waiting for response from primary", 20);
-    std::vector<char> primary_res = BeUtils::read(BackendServer::server_sock_fd);
-    kvs_client_logger.log("Received response from primary - sending response to client", 20);
-    return primary_res;
-}
-
-/**
- * TABLET OPERATION METHODS
- */
-
-std::shared_ptr<Tablet> KVSClient::retrieve_data_tablet(std::string &row)
-{
-    for (int i = BackendServer::num_tablets - 1; i >= 0; i--)
+    // ! Currently, read from primary is set to 3 second
+    BeUtils::ReadResult read_result = BeUtils::read_with_timeout(primary_fd, 3);
+    if (read_result.error_code < 0)
     {
-        // compare start of current tablet's with
-        std::string tablet_start = BackendServer::server_tablets.at(i)->range_start;
-        if (row >= tablet_start)
-        {
-            return BackendServer::server_tablets.at(i);
-        }
+        std::string err_msg = "-ER Failed to receive response from primary";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
     }
-    // this should never execute
-    kvs_client_logger.log("Could not find tablet for given row - this should NOT occur", 50);
-    return nullptr;
+    kvs_client_logger.log("Received response from primary - sending response to client", 20);
+    return read_result.byte_stream;
 }
 
 /**
