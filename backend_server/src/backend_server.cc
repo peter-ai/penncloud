@@ -4,40 +4,62 @@
 #include "../include/backend_server.h"
 #include "../../utils/include/utils.h"
 #include "../utils/include/be_utils.h"
+#include "../include/kvs_client.h"
+#include "../include/kvs_group_server.h"
 
-// Initialize logger with info about start and end of key range
 Logger be_logger = Logger("Backend server");
 
-// initialize constant members
-const int BackendServer::coord_port = 4999;
-const std::unordered_set<std::string> BackendServer::commands{{"getr", "getv", "putv", "cput", "delr", "delv", "pwrt", "secy", "secn"}};
+/**
+ * BackendServer constant field initialization
+ */
 
-// initialize static members to default values
-int BackendServer::port = 0;
+const int BackendServer::coord_port = 4999;
+
+/**
+ * BackendServer static field initialization
+ */
+
+int BackendServer::client_port = 0;
+int BackendServer::group_port = 0;
+int BackendServer::num_tablets = 0;
+
 std::string BackendServer::range_start = "";
 std::string BackendServer::range_end = "";
-int BackendServer::num_tablets = 0;
 std::atomic<bool> BackendServer::is_primary(false);
 int BackendServer::primary_port = 0;
 std::vector<int> BackendServer::secondary_ports;
-int BackendServer::server_sock_fd = -1;
+
+int BackendServer::client_comm_sock_fd = -1;
+int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
+
 std::atomic<int> BackendServer::seq_num(0);
 std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::holdback_operations;
 std::unordered_map<int, std::unordered_set<int>> BackendServer::msg_acks_recvd;
 
+/**
+ * BackendServer methods
+ */
+
 void BackendServer::run()
 {
-    // // re-initialize logger to display key range
-    // be_logger = Logger("Backend server " + BackendServer::range_start + ":" + BackendServer::range_end);
-
-    // Bind storage server to its port
-    if (bind_server_socket() < 0)
+    // Bind server to client connection port and store fd to accept client connections on socket
+    client_comm_sock_fd = bind_socket(client_port);
+    if (client_comm_sock_fd < 0)
     {
-        be_logger.log("Failed to initialize server. Exiting.", 40);
+        be_logger.log("Failed to bind server to client port " + std::to_string(client_port) + ". Exiting.", 40);
         return;
     }
 
+    // Bind server to group connection port and store fd to accept group communication on socket
+    group_comm_sock_fd = bind_socket(group_port);
+    if (group_comm_sock_fd < 0)
+    {
+        be_logger.log("Failed to bind server to group port " + std::to_string(group_port) + ". Exiting.", 40);
+        return;
+    }
+
+    // ! COORDINATOR STATE INITIALIZATION
     // // initialize server's state from coordinator
     // if (initialize_state_from_coordinator() < 0)
     // {
@@ -45,14 +67,14 @@ void BackendServer::run()
     //     close(coord_sock_fd);
     //     return;
     // }
-    // ! DEFAULT VALUES TO SET UP KVS (above is commented out for now)
+    // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
     is_primary = true;
-    primary_port = 6001;
-    secondary_ports = {6000};
+    primary_port = 7000;
+    secondary_ports = {7001};
     range_start = "a";
     range_end = "z";
-    // ! DEFAULT VALUES TO SET UP KVS
 
+    // TODO note that all of this logging will be moved inside initialize_state_from_coordinator()
     is_primary
         ? be_logger.log("Server type [PRIMARY]", 20)
         : be_logger.log("Server type [SECONDARY]", 20);
@@ -65,79 +87,84 @@ void BackendServer::run()
         secondaries += std::to_string(secondary_port) + " ";
     }
     be_logger.log("Group secondaries at " + secondaries, 20);
+    // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
     initialize_tablets();         // initialize static tablets based on supplied key range
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
+    dispatch_group_comm_thread(); // dispatch thread to loop and accept communication from servers in group
     accept_and_handle_clients();  // run main server loop to accept client connections
 }
 
-int BackendServer::bind_server_socket()
+// @brief Creates a socket and binds to the specified port
+int BackendServer::bind_socket(int port)
 {
     // create server socket
-    if ((BackendServer::server_sock_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+    int sock_fd;
+    if ((sock_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
     {
         be_logger.log("Unable to create server socket.", 40);
         return -1;
     }
 
-    // bind server socket to server's port
+    // bind server socket to provided port (ensure port can be reused)
     sockaddr_in server_addr;
     memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
 
     int opt = 1;
-    if ((setsockopt(BackendServer::server_sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
+    if ((setsockopt(sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
     {
-        be_logger.log("Unable to reuse port to bind server socket.", 40);
+        be_logger.log("Unable to reuse port to bind socket.", 40);
         return -1;
     }
 
-    if ((bind(BackendServer::server_sock_fd, (const sockaddr *)&server_addr, sizeof(server_addr))) < 0)
+    if ((bind(sock_fd, (const sockaddr *)&server_addr, sizeof(server_addr))) < 0)
     {
-        be_logger.log("Unable to bind server socket to port.", 40);
+        be_logger.log("Unable to bind socket to port.", 40);
         return -1;
     }
 
     // listen for connections on port
-    // ! check if this value is okay
     const int BACKLOG = 20;
-    if ((listen(BackendServer::server_sock_fd, BACKLOG)) < 0)
+    if ((listen(sock_fd, BACKLOG)) < 0)
     {
-        be_logger.log("Unable to listen for client connections.", 40);
+        be_logger.log("Unable to listen for connections on bound socket.", 40);
         return -1;
     }
 
-    be_logger.log("Backend server bound on port " + std::to_string(BackendServer::port), 20);
-    return 0;
+    be_logger.log("Backend server successfully bound on port " + std::to_string(port), 20);
+    return sock_fd;
 }
 
+// @brief Contacts coordinator to retrieve initialization state
+// ! look into this later once coordinator is complete
 int BackendServer::initialize_state_from_coordinator()
 {
-    // talk to coordinator to get server assignment (primary/secondary) and key range
     be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
 
     // open connection with coordinator
-    if (BeUtils::open_connection(coord_port, BackendServer::server_sock_fd) < 0)
+    int coord_sock_fd = BeUtils::open_connection(coord_port);
+    if (coord_sock_fd < 0)
     {
         be_logger.log("Failed to open connection with coordinator. Exiting", 40);
         return -1;
     }
 
     // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string msg = "INIT";
-    if (BeUtils::write_to_coord(BackendServer::server_sock_fd, msg) < 0)
+    std::string msg = "INIT " + std::to_string(client_port);
+    if (BeUtils::write_to_coord(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
         return -1;
     }
 
-    std::string coord_response = BeUtils::read_from_coord(BackendServer::server_sock_fd);
+    std::string coord_response = BeUtils::read_from_coord(coord_sock_fd);
     // coordinator didn't send back a full response (\r\n at the end)
     if (coord_response.empty())
     {
-        be_logger.log("Failed to receive initialization details from coordinator", 40);
+        be_logger.log("Failed to receive initialization state from coordinator", 40);
         return -1;
     }
 
@@ -191,10 +218,9 @@ int BackendServer::initialize_state_from_coordinator()
     return 0;
 }
 
+// @brief Initialize tablets across key range provided by coordinator
 void BackendServer::initialize_tablets()
 {
-    // initialize tablets across servers key range
-
     // Convert start and end characters to integers and calculate size of range
     char start = range_start[0];
     char end = range_end[0];
@@ -230,7 +256,7 @@ void BackendServer::initialize_tablets()
     }
 }
 
-// ! this might not work as expected
+// ! this is NOT ready yet
 void ping(int fd)
 {
     // Sleep for 1 seconds before sending first heartbeat
@@ -245,6 +271,7 @@ void ping(int fd)
     }
 }
 
+// ! this is NOT ready yet
 void BackendServer::send_coordinator_heartbeat()
 {
     // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
@@ -254,16 +281,53 @@ void BackendServer::send_coordinator_heartbeat()
     // heartbeat_thread.detach();
 }
 
+// @brief initialize and detach thread to listen for connections from servers in group
+void BackendServer::dispatch_group_comm_thread()
+{
+    be_logger.log("Dispatching thread to accept and handle group communication.", 20);
+    std::thread group_comm_thread(accept_and_handle_group_comm);
+    group_comm_thread.detach();
+}
+
+// @brief
+void BackendServer::accept_and_handle_group_comm()
+{
+    be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
+    while (true)
+    {
+        // accept connection from server in group, which returns a fd to communicate directly with the server
+        int group_server_fd;
+        struct sockaddr_in group_server_addr;
+        socklen_t group_server_addr_size = sizeof(group_server_addr);
+        if ((group_server_fd = accept(group_comm_sock_fd, (sockaddr *)&group_server_addr, &group_server_addr_size)) < 0)
+        {
+            be_logger.log("Unable to accept incoming connection from group server. Skipping.", 30);
+            // error with incoming connection should NOT break the server loop
+            continue;
+        }
+
+        // extract port from group server connection and initialize KVSGroupServer object
+        int group_server_port = ntohs(group_server_addr.sin_port);
+        KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
+        be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
+
+        // launch thread to handle communication with group server
+        std::thread group_server_thread(&KVSGroupServer::read_from_server, &kvs_group_server);
+        // ! fix this after everything works (manage multithreading)
+        group_server_thread.detach();
+    }
+}
+
 void BackendServer::accept_and_handle_clients()
 {
-    be_logger.log("Backend server accepting clients on port " + std::to_string(BackendServer::port), 20);
+    be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
     while (true)
     {
         // accept client connection, which returns a fd to communicate directly with the client
         int client_fd;
         struct sockaddr_in client_addr;
         socklen_t client_addr_size = sizeof(client_addr);
-        if ((client_fd = accept(BackendServer::server_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
+        if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
         {
             be_logger.log("Unable to accept incoming connection from client. Skipping.", 30);
             // error with incoming connection should NOT break the server loop

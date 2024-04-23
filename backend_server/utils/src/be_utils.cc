@@ -8,17 +8,17 @@
 
 Logger be_utils_logger = Logger("BE Utils");
 
-int BeUtils::open_connection(int port, int fd)
+int BeUtils::open_connection(int port)
 {
     be_utils_logger.log("Opening connection with port " + std::to_string(port), 20);
 
-    // // Create socket to speak to port
-    // int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-    // if (sock_fd == -1)
-    // {
-    //     be_utils_logger.log("Unable to create socket for communication", 40);
-    //     return -1;
-    // }
+    // Create socket to speak to port
+    int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock_fd == -1)
+    {
+        be_utils_logger.log("Unable to create socket for communication", 40);
+        return -1;
+    }
 
     // set up address struct for destination
     sockaddr_in addr;
@@ -32,12 +32,12 @@ int BeUtils::open_connection(int port, int fd)
     }
 
     // Connect to port
-    if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+    if (connect(sock_fd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
     {
         be_utils_logger.log("Unable to establish connection", 40);
         return -1;
     }
-    return 0;
+    return sock_fd;
 }
 
 /**
@@ -130,7 +130,7 @@ int BeUtils::write(int fd, std::vector<char> &msg)
     return 0;
 }
 
-// ! add error checks in here
+// ! might not need this
 std::vector<char> BeUtils::read(int fd)
 {
     std::vector<char> byte_stream;

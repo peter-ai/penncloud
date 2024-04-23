@@ -32,31 +32,30 @@ class BackendServer
 public:
     // constants
     static const int coord_port; // coordinator's port
-    static const std::unordered_set<std::string> commands;
 
-    // backend server fields
-    static int port; // port server runs on
-    // NOTE: if the key range is "a" to "d", this server will manage every key UP TO AND INCLUDING "d"'s full key range
-    // For example, a key called dzzzzz would be managed in this server. The next server would start at "e"
-    static std::string range_start; // start of key range managed by this backend server
-    static std::string range_end;   // end of key range managed by this backend server
-    static int num_tablets;         // number of static tablets on this server
+    // fields (provided at startup to run server)
+    static int client_port; // port server accepts client connections on - provided at startup
+    static int group_port;  // port server accepts intergroup communication on - provided at startup
+    static int num_tablets; // number of static tablets on this server - provided at startup
 
-    // group metadata
+    // fields (provided by coordinator)
+    static std::string range_start;          // start of key range managed by this backend server - provided by coordinator
+    static std::string range_end;            // end of key range managed by this backend server - provided by coordinator
     static std::atomic<bool> is_primary;     // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
-    static int primary_port;                 // primary port (only useful is this server is a secondary)
-    static std::vector<int> secondary_ports; // list of secondaries (only useful if this server is a primary)
+    static int primary_port;                 // port for communication with primary - provided by coordinator
+    static std::vector<int> secondary_ports; // list of secondaries (only used by a primary to communicate with its secondaries) - provided by coordinator
 
-    static int server_sock_fd; // bound server socket's fd
+    // server fields
+    static int client_comm_sock_fd;                             // bound server socket's fd
+    static int group_comm_sock_fd;                              // bound server socket's fd
+    static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
-    // note that a vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable
-    static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server
-
-    static std::atomic<int> seq_num; // write operation sequence number
-    // holdback queue (min heap)
+    // remote-write related fields
+    static std::atomic<int> seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    // holdback queue (min heap - orders operations by sequence number so the lowest sequence number is at the top of the heap)
     static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> holdback_operations;
-    static std::unordered_map<int, std::unordered_set<int>> msg_acks_recvd;  // map of seq num to secondaries that have sent an acknowledgement for that secondary
-    static std::unordered_map<int, std::unordered_set<int>> original_sender; // map of seq num to original secondary that sent it
+    static std::unordered_map<int, std::unordered_set<int>> msg_acks_recvd; // map of msg seq num to set of secondaries that have sent an ACK for that operation
+
     // methods
 public:
     static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)
@@ -65,10 +64,13 @@ private:
     // make default constructor private
     BackendServer() {}
 
-    static int bind_server_socket();                // bind port to socket
+    // methods are listed in the order in which they should be performed inside run() to set up the server to accept clients
+    static int bind_socket(int port);               // creates a socket and binds to the specified port. Returns the fd that the socket is bound to.
     static int initialize_state_from_coordinator(); // contact coordinator to get information
     static void initialize_tablets();               // initialize tablets on this server
     static void send_coordinator_heartbeat();       // dispatch thread to send heartbeat to coordinator port
+    static void dispatch_group_comm_thread();       // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm();     // server loop to accept and handle connections from servers in its replica group
     static void accept_and_handle_clients();        // main server loop to accept and handle clients
 };
 
