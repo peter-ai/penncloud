@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <shared_mutex>
 
 #include "../../utils/include/utils.h"
 
@@ -50,7 +51,12 @@ struct client_args
 
 struct kvs_args
 {
-    std::string addr;
+    std::string client_listen_ip;
+    std::string kvs_comms_ip;
+    std::string kv_range;
+    bool primary;
+    bool alive;
+    int kvs_group;
     int fd;
 };
 
