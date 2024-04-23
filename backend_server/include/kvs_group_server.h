@@ -33,11 +33,12 @@ private:
     void handle_command(std::vector<char> &byte_stream);
 
     // group communication methods
+    void send_prepare(std::vector<char> &inputs); // sends prepare msg to all secondaries when a write command is received
+
     int send_operation_to_secondaries(std::vector<char> inputs);  // send operation to perform on secondary servers
     int wait_for_secondary_acks(std::vector<int> &secondary_fds); // loops and waits for secondaries to send acknowledgements
 
     // write methods
-    // std::vector<char> call_write_command(std::string command, std::vector<char> &inputs);
     std::vector<char> putv(std::vector<char> &inputs);
     std::vector<char> cput(std::vector<char> &inputs);
     std::vector<char> delr(std::vector<char> &inputs);
