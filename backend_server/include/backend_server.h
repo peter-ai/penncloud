@@ -16,7 +16,7 @@
 
 struct HoldbackOperation
 {
-    int seq_num;
+    uint32_t seq_num;
     std::vector<char> msg;
 
     // Constructor
@@ -54,7 +54,9 @@ public:
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
     // remote-write related fields
-    static std::atomic<int> seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static std::atomic<int> seq_num;      // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static std::atomic<int> prep_seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+
     // holdback queue (min heap - orders operations by sequence number so the lowest sequence number is at the top of the heap)
     static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> holdback_operations;
     static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a SECY for that operation

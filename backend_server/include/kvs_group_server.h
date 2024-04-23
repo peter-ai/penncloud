@@ -32,14 +32,19 @@ private:
     // read first 4 bytes from stream to get command and then call corresponding command
     void handle_command(std::vector<char> &byte_stream);
 
+    // helpers
+    std::vector<char> construct_prepare_cmd(std::string &row);
+
     // group communication methods
     // methods used by PRIMARY
-    void send_prepare(std::vector<char> &inputs);          // sends prepare msg to all secondaries when a write command is received
-    void handle_secondary_vote(std::vector<char> &inputs); // handle vote (secy/secn) from secondary
-    void handle_secondary_acks(std::vector<char> &inputs); // handle ack from secondary
+    void initiate_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
+    void handle_secondary_vote(std::vector<char> &inputs);     // handle vote (secy/secn) from secondary
+    void handle_secondary_acks(std::vector<char> &inputs);     // handle ack from secondary
 
     // methods used by SECONDARY
-    void handle_prep(std::vector<char> &inputs); // handle prepare msg from primary
+    void prepare(std::vector<char> &inputs); // handle prepare msg from primary
+    void commit(std::vector<char> &inputs);  // handle prepare msg from primary
+    void abort(std::vector<char> &inputs);   // handle prepare msg from primary
 
     // write methods
     std::vector<char> putv(std::vector<char> &inputs);
