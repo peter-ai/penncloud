@@ -20,7 +20,7 @@ void Client::read_from_network()
         }
         else if (bytes_recvd == 0)
         {
-            http_client_logger.log("Client closed connection", 30);
+            http_client_logger.log("Client closed connection", LOGGER_INFO);
             break;
         }
 
