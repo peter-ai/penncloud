@@ -89,6 +89,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         }
         else if (command == "ackn")
         {
+            handle_secondary_acks(byte_stream);
         }
     }
     // secondary server
@@ -109,7 +110,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
 }
 
 /**
- * GROUP COMMUNICATION METHODS
+ * GROUP COMMUNICATION METHODS - PRIMARY
  */
 
 // @brief Primary sends PREP to all secondaries
@@ -163,7 +164,7 @@ void KVSGroupServer::send_prepare(std::vector<char> &inputs)
     // once you send the message out to all of your secondaries, you need to wait until the sequence number map has all ports
 }
 
-// @brief Primary thread receives vote from secondary
+// @brief Handles primary thread receiving vote from secondary
 void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
 {
     // extract vote from beginning of inputs
@@ -176,7 +177,7 @@ void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
 
     kvs_group_server_logger.log("Received " + vote + " for operation " + std::to_string(seq_num), 20);
 
-    // acquire mutex to add vote for sequence number (only need to lock the row )
+    // acquire mutex to add vote for sequence number
     BackendServer::votes_recvd_mutex.lock();
     BackendServer::votes_recvd[seq_num].push_back(vote);
 
@@ -189,6 +190,35 @@ void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
     // release mutex after vote has been added
     BackendServer::votes_recvd_mutex.unlock();
 }
+
+// @brief Handles primary thread receives ACK from secondary
+void KVSGroupServer::handle_secondary_acks(std::vector<char> &inputs)
+{
+    // erase ackn from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract sequence number
+    uint32_t seq_num = BeUtils::network_vector_to_host_num(inputs);
+
+    kvs_group_server_logger.log("Received ackn for operation " + std::to_string(seq_num), 20);
+
+    // acquire mutex to increment number of acks for sequence number
+    BackendServer::acks_recvd_mutex.lock();
+    BackendServer::acks_recvd[seq_num] += 1;
+
+    // if the operation has as many acks as there are secondaries, notify the primary thread waiting on this condition
+    if (BackendServer::acks_recvd[seq_num] == BackendServer::secondary_ports.size())
+    {
+        // send signal to primary thread waiting for this operation to complete
+        BackendServer::acks_recvd_cv[seq_num].notify_one();
+    }
+    // release mutex after vote has been added
+    BackendServer::acks_recvd_mutex.unlock();
+}
+
+/**
+ * GROUP COMMUNICATION METHODS - SECONDARY
+ */
 
 // // @brief Primary sends PREP to all secondaries
 // // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)

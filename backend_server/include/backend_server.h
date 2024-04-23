@@ -61,6 +61,10 @@ public:
     // ! we could potentially change this to row level locking but might not be worth it
     static std::mutex votes_recvd_mutex;                                         // map of msg seq num to condition variable that wakes up waiting primary
     static std::unordered_map<uint32_t, std::condition_variable> votes_recvd_cv; // map of msg seq num to condition variable that wakes up waiting primary
+    static std::unordered_map<uint32_t, int> acks_recvd;                         // map of msg seq num to set of secondaries that have sent a SECY for that operation
+    // ! we could potentially change this to row level locking but might not be worth it
+    static std::mutex acks_recvd_mutex;                                         // map of msg seq num to condition variable that wakes up waiting primary
+    static std::unordered_map<uint32_t, std::condition_variable> acks_recvd_cv; // map of msg seq num to condition variable that wakes up waiting primary
 
     // methods
 public:
