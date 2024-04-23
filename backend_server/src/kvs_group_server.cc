@@ -160,17 +160,74 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
         }
     }
 
-    // handle scenario where not all secondaries voted yes
-    if (!all_secondaries_in_favor)
+    std::vector<char> response_msg;
+    std::vector<char> abort_commit_msg;
+    if (all_secondaries_in_favor)
     {
-        // send abort message to secondaries
-        // this should cause them to release their locks
-        // then you respond to the client from here
+        // all secondaries voted yes - perform the operation
+        // ! should this be inputs or what we saved inside our holdback queue?
+        response_msg = execute_write_operation(inputs);
+
+        // send commit to all secondaries
+        abort_commit_msg = {'C', 'M', 'M', 'T', ' '};
+        // convert seq number to vector and append to prepare_msg
+        std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+        abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+        // append inputs to commit_msg
+        abort_commit_msg.insert(abort_commit_msg.end(), inputs.begin(), inputs.end());
+    }
+    else
+    {
+        // send abort to all secondaries
+        abort_commit_msg = {'A', 'B', 'R', 'T', ' '};
+        // convert seq number to vector and append to prepare_msg
+        std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+        abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
     }
 
-    // all secondaries voted yes - perform the operation
-    // ! should this be inputs or what we saved inside our holdback queue?
-    std::vector<char> response_msg = execute_write_operation(inputs);
+    // send commit/abort msg to each secondary
+    for (int secondary_fd : secondary_fds)
+    {
+        if (BeUtils::write(secondary_fd, abort_commit_msg) < 0)
+        {
+            // ! figure out how to properly handle this scenario where write to secondary fails
+        }
+    }
+
+    // once you send the commit/abort msg out to all of your secondaries, wait for a response for up to 2 seconds
+    // ! how long should this duration be?
+    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+    {
+        // ! timeout occurred while waiting, meaning some server responded or some failure occurred
+    }
+
+    // read from all secondary fds
+    for (int secondary_fd : secondary_fds)
+    {
+        BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
+        if (msg_from_secondary.error_code != 0)
+        {
+            // ! error occurred while reading from secondary fds
+        }
+        // process vote sent by secondary
+        handle_secondary_ack(msg_from_secondary.byte_stream);
+    }
+
+    // didn't receive all acks (shouldn't occur)
+    if (BackendServer::acks_recvd.at(operation_seq_num) != BackendServer::secondary_ports.size())
+    {
+    }
+
+    // clean up data structures
+    BackendServer::votes_recvd_lock.lock();
+    BackendServer::votes_recvd.erase(operation_seq_num);
+    BackendServer::votes_recvd_lock.unlock();
+
+    BackendServer::acks_recvd_lock.lock();
+    BackendServer::acks_recvd.erase(operation_seq_num);
+    BackendServer::acks_recvd_lock.unlock();
+
+    send_response(response_msg);
 }
 
 // @brief Open connection with each secondary port and save fd for each connection
