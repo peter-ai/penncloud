@@ -19,6 +19,9 @@ struct HoldbackOperation
     int seq_num;
     std::vector<char> msg;
 
+    // Constructor
+    HoldbackOperation(int seq_num, std::vector<char> &msg) : seq_num(seq_num), msg(msg) {}
+
     // comparison operator for HoldbackOperations
     bool operator>(const HoldbackOperation &other) const
     {
