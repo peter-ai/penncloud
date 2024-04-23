@@ -256,6 +256,23 @@ void BackendServer::initialize_tablets()
     }
 }
 
+// @brief Retrieve tablet containing data for thread to read from
+std::shared_ptr<Tablet> BackendServer::retrieve_data_tablet(std::string &row)
+{
+    // iterate tablets in reverse order and find first tablet that row is "greater" than
+    for (int i = num_tablets - 1; i >= 0; i--)
+    {
+        std::string tablet_start = server_tablets.at(i)->range_start;
+        if (row >= tablet_start)
+        {
+            return server_tablets.at(i);
+        }
+    }
+    // this should never execute
+    be_logger.log("Could not find tablet for given row - this should NOT occur", 50);
+    return nullptr;
+}
+
 // ! this is NOT ready yet
 void ping(int fd)
 {
@@ -340,7 +357,7 @@ void BackendServer::accept_and_handle_clients()
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
         // launch thread to handle client
-        std::thread client_thread(&KVSClient::read_from_network, &kvs_client);
+        std::thread client_thread(&KVSClient::read_from_client, &kvs_client);
         // ! fix this after everything works (manage multithreading)
         client_thread.detach();
     }

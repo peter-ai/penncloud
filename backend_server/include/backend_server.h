@@ -58,13 +58,13 @@ public:
 
     // methods
 public:
-    static void run(); // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static void run();                                                     // run server (server does NOT run on initialization, server instance must explicitly call this method)
+    static std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row); // retrieve tablet containing data for thread to read from
 
 private:
     // make default constructor private
     BackendServer() {}
 
-    // methods are listed in the order in which they should be performed inside run() to set up the server to accept clients
     static int bind_socket(int port);               // creates a socket and binds to the specified port. Returns the fd that the socket is bound to.
     static int initialize_state_from_coordinator(); // contact coordinator to get information
     static void initialize_tablets();               // initialize tablets on this server
