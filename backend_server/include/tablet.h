@@ -57,7 +57,7 @@ public:
 
     // acquire exclusive lock on row
     // this should proceed ALL write operations and should be called when responding to PREPARE command
-    int acquire_exclusive_row_lock(std::string operation, std::string &row);
+    int acquire_exclusive_row_lock(std::string &operation, std::string &row);
 
     // add value at supplied row and column to tablet data
     // this operation acquires exclusive access to the row

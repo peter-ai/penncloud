@@ -77,7 +77,7 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
     return response_msg;
 }
 
-int Tablet::acquire_exclusive_row_lock(std::string operation, std::string &row)
+int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
 {
     // putv should first create the row if it doesn't exist
     if (operation == "putv" && data.count(row) == 0)

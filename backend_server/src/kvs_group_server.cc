@@ -191,6 +191,9 @@ std::vector<int> KVSGroupServer::open_connection_with_secondary_fds()
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
 void KVSGroupServer::construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds)
 {
+    // extract write operation from inputs
+    std::string write_operation(inputs.begin(), inputs.begin() + 4);
+
     // extract row from inputs (start at inputs.begin() + 5 to ignore command)
     auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
     // \b not found in index
@@ -207,6 +210,8 @@ void KVSGroupServer::construct_and_send_prepare_cmd(int seq_num, std::vector<cha
 
     // send prepare command to all secondaries
     std::vector<char> prepare_msg = {'P', 'R', 'E', 'P', ' '};
+    // append write operation to prepare msg
+    prepare_msg.insert(prepare_msg.end(), write_operation.begin(), write_operation.end());
     // convert seq number to vector and append to prepare_msg
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(seq_num);
     prepare_msg.insert(prepare_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
@@ -269,54 +274,78 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // erase PREP command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
 
+    // save write operation
+    std::string write_operation(inputs.begin(), inputs.begin() + 4);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
     // extract sequence number and erase from inputs
-    uint32_t seq_num = BeUtils::network_vector_to_host_num(inputs);
+    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
     // row is remainder of inputs
-    std::vector<char> row = inputs;
+    std::string row(inputs.begin(), inputs.end());
 
-    // wrap operation with its sequence number and add to secondary holdback queue
-    HoldbackOperation operation(seq_num, row);
-    BackendServer::holdback_operations.push(operation);
-
-    // iterate holdback queue and figure out if the command at the front is the command you want to perform next (1 + seq_num)
-    HoldbackOperation next_operation = BackendServer::holdback_operations.top();
-    while (next_operation.seq_num == BackendServer::prep_seq_num + 1)
+    // acquire an exclusive lock on the row
+    // retrieve tablet and put value for row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    std::vector<char> vote_response;
+    // failed to acquire exclusive row lock
+    if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
     {
-        // pop this operation from secondary_holdback_operations
-        BackendServer::holdback_operations.pop();
-        // increment prepare sequence number on secondary
-        BackendServer::prep_seq_num += 1;
-        // construct row stored in holdback queue - this is the row we want to acquire a lock for
-        std::string row(next_operation.msg.begin(), next_operation.msg.end());
-
-        // ! if the operation was successful, send SECY, otherwise send SECN
-        std::vector<char> primary_res_msg;
-        if (response_msg.front() == '+')
-        {
-            std::string success_cmd = "SECY ";
-            primary_res_msg.insert(primary_res_msg.begin(), success_cmd.begin(), success_cmd.end());
-        }
-        else
-        {
-            std::string err_cmd = "SECN ";
-            primary_res_msg.insert(primary_res_msg.begin(), err_cmd.begin(), err_cmd.end());
-        }
-        // insert sequence number at the end of the command so the primary knows which operation it received an acknowledgement for
-        std::vector<uint8_t> msg_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
-        primary_res_msg.insert(primary_res_msg.end(), msg_seq_num.begin(), msg_seq_num.end());
-        // send response back to client (primary who initiated request)
-        std::vector<uint8_t> res_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
-        send_response(primary_res_msg);
-
-        // exit if no more operations left in holdback queue
-        if (BackendServer::holdback_operations.size() == 0)
-        {
-            break;
-        }
-        next_operation = BackendServer::holdback_operations.top();
+        vote_response = {'S', 'E', 'C', 'N', ' '};
     }
+    // successfully acquired row lock
+    else
+    {
+        vote_response = {'S', 'E', 'C', 'Y', ' '};
+    }
+
+    // convert seq number to vector and append to prepare_msg
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+    vote_response.insert(vote_response.end(), seq_num_vec.begin(), seq_num_vec.end());
+    send_response(vote_response);
+
+    // // wrap operation with its sequence number and add to secondary holdback queue
+    // HoldbackOperation operation(seq_num, row);
+    // BackendServer::holdback_operations.push(operation);
+
+    // // iterate holdback queue and figure out if the command at the front is the command you want to perform next (1 + seq_num)
+    // HoldbackOperation next_operation = BackendServer::holdback_operations.top();
+    // while (next_operation.seq_num == BackendServer::prep_seq_num + 1)
+    // {
+    //     // pop this operation from secondary_holdback_operations
+    //     BackendServer::holdback_operations.pop();
+    //     // increment prepare sequence number on secondary
+    //     BackendServer::prep_seq_num += 1;
+    //     // construct row stored in holdback queue - this is the row we want to acquire a lock for
+    //     std::string row(next_operation.msg.begin(), next_operation.msg.end());
+
+    //     // ! if the operation was successful, send SECY, otherwise send SECN
+    //     std::vector<char> primary_res_msg;
+    //     if (response_msg.front() == '+')
+    //     {
+    //         std::string success_cmd = "SECY ";
+    //         primary_res_msg.insert(primary_res_msg.begin(), success_cmd.begin(), success_cmd.end());
+    //     }
+    //     else
+    //     {
+    //         std::string err_cmd = "SECN ";
+    //         primary_res_msg.insert(primary_res_msg.begin(), err_cmd.begin(), err_cmd.end());
+    //     }
+    //     // insert sequence number at the end of the command so the primary knows which operation it received an acknowledgement for
+    //     std::vector<uint8_t> msg_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+    //     primary_res_msg.insert(primary_res_msg.end(), msg_seq_num.begin(), msg_seq_num.end());
+    //     // send response back to client (primary who initiated request)
+    //     std::vector<uint8_t> res_seq_num = BeUtils::host_num_to_network_vector(next_operation.seq_num);
+    //     send_response(primary_res_msg);
+
+    //     // exit if no more operations left in holdback queue
+    //     if (BackendServer::holdback_operations.size() == 0)
+    //     {
+    //         break;
+    //     }
+    //     next_operation = BackendServer::holdback_operations.top();
+    // }
 }
 
 /**
@@ -383,7 +412,7 @@ std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)
     kvs_group_server_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and put value for row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->put_value(row, col, val);
     return response_msg;
 }
@@ -439,7 +468,7 @@ std::vector<char> KVSGroupServer::cput(std::vector<char> &inputs)
     kvs_group_server_logger.log("CPUT R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and call CPUT on tablet
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->cond_put_value(row, col, val1, val2);
     return response_msg;
 }
@@ -452,7 +481,7 @@ std::vector<char> KVSGroupServer::delr(std::vector<char> &inputs)
     kvs_group_server_logger.log("DELR R[" + row + "]", 20);
 
     // retrieve tablet and delete row
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->delete_row(row);
     return response_msg;
 }
@@ -479,7 +508,7 @@ std::vector<char> KVSGroupServer::delv(std::vector<char> &inputs)
     kvs_group_server_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and delete value from row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->delete_value(row, col);
     return response_msg;
 }
