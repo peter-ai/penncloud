@@ -6,14 +6,28 @@
 
 namespace BeUtils
 {
-    int open_connection(int port); // Open a connection to the specified port. Returns a fd if successful.
+    // Open a connection to the specified port. Returns a fd if successful.
+    int open_connection(int port);
 
-    // Write message to coordinator (supply fd to coordinator in both cases)
-    int write_to_coord(int fd, std::string &msg); // Write message to coordinator
-    std::string read_from_coord(int fd);          // Read message from coordinator
-
+    /**
+     * Write operations
+     */
+    int write_to_coord(int fd, std::string &msg);    // Write message to coordinator
     int write(const int fd, std::vector<char> &msg); // Write message prepended with size prefix to fd
-    std::vector<char> read(int fd);                  // Read byte stream from fd
+
+    /**
+     * Read operations
+     */
+    // Define a struct to hold both the byte stream and an error code (for read and read_with_timeout)
+    struct ReadResult
+    {
+        std::vector<char> byte_stream;
+        int error_code = 0; // default error code of 0 (no error), -1 otherwise
+    };
+
+    std::string read_from_coord(int fd);                 // Read message from coordinator
+    ReadResult read(int fd);                             // Read byte stream from fd
+    ReadResult read_with_timeout(int fd, int timeout_s); // Read byte stream from fd with timeout for read
 
     // host number <-> network vector conversion
     std::vector<uint8_t> host_num_to_network_vector(uint32_t num);

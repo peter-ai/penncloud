@@ -8,6 +8,7 @@
 
 Logger be_utils_logger = Logger("BE Utils");
 
+// @brief Open a connection to the specified port. Returns a fd if successful.
 int BeUtils::open_connection(int port)
 {
     be_utils_logger.log("Opening connection with port " + std::to_string(port), 20);
@@ -41,7 +42,7 @@ int BeUtils::open_connection(int port)
 }
 
 /**
- * COORDINATOR COMMUNICATION
+ * WRITE OPERATIONS
  */
 
 int BeUtils::write_to_coord(int fd, std::string &msg)
@@ -62,6 +63,32 @@ int BeUtils::write_to_coord(int fd, std::string &msg)
     return 0;
 }
 
+int BeUtils::write(int fd, std::vector<char> &msg)
+{
+    // Insert size of message at beginning of msg
+    std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
+    msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
+
+    // write response to provided fd until all bytes in vector are sent
+    size_t total_bytes_sent = 0;
+    while (total_bytes_sent < msg.size())
+    {
+        int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
+        if (bytes_sent < 0)
+        {
+            be_utils_logger.log("Unable to send message", 40);
+            return -1;
+        }
+        total_bytes_sent += bytes_sent;
+    }
+    return 0;
+}
+
+/**
+ * READ OPERATIONS
+ */
+
+// ! might need to rework this to send back a ReadResult too
 std::string BeUtils::read_from_coord(int fd)
 {
     // read from fd
@@ -106,34 +133,12 @@ std::string BeUtils::read_from_coord(int fd)
     return response;
 }
 
-/**
- * INTER-GROUP COMMUNICATION
- */
-
-int BeUtils::write(int fd, std::vector<char> &msg)
+// @brief Read byte stream from fd
+BeUtils::ReadResult BeUtils::read(int fd)
 {
-    // Insert size of message at beginning of msg
-    std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
-    msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
+    // struct to return from method
+    BeUtils::ReadResult result;
 
-    // write response to provided fd until all bytes in vector are sent
-    size_t total_bytes_sent = 0;
-    while (total_bytes_sent < msg.size())
-    {
-        int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
-        if (bytes_sent < 0)
-        {
-            be_utils_logger.log("Unable to send message", 40);
-            return -1;
-        }
-        total_bytes_sent += bytes_sent;
-    }
-    return 0;
-}
-
-// ! might not need this
-std::vector<char> BeUtils::read(int fd)
-{
     std::vector<char> byte_stream;
     uint32_t bytes_left = 0;
 
@@ -145,11 +150,13 @@ std::vector<char> BeUtils::read(int fd)
         if (bytes_recvd < 0)
         {
             be_utils_logger.log("Error reading from source", 40);
+            result.error_code = -1;
             break;
         }
         else if (bytes_recvd == 0)
         {
-            be_utils_logger.log("Remote socket closed connection", 30);
+            be_utils_logger.log("Remote socket closed connection", 40);
+            result.error_code = -1;
             break;
         }
 
@@ -165,7 +172,8 @@ std::vector<char> BeUtils::read(int fd)
                 // no bytes left in message - stop reading from fd and return byte stream read from fd
                 if (bytes_left == 0)
                 {
-                    return byte_stream;
+                    result.byte_stream = byte_stream;
+                    return result;
                 }
             }
             // command is complete, we need the next 4 bytes to determine how much bytes are in this command
@@ -189,7 +197,36 @@ std::vector<char> BeUtils::read(int fd)
             }
         }
     }
-    return byte_stream;
+    return result;
+}
+
+// @brief Read byte stream from fd with timeout for read
+BeUtils::ReadResult BeUtils::read_with_timeout(int fd, int timeout_s)
+{
+    // initialize fd set to monitor for reads
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(fd, &read_fds);
+
+    // set timeout duration
+    struct timeval timeout;
+    timeout.tv_sec = timeout_s;
+    timeout.tv_usec = 0;
+
+    BeUtils::ReadResult read_result;
+
+    // call select with specified timeout
+    int result = select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
+    // error or timeout occurred during select call
+    if (result <= 0)
+    {
+        read_result.error_code = -1;
+        return read_result;
+    }
+
+    // data in fd - call read utility method to read from fd
+    read_result = read(fd);
+    return read_result;
 }
 
 std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)
