@@ -111,6 +111,13 @@ int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
     return 0;
 }
 
+void Tablet::release_exclusive_row_lock(std::string &row)
+{
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
+    tablet_logger.log("+OK Released exclusive row lock on R[" + row + "]", 20);
+}
+
 // add value at supplied row and column to tablet data
 std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
 {

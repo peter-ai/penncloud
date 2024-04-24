@@ -201,13 +201,18 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     {
         // at least one secondary voted no - construct abort message to send to all secondaries
         kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] At least one secondary voted no", 20);
+        // extract row from inptus
+        std::string row = extract_row_from_input(inputs);
 
-        // TODO need to release lock on primary here
+        // release lock held by primary
+        std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+        tablet->release_exclusive_row_lock(row);
 
         abort_commit_msg = {'A', 'B', 'R', 'T', ' '};
         // convert seq number to vector and append to prepare_msg
         std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
         abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+        abort_commit_msg.insert(abort_commit_msg.end(), row.begin(), row.end());
         kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending ABRT message to secondaries", 20);
     }
 
@@ -276,6 +281,14 @@ std::vector<int> KVSGroupServer::open_connection_with_secondary_fds()
     return secondary_fds;
 }
 
+std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
+{
+    // extract row from inputs (start at inputs.begin() + 5 to ignore command)
+    auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
+    std::string row(inputs.begin(), row_end);
+    return row;
+}
+
 // @brief Constructs prepare command to send to secondary servers
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
 int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds)
@@ -287,9 +300,18 @@ int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::v
     // Unable to extract row from inputs due to improper delimiter
     if (row_end == inputs.end())
     {
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Malformed row argument while constructing PREP command", 20);
         return -1;
     }
     std::string row(inputs.begin(), row_end);
+
+    // Primary acquires exclusive lock on row
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
+    {
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary failed to acquire exclusive row lock", 20);
+        return -1;
+    }
 
     // construct PREP command to send to secondaries
     std::vector<char> prepare_msg = {'P', 'R', 'E', 'P', ' '};
@@ -304,6 +326,7 @@ int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::v
         // exit if write failure occurs
         if (BeUtils::write(secondary_fd, prepare_msg) < 0)
         {
+            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failure while writing PREP command to secondary", 20);
             return -1;
         }
     }
@@ -388,6 +411,55 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     vote_response.insert(vote_response.end(), seq_num_vec.begin(), seq_num_vec.end());
     send_response(vote_response);
+}
+
+// @brief Secondary responds to commit command
+void KVSGroupServer::commit(std::vector<char> &inputs)
+{
+    // erase CMMT command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract sequence number and erase from inputs
+    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    // remainder of command is passed to execute write
+    // execute write operation on primary
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on secondary", 20);
+    std::vector<char> response_msg = execute_write_operation(inputs);
+
+    // ! what happens if the write fails on the secondary? It sends ACK either way
+
+    std::vector<char> ack_response = {'A', 'C', 'K', 'N'};
+    // convert seq number to vector and append to prepare_msg
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+    ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
+    send_response(ack_response);
+}
+
+// @brief Secondary responds to abort command
+void KVSGroupServer::abort(std::vector<char> &inputs)
+{
+    // erase ABRT command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract sequence number and erase from inputs
+    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    // row is remainder of inputs
+    std::string row(inputs.begin(), inputs.end());
+
+    // acquire an exclusive lock on the row
+    // retrieve tablet and put value for row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    tablet->release_exclusive_row_lock(row);
+
+    std::vector<char> ack_response = {'A', 'C', 'K', 'N'};
+    // convert seq number to vector and append to prepare_msg
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+    ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
+    send_response(ack_response);
 }
 
 /**
