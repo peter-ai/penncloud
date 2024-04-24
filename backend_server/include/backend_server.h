@@ -14,20 +14,20 @@
 #include "kvs_client.h"
 #include "../../utils/include/utils.h"
 
-struct HoldbackOperation
-{
-    uint32_t seq_num;
-    std::vector<char> msg;
+// struct HoldbackOperation
+// {
+//     uint32_t seq_num;
+//     std::vector<char> msg;
 
-    // Constructor
-    HoldbackOperation(int seq_num, std::vector<char> &msg) : seq_num(seq_num), msg(msg) {}
+//     // Constructor
+//     HoldbackOperation(int seq_num, std::vector<char> &msg) : seq_num(seq_num), msg(msg) {}
 
-    // comparison operator for HoldbackOperations
-    bool operator>(const HoldbackOperation &other) const
-    {
-        return seq_num > other.seq_num;
-    }
-};
+//     // comparison operator for HoldbackOperations
+//     bool operator>(const HoldbackOperation &other) const
+//     {
+//         return seq_num > other.seq_num;
+//     }
+// };
 
 class BackendServer
 {
@@ -54,18 +54,13 @@ public:
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
     // remote-write related fields
-    static int seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
-    static std::mutex seq_num_lock;
-    static std::atomic<int> prep_seq_num; // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static int seq_num;             // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static std::mutex seq_num_lock; // lock to save sequence number for use by 2PC
 
-    // holdback queue (min heap - orders operations by sequence number so the lowest sequence number is at the top of the heap)
-    static std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> holdback_operations;
-    static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a SECY for that operation
-    // ! we could potentially change this to row level locking but might not be worth it
-    static std::mutex votes_recvd_lock;                  // map of msg seq num to condition variable that wakes up waiting primary
-    static std::unordered_map<uint32_t, int> acks_recvd; // map of msg seq num to set of secondaries that have sent a SECY for that operation
-    // ! we could potentially change this to row level locking but might not be worth it
-    static std::mutex acks_recvd_lock; // map of msg seq num to condition variable that wakes up waiting primary
+    static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a vote for that operation
+    static std::mutex votes_recvd_lock;                                        // lock for votes map
+    static std::unordered_map<uint32_t, int> acks_recvd;                       // map of msg seq num to set of secondaries that have sent an ACK for that operation
+    static std::mutex acks_recvd_lock;                                         // lock for ack map
 
     // methods
 public:

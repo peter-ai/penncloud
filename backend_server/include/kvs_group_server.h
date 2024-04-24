@@ -39,7 +39,7 @@ private:
     // methods used by PRIMARY
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
     std::vector<int> open_connection_with_secondary_fds();    // opens connection with each secondary port. Returns list of fds for each connection.
-    void construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds);
+    int construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds);
     void handle_secondary_vote(std::vector<char> &inputs); // handle vote (secy/secn) from secondary
     void handle_secondary_ack(std::vector<char> &inputs);  // handle ack from secondary
 
@@ -51,14 +51,24 @@ private:
     /**
      * WRITE METHODS
      */
+
     std::vector<char> execute_write_operation(std::vector<char> &inputs);
     std::vector<char> putv(std::vector<char> &inputs);
     std::vector<char> cput(std::vector<char> &inputs);
     std::vector<char> delr(std::vector<char> &inputs);
     std::vector<char> delv(std::vector<char> &inputs);
 
-    // send response to client
-    void send_response(std::vector<char> &response_msg);
+    /**
+     * CLIENT RESPONSE METHODS
+     */
+
+    void send_error_response(const std::string &msg);    // constructs an error response and internally calls send_response()
+    void send_response(std::vector<char> &response_msg); // sends response to group_server_fd on open connection
+
+    /**
+     * STATE CLEANUP METHODS
+     */
+    void clean_operation_state(int operation_seq_num, std::vector<int> secondary_fds); // clean operation seq num from maps, close connections to secondaries
 };
 
 #endif
