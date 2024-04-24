@@ -33,9 +33,13 @@ int BackendServer::client_comm_sock_fd = -1;
 int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 
-std::atomic<int> BackendServer::seq_num(0);
-std::priority_queue<HoldbackOperation, std::vector<HoldbackOperation>, std::greater<HoldbackOperation>> BackendServer::holdback_operations;
-std::unordered_map<int, std::unordered_set<int>> BackendServer::msg_acks_recvd;
+int BackendServer::seq_num = 0;
+std::mutex BackendServer::seq_num_lock;
+
+std::unordered_map<uint32_t, std::vector<std::string>> BackendServer::votes_recvd;
+std::mutex BackendServer::votes_recvd_lock;
+std::unordered_map<uint32_t, int> BackendServer::acks_recvd;
+std::mutex BackendServer::acks_recvd_lock;
 
 /**
  * BackendServer methods
@@ -69,8 +73,8 @@ void BackendServer::run()
     // }
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
     is_primary = true;
-    primary_port = 7000;
-    secondary_ports = {7001};
+    primary_port = 7001;
+    secondary_ports = {7000};
     range_start = "a";
     range_end = "z";
 
