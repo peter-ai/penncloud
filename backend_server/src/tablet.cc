@@ -12,7 +12,7 @@ const std::string Tablet::err = "-ER";
  *  READ-ONLY METHODS
  */
 
-// @brief reads all columns at provided row
+// @brief Reads all columns at provided row
 std::vector<char> Tablet::get_all_rows()
 {
     row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
@@ -37,7 +37,7 @@ std::vector<char> Tablet::get_all_rows()
     return response_msg;
 }
 
-// @brief reads all columns at provided row
+// @brief Reads all columns at provided row
 std::vector<char> Tablet::get_row(std::string &row)
 {
     // Return empty vector if row not found in map
@@ -71,7 +71,7 @@ std::vector<char> Tablet::get_row(std::string &row)
     return response_msg;
 }
 
-// @brief reads value at provided row and column
+// @brief Reads value at provided row and column
 std::vector<char> Tablet::get_value(std::string &row, std::string &col)
 {
     // Return empty vector if row not found in map
@@ -111,7 +111,7 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
  *  WRITE METHODS
  */
 
-// add value at supplied row and column to tablet data
+// @brief Puts value at provided row and column. Creates a row if necessary.
 std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
 {
     // get data at row
@@ -128,7 +128,7 @@ std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vec
     return response_msg;
 }
 
-// delete row in tablet data
+// @brief Delete provided row
 std::vector<char> Tablet::delete_row(std::string &row)
 {
     // delete row
@@ -147,7 +147,7 @@ std::vector<char> Tablet::delete_row(std::string &row)
     return response_msg;
 }
 
-// delete value at supplied row and column in tablet data
+// @brief Delete value at provided row and column
 std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
 {
     // get data at row
@@ -173,7 +173,7 @@ std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
     return response_msg;
 }
 
-// add value at supplied row and column to tablet data, ONLY if current value is val1
+// @brief Conditionally put value at provided row and column if value at row + column matches curr_val
 std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
 {
     // get data at row
@@ -202,6 +202,7 @@ std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std
  * ACQUIRING/RELEASING LOCKS FOR WRITE METHODS
  */
 
+// @brief Acquires exclusive lock on row for a write operation
 int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
 {
     // putv should first create the row if it doesn't exist
@@ -236,6 +237,7 @@ int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
     return 0;
 }
 
+// @brief Releases exclusive lock on row for a write operation
 void Tablet::release_exclusive_row_lock(std::string &row)
 {
     row_locks.at(row).unlock();      // unlock exclusive lock on row
@@ -246,6 +248,25 @@ void Tablet::release_exclusive_row_lock(std::string &row)
 /**
  * SERIALIZATION/DESERIALIZATION METHODS
  */
+
+void Tablet::serialize(const std::string &file_name)
+{
+    // Don't forget to start with the start range and end range
+    // To serialize, you can take each row, build the vector of chars for it, and then append the size of the entire inner map to the start, then append to end of row size + row.
+    // Repeat this until you get to the end
+}
+
+void Tablet::deserialize(const std::string &file_name)
+{
+    // [start_range][end_range][size of row key][row][size of chars representing map for rows col+val][size of col key][col][size of val][value]
+    // 1. Basically, to deserialize, you would read the start range first, then the end range
+    // 2. Then, read 4 characters to get the size of the row key. Then read that many characters to get the row.
+    // 3. Then, read 4 characters to get the size of the inner map. Read that many characters from the map.
+    // 4. Now you know to process in column/value in alternating fashion until you exhaust the bytes. Even an empty value will have a size value dedicated to it (would just store 0)
+    // 5. Once you're done with an inner map, go back to step 2 and repeat.
+
+    // for each row you construct, make sure you add an entry in row_locks for it so it has an associated mutex.
+}
 
 /**
  * RESPONSE CONSTRUCTION
