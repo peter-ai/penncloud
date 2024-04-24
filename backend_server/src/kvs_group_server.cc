@@ -1,5 +1,6 @@
 #include <poll.h>
 
+#include "../../utils/include/utils.h"
 #include "../include/kvs_group_server.h"
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
@@ -109,6 +110,8 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
 // @brief Coordinates 2PC for client that requested a write operation
 void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 {
+    kvs_group_server_logger.log("Primary received write operation - executing two-phase commit", 20);
+
     // acquire lock for sequence number, increment sequence number, and save this operation's seq_num
     BackendServer::seq_num_lock.lock();
     BackendServer::seq_num += 1;
@@ -489,6 +492,9 @@ std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> &inp
     {
         return delv(inputs);
     }
+    kvs_group_server_logger.log("Unrecognized write command - should NOT occur", 40);
+    std::vector<char> res;
+    return res;
 }
 
 std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)

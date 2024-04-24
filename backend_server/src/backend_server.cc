@@ -73,8 +73,8 @@ void BackendServer::run()
     // }
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
     is_primary = true;
-    primary_port = 7001;
-    secondary_ports = {7000};
+    primary_port = 7501;
+    secondary_ports = {7500};
     range_start = "a";
     range_end = "z";
 
@@ -329,11 +329,10 @@ void BackendServer::accept_and_handle_group_comm()
 
         // extract port from group server connection and initialize KVSGroupServer object
         int group_server_port = ntohs(group_server_addr.sin_port);
-        KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
         be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
 
         // launch thread to handle communication with group server
-        std::thread group_server_thread(&KVSGroupServer::read_from_group_server, &kvs_group_server);
+        std::thread group_server_thread(&KVSGroupServer::read_from_group_server, KVSGroupServer(group_server_fd, group_server_port));
         // ! fix this after everything works (manage multithreading)
         group_server_thread.detach();
     }
@@ -358,11 +357,10 @@ void BackendServer::accept_and_handle_clients()
 
         // extract port from client connection and initialize KVS_Client object
         int client_port = ntohs(client_addr.sin_port);
-        KVSClient kvs_client(client_fd, client_port);
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
         // launch thread to handle client
-        std::thread client_thread(&KVSClient::read_from_client, &kvs_client);
+        std::thread client_thread(&KVSClient::read_from_client, KVSClient(client_fd, client_port));
         // ! fix this after everything works (manage multithreading)
         client_thread.detach();
     }
