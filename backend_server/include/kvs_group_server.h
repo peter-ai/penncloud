@@ -48,7 +48,8 @@ private:
      * WRITE METHODS
      */
 
-    std::vector<char> execute_write_operation(std::vector<char> &inputs);
+    // Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
+    std::vector<char> execute_write_operation(std::vector<char> inputs);
     std::vector<char> putv(std::vector<char> &inputs);
     std::vector<char> cput(std::vector<char> &inputs);
     std::vector<char> delr(std::vector<char> &inputs);

@@ -305,7 +305,7 @@ void BackendServer::send_coordinator_heartbeat()
 // @brief initialize and detach thread to listen for connections from servers in group
 void BackendServer::dispatch_group_comm_thread()
 {
-    be_logger.log("Dispatching thread to accept and handle group communication.", 20);
+    be_logger.log("Dispatching thread to accept and handle group communication", 20);
     std::thread group_comm_thread(accept_and_handle_group_comm);
     group_comm_thread.detach();
 }
@@ -322,7 +322,7 @@ void BackendServer::accept_and_handle_group_comm()
         socklen_t group_server_addr_size = sizeof(group_server_addr);
         if ((group_server_fd = accept(group_comm_sock_fd, (sockaddr *)&group_server_addr, &group_server_addr_size)) < 0)
         {
-            be_logger.log("Unable to accept incoming connection from group server. Skipping.", 30);
+            be_logger.log("Unable to accept incoming connection from group server. Skipping", 30);
             // error with incoming connection should NOT break the server loop
             continue;
         }
@@ -350,7 +350,7 @@ void BackendServer::accept_and_handle_clients()
         socklen_t client_addr_size = sizeof(client_addr);
         if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
         {
-            be_logger.log("Unable to accept incoming connection from client. Skipping.", 30);
+            be_logger.log("Unable to accept incoming connection from client. Skipping", 30);
             // error with incoming connection should NOT break the server loop
             continue;
         }

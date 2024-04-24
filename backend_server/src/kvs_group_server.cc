@@ -135,7 +135,6 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Successfully opened connection with all secondaries", 20);
 
     // Send prepare command to all secondaries.
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending PREP command to all secondaries", 20);
     if (construct_and_send_prepare_cmd(operation_seq_num, inputs, secondary_fds) < 0)
     {
         // Failure while constructing and sending prepare command
@@ -260,6 +259,9 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // didn't receive all acks (shouldn't occur)
     if (BackendServer::acks_recvd.at(operation_seq_num) != BackendServer::secondary_ports.size())
     {
+        clean_operation_state(operation_seq_num, secondary_fds);
+        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive all ACKS from secondaries");
+        return;
     }
 
     clean_operation_state(operation_seq_num, secondary_fds);
@@ -288,7 +290,7 @@ std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
 {
     // extract row from inputs (start at inputs.begin() + 5 to ignore command)
     auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
-    std::string row(inputs.begin(), row_end);
+    std::string row(inputs.begin() + 5, row_end);
     return row;
 }
 
@@ -297,6 +299,7 @@ std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
 int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds)
 {
     std::string write_operation(inputs.begin(), inputs.begin() + 4); // extract requested write operation from inputs
+    write_operation = Utils::to_lowercase(write_operation);
 
     // extract row from inputs (start at inputs.begin() + 5 to ignore command)
     auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
@@ -306,7 +309,9 @@ int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::v
         kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Malformed row argument while constructing PREP command", 20);
         return -1;
     }
-    std::string row(inputs.begin(), row_end);
+    std::string row(inputs.begin() + 5, row_end);
+
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Acquiring exclusive row lock on primary for R[" + row + "]", 20);
 
     // Primary acquires exclusive lock on row
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
@@ -316,12 +321,16 @@ int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::v
         return -1;
     }
 
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending PREP command to all secondaries", 20);
+
     // construct PREP command to send to secondaries
     std::vector<char> prepare_msg = {'P', 'R', 'E', 'P', ' '};
     prepare_msg.insert(prepare_msg.end(), write_operation.begin(), write_operation.end());     // append write operation to prepare_msg
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num); // convert seq number to vector and append to prepare_msg
     prepare_msg.insert(prepare_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
     prepare_msg.insert(prepare_msg.end(), row.begin(), row.end()); // append row to prepare_msg
+
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] PREP COMMAND - " + std::string(prepare_msg.begin(), prepare_msg.end()), 20);
 
     // send prepare command to all secondary
     for (int secondary_fd : secondary_fds)
@@ -365,7 +374,7 @@ void KVSGroupServer::handle_secondary_ack(std::vector<char> &inputs)
     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
 
     // log acknowledgement
-    kvs_group_server_logger.log("Received ackn for operation " + std::to_string(operation_seq_num), 20);
+    kvs_group_server_logger.log("Received ACK for operation " + std::to_string(operation_seq_num), 20);
 
     // acquire mutex to add vote for sequence number
     BackendServer::acks_recvd_lock.lock();
@@ -386,6 +395,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
 
     // save write operation
     std::string write_operation(inputs.begin(), inputs.begin() + 4);
+    write_operation = Utils::to_lowercase(write_operation);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
     // extract sequence number and erase from inputs
@@ -395,6 +405,8 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREP from primary", 20);
+
     // acquire an exclusive lock on the row
     // retrieve tablet and put value for row and col combination
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
@@ -403,11 +415,13 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
     {
         vote_response = {'S', 'E', 'C', 'N', ' '};
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary responded to prepare with SECY", 20);
     }
     // successfully acquired row lock
     else
     {
         vote_response = {'S', 'E', 'C', 'Y', ' '};
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary responded to prepare with SECN", 20);
     }
 
     // convert seq number to vector and append to prepare_msg
@@ -426,6 +440,8 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary", 20);
+
     // remainder of command is passed to execute write
     // execute write operation on primary
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on secondary", 20);
@@ -433,7 +449,7 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
 
     // ! what happens if the write fails on the secondary? It sends ACK either way
 
-    std::vector<char> ack_response = {'A', 'C', 'K', 'N'};
+    std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
     // convert seq number to vector and append to prepare_msg
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
@@ -450,6 +466,8 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received ABRT from primary", 20);
+
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
@@ -458,7 +476,7 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     tablet->release_exclusive_row_lock(row);
 
-    std::vector<char> ack_response = {'A', 'C', 'K', 'N'};
+    std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
     // convert seq number to vector and append to prepare_msg
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
@@ -469,10 +487,12 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
  * WRITE METHODS
  */
 
-std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> &inputs)
+// Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
+std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> inputs)
 {
     // extract command from beginning of inputs and erase command
     std::string command(inputs.begin(), inputs.begin() + 4);
+    command = Utils::to_lowercase(command);
     inputs.erase(inputs.begin(), inputs.begin() + 5);
 
     // call handler for command
