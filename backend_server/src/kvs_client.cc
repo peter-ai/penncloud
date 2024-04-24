@@ -174,16 +174,24 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
     // wait for primary to respond
     kvs_client_logger.log("Waiting for response from primary", 20);
     // ! Currently, read from primary is set to 3 second
-    BeUtils::ReadResult read_result = BeUtils::read_with_timeout(primary_fd, 3);
-    if (read_result.error_code < 0)
+    std::vector<int> read_fds = {primary_fd};
+    if (BeUtils::wait_for_events(read_fds, 3000) < 0)
     {
-        std::string err_msg = "-ER Failed to receive response from primary";
+        std::string err_msg = "-ER Timed out waiting for response from primary";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         return res_bytes;
     }
     kvs_client_logger.log("Received response from primary - sending response to client", 20);
-    return read_result.byte_stream;
+    BeUtils::ReadResult primary_res = BeUtils::read(primary_fd);
+    if (primary_res.error_code < 0)
+    {
+        std::string err_msg = "-ER Failed to read response from primary";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    return primary_res.byte_stream;
 }
 
 /**
