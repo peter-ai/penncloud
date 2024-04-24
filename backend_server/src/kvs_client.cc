@@ -1,9 +1,11 @@
+#include <poll.h>
+
 #include "../include/kvs_client.h"
+#include "../utils/include/be_utils.h"
+#include "../include/backend_server.h"
 
-
-Logger kvs_client_logger("KVS Client");
-
-void KVSClient::read_from_network()
+// @brief Read data from client and construct command to perform on KVS
+void KVSClient::read_from_client()
 {
     std::vector<char> client_stream;
     uint32_t bytes_left_in_command = 0;
@@ -20,7 +22,7 @@ void KVSClient::read_from_network()
         }
         else if (bytes_recvd == 0)
         {
-            kvs_client_logger.log("Client closed connection", 30);
+            kvs_client_logger.log("Client closed connection", 20);
             break;
         }
 
@@ -54,11 +56,8 @@ void KVSClient::read_from_network()
                     // parse size of command once client stream is 4 bytes long and store it in bytes_left_in_command
                     if (client_stream.size() == 4)
                     {
-                        // parse size of command from client
-                        uint32_t client_stream_size;
-                        std::memcpy(&client_stream_size, client_stream.data(), sizeof(uint32_t));
-                        // convert number received from network order to host order
-                        bytes_left_in_command = ntohl(client_stream_size);
+                        // parse size of command from client byte stream
+                        bytes_left_in_command = BeUtils::network_vector_to_host_num(client_stream);
                         // clear the client stream in preparation for the incoming data
                         client_stream.clear();
                     }
@@ -69,85 +68,63 @@ void KVSClient::read_from_network()
     close(client_fd);
 }
 
+// @brief Parse client command. If read operation, call corresponding handler. Otherwise, forward to primary.
 void KVSClient::handle_command(std::vector<char> &client_stream)
 {
-    // extract command from first 4 bytes
+    // extract command from first 4 bytes and convert command to lowercase
     std::string command(client_stream.begin(), client_stream.begin() + 4);
-    // remove first 5 bytes to remove delimiter after command
-    client_stream.erase(client_stream.begin(), client_stream.begin() + 5);
-
-    // convert command to lowercase to standardize command
     command = Utils::to_lowercase(command);
+
+    // READ commands - server can handle these commands directly without forwarding the operation to the primary
+    std::vector<char> res_msg;
     if (command == "getr")
     {
-        getr(client_stream);
+        res_msg = getr(client_stream);
     }
     else if (command == "getv")
     {
-        getv(client_stream);
+        res_msg = getv(client_stream);
     }
-    else if (command == "putv")
-    {
-        putv(client_stream);
-    }
-    else if (command == "cput")
-    {
-        cput(client_stream);
-    }
-    else if (command == "delr")
-    {
-        delr(client_stream);
-    }
-    else if (command == "delv")
-    {
-        delv(client_stream);
-    }
+    // all other commands are forwarded to the primary
     else
     {
-        kvs_client_logger.log("Unsupported command", 40);
-        // send error response msg
-        std::string res_str = "-ER Unsupported command";
-        std::vector<char> res_bytes(res_str.begin(), res_str.end());
-        send_response(res_bytes);
+        // forward operation to primary and wait for primary's response
+        kvs_client_logger.log("Received " + command + " from client - forwarding operation to primary", 20);
+        res_msg = forward_operation_to_primary(client_stream);
     }
+
+    // send response back to client that initiated request
+    send_response(res_msg);
+    return;
 }
 
-std::shared_ptr<Tablet> KVSClient::retrieve_data_tablet(std::string &row)
-{
-    for (int i = BackendServer::num_tablets - 1; i >= 0; i--)
-    {
-        // compare start of current tablet's with
-        std::string tablet_start = BackendServer::server_tablets.at(i)->range_start;
-        if (row >= tablet_start)
-        {
-            return BackendServer::server_tablets.at(i);
-        }
-    }
-    // this should never execute
-    kvs_client_logger.log("Could not find tablet for given row - this should NOT occur", 50);
-    return nullptr;
-}
+/**
+ * READ-ONLY COMMAND HANDLERS
+ */
 
-void KVSClient::getr(std::vector<char> &inputs)
+// @brief Get row from tablet
+std::vector<char> KVSClient::getr(std::vector<char> &inputs)
 {
+    // erase command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
     // extract row as string from inputs
     std::string row(inputs.begin(), inputs.end());
     // log command and args
     kvs_client_logger.log("GETR R[" + row + "]", 20);
 
     // retrieve tablet and read row
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_row(row);
-
-    // log client response since all values are string values
-    kvs_client_logger.log("GETR Response - " + std::string(response_msg.begin(), response_msg.end()), 20);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::getv(std::vector<char> &inputs)
+// @brief Get value from tablet
+std::vector<char> KVSClient::getv(std::vector<char> &inputs)
 {
+    // erase command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
     // convert vector to string since row and column are string-compatible values and split on delimiter
     std::string getv_args(inputs.begin(), inputs.end());
 
@@ -159,8 +136,7 @@ void KVSClient::getv(std::vector<char> &inputs)
         std::string err_msg = "-ER Malformed arguments to GETV(R,C) - delimiter after row not found";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
     std::string row = getv_args.substr(0, col_index);
     std::string col = getv_args.substr(col_index + 1);
@@ -169,183 +145,64 @@ void KVSClient::getv(std::vector<char> &inputs)
     kvs_client_logger.log("GETV R[" + row + "] C[" + col + "]", 20);
 
     // retrieve tablet and read value from row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->get_value(row, col);
-
-    // send response msg to client
-    send_response(response_msg);
+    return response_msg;
 }
 
-void KVSClient::putv(std::vector<char> &inputs)
+/**
+ * INTER-GROUP COMMUNICATION METHODS
+ */
+
+// @brief Forward write operation to primary server
+std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inputs)
 {
-    // find index of \b to extract row from inputs
-    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
+    // open connection with primary port (intergroup communcation port)
+    int primary_fd = BeUtils::open_connection(BackendServer::primary_port);
+    // failed to open connection with primary - send error response back to client
+    if (primary_fd < 0)
     {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
+        std::string err_msg = "-ER Failed to forward write to primary";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
-    std::string row(inputs.begin(), row_end);
 
-    // find index of \b to extract col from inputs
-    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
+    // write message to primary
+    BeUtils::write(primary_fd, inputs);
+
+    // wait for primary to respond
+    kvs_client_logger.log("Waiting for response from primary", 20);
+    // ! Currently, read from primary is set to 3 second
+    std::vector<int> read_fds = {primary_fd};
+    if (BeUtils::wait_for_events(read_fds, 3000) < 0)
     {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
+        std::string err_msg = "-ER Timed out waiting for response from primary";
         kvs_client_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
+        return res_bytes;
     }
-    std::string col(row_end + 1, col_end);
-
-    // remainder of input is value
-    std::vector<char> val(col_end + 1, inputs.end());
-
-    // log command and args
-    kvs_client_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
-
-    // retrieve tablet and put value for row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    std::vector<char> response_msg = tablet->put_value(row, col, val);
-
-    // send response msg to client
-    send_response(response_msg);
+    kvs_client_logger.log("Received response from primary - sending response to client", 20);
+    BeUtils::ReadResult primary_res = BeUtils::read(primary_fd);
+    if (primary_res.error_code < 0)
+    {
+        std::string err_msg = "-ER Failed to read response from primary";
+        kvs_client_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    return primary_res.byte_stream;
 }
 
-void KVSClient::delr(std::vector<char> &inputs)
-{
-    // extract row as string from inputs
-    std::string row(inputs.begin(), inputs.end());
-    // log command and args
-    kvs_client_logger.log("DELR R[" + row + "]", 20);
-
-    // retrieve tablet and delete row
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    std::vector<char> response_msg = tablet->delete_row(row);
-
-    // send response msg to client
-    send_response(response_msg);
-}
-
-void KVSClient::delv(std::vector<char> &inputs)
-{
-    // convert vector to string since row and column are string-compatible values and split on delimiter
-    std::string delv_args(inputs.begin(), inputs.end());
-
-    size_t col_index = delv_args.find_first_of('\b');
-    // delimiter not found in string - should be present to split row and column
-    if (col_index == std::string::npos)
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - delimiter after row not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
-    }
-    std::string row = delv_args.substr(0, col_index);
-    std::string col = delv_args.substr(col_index + 1);
-
-    // log command and args
-    kvs_client_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
-
-    // retrieve tablet and delete value from row and col combination
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    std::vector<char> response_msg = tablet->delete_value(row, col);
-
-    // send response msg to client
-    send_response(response_msg);
-}
-
-void KVSClient::cput(std::vector<char> &inputs)
-{
-    // find index of \b to extract row from inputs
-    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - row not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
-    }
-    std::string row(inputs.begin(), row_end);
-
-    // find index of \b to extract col from inputs
-    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
-        kvs_client_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        send_response(res_bytes);
-        return;
-    }
-    std::string col(row_end + 1, col_end);
-
-    // clear inputs UP TO AND INCLUDING the last \b chara
-    inputs.erase(inputs.begin(), col_end + 1);
-
-    // remainder of input is value1 and value2
-
-    // extract the number in front of val1
-    uint32_t val1_size;
-    std::memcpy(&val1_size, inputs.data(), sizeof(uint32_t));
-    // convert number received from network order to host order
-    int bytes_in_val1 = ntohl(val1_size);
-
-    // clear the first 4 bytes from inputs
-    inputs.erase(inputs.begin(), inputs.begin() + sizeof(uint32_t));
-
-    // copy the number of characters in bytes_in_val1 to val1
-    std::vector<char> val1;
-    std::memcpy(&val1, inputs.data(), bytes_in_val1);
-
-    // remaining characters are val2
-    inputs.erase(inputs.begin(), inputs.begin() + bytes_in_val1);
-    std::vector<char> val2 = inputs;
-
-    // log command and args
-    kvs_client_logger.log("CPUT R[" + row + "] C[" + col + "]", 20);
-
-    // retrieve tablet and call CPUT on tablet
-    std::shared_ptr<Tablet> tablet = retrieve_data_tablet(row);
-    std::vector<char> response_msg = tablet->cond_put_value(row, col, val1, val2);
-
-    // send response msg to client
-    send_response(response_msg);
-}
+/**
+ * SEND CLIENT RESPONSE
+ */
 
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
-    // set size of response in first 4 bytes of vector
-    // convert to network order and interpret msg_size as bytes
-    uint32_t msg_size = htonl(response_msg.size());
-    std::vector<uint8_t> size_prefix(sizeof(uint32_t));
-    // Copy bytes from msg_size into the size_prefix vector
-    std::memcpy(size_prefix.data(), &msg_size, sizeof(uint32_t));
-
-    // Insert the size prefix at the beginning of the original response msg vector
-    response_msg.insert(response_msg.begin(), size_prefix.begin(), size_prefix.end());
-
-    // write response to client as bytes
-    size_t total_bytes_sent = 0;
-    while (total_bytes_sent < response_msg.size())
+    if (BeUtils::write(client_fd, response_msg) < 0)
     {
-        int bytes_sent = send(client_fd, response_msg.data() + total_bytes_sent, response_msg.size() - total_bytes_sent, 0);
-        total_bytes_sent += bytes_sent;
+        kvs_client_logger.log("Failed to send response to client on port " + std::to_string(client_port), 20);
     }
-    kvs_client_logger.log("Response sent to client", 20);
+    kvs_client_logger.log("Response sent to client on port " + std::to_string(client_port), 20);
 }
