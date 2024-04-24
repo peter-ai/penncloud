@@ -137,37 +137,7 @@ bool startsWith(const std::vector<char> &vec, const std::string &prefix)
 	return std::string(vec.begin(), vec.begin() + prefix.size()) == prefix;
 }
 
-// retrieves query parameter from a request's path /api/user/mailbox/send?uidl=12345
-// std::string get_query_parameter(const string& path, const std::string &key)
-// {
-// 	std::unordered_map<std::string, std::string> query_params;
-// 	size_t queryStart = path.find('?');
-// 	if (queryStart != std::string::npos)
-// 	{
-// 		std::string queryString = path.substr(queryStart + 1);
-// 		std::istringstream queryStream(queryString);
-// 		std::string param;
-// 		while (std::getline(queryStream, param, '&'))
-// 		{
-// 			size_t equals = param.find('=');
-// 			if (equals != std::string::npos)
-// 			{
-// 				std::string param_key = param.substr(0, equals);
-// 				std::string param_value = param.substr(equals + 1);
-// 				query_params[param_key] = param_value;
-// 			}
-// 		}
-// 	}
-// 	// Attempt to find the key in the parsed query parameters
-// 	auto it = query_params.find(key);
-// 	if (it != query_params.end())
-// 	{
-// 		return it->second;
-// 	}
-// 	return ""; // Return empty string if key is not found
-// }
-
-vector<char> modifyForwardedEmail(vector<char> emailData)
+void modifyForwardedEmail(vector<char> emailData)
 {
 }
 
