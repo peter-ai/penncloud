@@ -45,6 +45,7 @@ int main()
 
 	/* Drive Routes */
 	HttpServer::post("/api/drive/upload/*", upload_file); // upload file
+	HttpServer::post("/api/drive/delete/*", delete_filefolder);
 	HttpServer::get("/drive/*", open_filefolder);		  // open file/folder
 
 	// run HTTPServer

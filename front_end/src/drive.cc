@@ -212,103 +212,78 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // @PETER ADDED
                 std::string folder_contents(formatted_content.begin(), formatted_content.end());
                 std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
+
                 std::string folder_html = "";
-                folder_html += 
-"<div class='modal fade' id='exampleModal' tabindex='-1' aria-labelledby='exampleModalLabel' aria-hidden='true'>"
-  "<div class='modal-dialog'>"
-    "<div class='modal-content'>"
-      "<div class='modal-header'>"
-        "<h1 class='modal-title fs-5' id='exampleModalLabel'>New message</h1>"
-        "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
-      "</div>"
-      "<div class='modal-body'>"
-        "<form>"
-          "<div class='mb-3'>"
-            "<label for='recipient-name' class='col-form-label'>Recipient:</label>"
-            "<input type='text' class='form-control' id='recipient-name'>"
-          "</div>"
-          "<div class='mb-3'>"
-            "<label for='message-text' class='col-form-label'>Message:</label>"
-            "<textarea class='form-control' id='message-text'></textarea>"
-          "</div>"
-        "</form>"
-      "</div>"
-      "<div class='modal-footer'>"
-        "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
-        "<button type='button' class='btn btn-primary'>Send message</button>"
-      "</div>"
-    "</div>"
-  "</div>"
-"</div>";
-                size_t item_iter;
-                for (item_iter = 0; item_iter < folder_items.size(); item_iter++)
+                size_t item_iter = 0;
+                int row_count = 0;
+                while (item_iter < folder_items.size())
                 {
-
                     std::string item = folder_items[item_iter];
+                    if (item.compare("sid") != 0 && item.compare("pass") != 0)
+                    {
+                        // start row
+                        if (row_count % 9 == 0)
+                        {
+                            folder_html += "<div class='row mx-2 mt-2 align-items-start'>";
+                        }
 
-                    // start row
-                    if (item_iter % 9 == 0)
-                    {
-                        folder_html += "<div class='row mx-2 mt-2 align-items-start'>";
-                    }
+                        if (row_count % 9 == 0 || row_count % 9 == 3 || row_count % 9 == 6)
+                        {
+                            folder_html += "<div class='col-4'><div class='row align-items-start'>";
+                        }
 
-                    if (item_iter % 9 == 0 || item_iter % 9 == 3 || item_iter % 9 == 6)
-                    {
-                        folder_html += "<div class='col-4'><div class='row align-items-start'>";
-                    }
+                        // html to add item to page
+                        if (item.back() == '/')
+                        {
+                            folder_html +=
+                                "<div class='col-4 text-center text-wrap'>"
+                                "<a href='" +
+                                item + "' style='color: inherit;'>"
+                                       "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
+                                       "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
+                                       "</svg>"
+                                       "</a>"
+                                       "<p class='lead text-break'>" +
+                                item +
+                                "</p>"
+                                "</div>";
+                        }
+                        else
+                        {
+                            folder_html +=
+                                "<div class='col-4 text-center text-wrap'>"
+                                "<a href='" +
+                                item + "' target='_blank' style='color: inherit;' download>"
+                                       "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
+                                       "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
+                                       "</svg>"
+                                       "</a>"
+                                       "<p class='text-break'>"
+                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" + item + "' data-bs-path='" + childpath_str + "'>"
+                                       "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                       "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                       "</svg>"
+                                       "</a>" +
+                                item +
+                                "</p>"
+                                "</div>";
+                        }
 
-                    // html to add item to page
-                    if (item.back() == '/')
-                    {
-                        folder_html +=
-                            "<div class='col-4 text-center text-wrap'>"
-                            "<a href='" +
-                            item + "' style='color: inherit;'>"
-                                   "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
-                                   "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
-                                   "</svg>"
-                                   "</a>"
-                                   "<p class='lead text-break'>" +
-                            item +
-                            "</p>"
-                            "</div>";
-                    }
-                    else if (item.compare("sid") == 0 || item.compare("pass") == 0)
-                    {
-                        continue;
-                    }
-                    else
-                    {
-                        folder_html +=
-                            "<div class='col-4 text-center text-wrap'>"
-                            "<a href='" +
-                            item + "' target='_blank' style='color: inherit;' download>"
-                                   "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
-                                   "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
-                                   "</svg>"
-                                   "</a>"
-                                   "<p class='text-break'>"
-                                   "<a href='#exampleModal'>"
-                                   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
-                                   "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
-                                   "</svg>"
-                                   "</a>" +
-                            item +
-                            "</p>"
-                            "</div>";
-                    }
+                        if (row_count % 9 == 2 || row_count % 9 == 5 || row_count % 9 == (9 - 1))
+                        {
+                            folder_html += "</div></div>";
+                        }
 
-                    if (item_iter % 9 == 2 || item_iter % 9 == 5 || item_iter % 9 == (9 - 1))
-                    {
-                        folder_html += "</div></div>";
-                    }
+                        if (row_count % 9 == (9 - 1))
+                        {
+                            folder_html += "</div>";
+                        }
 
-                    if (item_iter % 9 == (9 - 1))
-                    {
-                        folder_html += "</div>";
+                        row_count++;
                     }
+                    item_iter++;
                 }
-                if (item_iter % 9 != (9 - 1))
+                if (row_count % 9 != (9 - 1))
                     folder_html += "</div>";
 
                 //@todo: update with html!
@@ -375,16 +350,64 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<form class='d-flex' role='upload' method='POST' enctype='multipart/form-data' action='/api/drive/upload/" +
                     childpath_str + "'>"
                                     "<input class='form-control' style='height: 80%;' type='file' id='formFile' name='file'>"
-                                    "<button class='btn' type='submit'>Upload</button>"
+                                    "<input class='btn btn-link link-underline link-underline-opacity-0' type='submit' value='Upload' disabled>"
                                     "</form>" // place upload button here
+                                    "<script>"
+                                    "$('input:file').on('change', function() {"
+                                    "$('input:submit').prop('disabled', !$(this).val());"
+                                    "});"
+                                    "</script>"
                                     "</div>"
                                     "</div>" +
                     folder_html +
                     "</div>"
 
+                    "<div class='modal fade' id='deleteModal' tabindex='-1' aria-labelledby='deleteModalLabel' aria-hidden='true'>"
+                    "<div class='modal-dialog modal-dialog-centered'>"
+                    "<div class='modal-content'>"
+                    "<div class='modal-header'>"
+                    "<h1 class='modal-title fs-5' id='deleteModalLabel'>Are you sure you want to delete </h1>"
+                    "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
+                    "</div>"
+                    "<div class='modal-body'>"
+                    "<p>Warning - deleting this item is an unrecoverable action, that is, this item will be deleted from storage permanently.</p>"
+                    "<form id='deleteForm' method='POST'>"
+                    "<!-- <div class='mb-3'>"
+                    "<label for='recipient-name' class='col-form-label'>Recipient:</label>"
+                    "<input type='text' class='form-control' id='recipient-name'>"
+                    "</div>"
+                    "<div class='mb-3'>"
+                    "<label for='message-text' class='col-form-label'>Message:</label>"
+                    "<textarea class='form-control' id='message-text'></textarea>"
+                    "</div> -->"
+                    "</form>"
+                    "</div>"
+                    "<div class='modal-footer'>"
+                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                    "<button type='submit' class='btn btn-danger' onclick='$(\"#deleteForm\").submit();'>Delete</button>"
+                    "</div>"
+                    "</div>"
+                    "</div>"
+                    "</div>"
+
                     "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
                     "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
                     "crossorigin='anonymous'></script>"
+                    "<script>"
+                            "$('.delete').on('click', function() {"
+                            "    $('#deleteModal').modal('show');"
+                            "});"
+
+                            "$('#deleteModal').on('show.bs.modal', function(e) {"
+                                //let id = $(e.relatedTarget).attr('data-id');
+                                "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                                "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                                "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                                "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                                // $(e.currentTarget).find('input[id="store_id"]').val(id);
+                                // $(e.currentTarget).find('input[id="store_name"]').val(name);
+                            "});"
+                    "</script>"
                     "<script>"
                     "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
                     "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
@@ -421,17 +444,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "</html>";
 
                 // @PETER ADDED - reset cookies of user
-                FeUtils::set_cookies(res, username, sid);
                 res.append_body_str(page);
-
-                // res.append_body_bytes(formatted_content.data(), formatted_content.size());
-
-                // append header for content length
-                // @PETER ADDED - SET HEADERS
                 res.set_code(200);
                 res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
                 res.set_header("Pragma", "no-cache");
                 res.set_header("Expires", "0");
+                FeUtils::set_cookies(res, username, sid);
             }
             else
             {
@@ -797,21 +815,25 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
             // success
-            res.set_code(200);
+            // res.set_code(200);
 
             // reload page to show file has been deleted
-            vector<char> folder_content = FeUtils::kv_get_row(sockfd, parent_path_vec);
+            // vector<char> folder_content = FeUtils::kv_get_row(sockfd, parent_path_vec);
 
-            // content list, remove '+OK<sp>'
-            vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-            vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
-            vector<char> formatted_content = format_folder_contents(contents);
-            res.append_body_bytes(formatted_content.data(), formatted_content.size());
-            res.set_code(200);
+            // // content list, remove '+OK<sp>'
+            // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
+            // vector<char> formatted_content = format_folder_contents(contents);
+            // res.append_body_bytes(formatted_content.data(), formatted_content.size());
+            // res.set_code(200);
+
+            res.set_code(303);
+            res.set_header("Location", "/drive/" + parentpath_str);
         }
         else
         {
-            res.set_code(400);
+            res.set_code(303);
+            res.set_header("Location", "/400");
         }
     }
 
