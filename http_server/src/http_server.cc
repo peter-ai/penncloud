@@ -24,6 +24,14 @@ void HttpServer::run(int port, std::string static_dir)
         http_logger.log("Failed to initialize server. Exiting.", 40);
         return;
     }
+
+    // given that a load balancer is also an http server, we neeed to make sure that the load balancer is not PINGing itself!
+    // check that HTTP port is not LOAD BALANCER's client_listen_port
+    if (port != 7500)
+    {
+        start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 4000
+    }
+
     http_logger.log("HTTP server listening for connections on port " + std::to_string(HttpServer::port), 20);
     http_logger.log("Serving static files from " + HttpServer::static_dir + "/", 20);
     accept_and_handle_clients();
@@ -165,4 +173,47 @@ bool HttpServer::set_kvs_addr(std::string username, std::string kvs_address)
     HttpServer::kvs_mutex.unlock();
 
     return true;
+}
+
+// send heartbeat to LOAD BALANCER
+void HttpServer::send_heartbeat(int lb_port, int server_port)
+{
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0)
+    {
+        http_logger.log("Could not create socket for heartbeat", 40);
+        return;
+    }
+
+    struct sockaddr_in lb_addr;
+    memset(&lb_addr, 0, sizeof(lb_addr));
+    lb_addr.sin_family = AF_INET;
+    lb_addr.sin_port = htons(lb_port);
+    lb_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    if (connect(sock, (struct sockaddr *)&lb_addr, sizeof(lb_addr)) < 0)
+    {
+        http_logger.log("Failed to connect to load balancer for heartbeat", 40);
+        close(sock);
+        return;
+    }
+
+    http_logger.log("PING sent from FE server (PORT " + std::to_string(port) + ") to Load Balancer", 20);
+    // Expected message format: "PING<SP>PORT\r\n"
+    std::string message = "PING " + std::to_string(server_port) + "\r\n";
+    send(sock, message.c_str(), message.length(), 0);
+    close(sock);
+}
+
+void HttpServer::start_heartbeat_thread(int lb_port, int server_port)
+{
+    {
+        std::thread([=]()
+                    {
+        while (true) {
+            send_heartbeat(lb_port, server_port);
+            std::this_thread::sleep_for(std::chrono::seconds(10));  // send a heartbeat every 10 seconds
+        } })
+            .detach();
+    }
 }

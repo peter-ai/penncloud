@@ -52,13 +52,5 @@ int main()
 	// run HTTPServer
 	HttpServer::run(8000);
 
-	// // perform front end specific tasks
-	// while (runServer)
-	// {
-	// 	// Example: Dispatch a thread that contacts the load balancer here
-	// 	thread lbThread(contactLoadBalancer);
-	// 	lbThread.join(); // Wait for the server thread to finish
-	// }
-
 	return 0;
 }

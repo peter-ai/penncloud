@@ -9,12 +9,15 @@
 #include <iostream>
 #include <sys/socket.h> // socket
 #include <netinet/in.h> // sockaddr_in
+#include <arpa/inet.h> // inet_pton
 #include <thread>
 
 #include "client.h"
 #include "http_request.h"
 #include "http_response.h"
 #include "../../utils/include/utils.h"
+
+#include "../../loadbalancer/include/loadbalancer.h"
 
 struct RouteTableEntry
 {
@@ -63,6 +66,11 @@ public:
     static bool delete_kvs_addr(std::string username);  
     static std::vector<std::string> get_kvs_addr(std::string username); 
     static bool set_kvs_addr(std::string username, std::string kvs_address);
+
+    // send heartbeat to LOAD BALANCER
+    static void start_heartbeat_thread(int lb_port, int server_port);
+    static void send_heartbeat(int lb_port, int server_port);
+
 
 private:
     // make default constructor private
