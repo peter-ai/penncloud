@@ -20,16 +20,18 @@ int main(int argc, char **argv)
     // 2. Register GET route to “/” using HttpServer
     HttpServer::get("/", LoadBalancer::client_handler); // register handler
 
-    LoadBalancer::client_listen_port = 5000; // Port for client connections
+    LoadBalancer::client_listen_port = 7500; // Port for client connections
     LoadBalancer::server_listen_port = 4000; // Port for server heartbeats and registration
 
     // 3. Create thread and pass ping function (receive heartbeats) into it
     std::thread heartbeatThread(LoadBalancer::receive_heartbeat);
+
     // Detach the heartbeat thread
     heartbeatThread.detach();
 
     // 4. Create threada and pass health check (check if server is alive)
     std::thread healthcheckThread(LoadBalancer::health_check);
+    
     // Detach the health check thread
     healthcheckThread.detach();
 

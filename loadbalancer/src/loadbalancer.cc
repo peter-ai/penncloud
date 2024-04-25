@@ -147,11 +147,11 @@ namespace LoadBalancer
                 {
                     std::string port_str = msg.substr(5, msg.size() - 7);
                     int server_port = std::stoi(port_str);
-
                     std::lock_guard<std::mutex> lock(serverMutexes[server_port]); // Lock server mutex
                     auto now = std::chrono::steady_clock::now();
                     servers[server_port].lastHeartbeat = now; // Update last heartbeat time and mark as active
                     servers[server_port].isActive = true;
+                    loadbalancer_logger.log("PING received from FE server (PORT " + port_str + ")", 20);
                 }
             }
             close(connfd); // Close the connection socket
@@ -190,6 +190,8 @@ namespace LoadBalancer
 
     void client_handler(const HttpRequest &request, HttpResponse &response)
     {
+        loadbalancer_logger.log("Entering client handler", 20); // DEBUG
+
         {
             // client is assigned a server that is alive
             std::string server = select_server();
