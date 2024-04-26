@@ -172,10 +172,11 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // @PETER ADDED
                 std::string folder_contents(formatted_content.begin(), formatted_content.end());
                 std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
-
+                std::string folders = "[";
                 std::string folder_html = "";
                 size_t item_iter = 0;
                 int row_count = 0;
+
                 while (item_iter < folder_items.size())
                 {
                     std::string item = folder_items[item_iter];
@@ -195,6 +196,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                         // html to add item to page
                         if (item.back() == '/')
                         {
+                            folders += "\"" + item + "\",";
+
                             folder_html +=
                                 "<div class='col-4 text-center text-wrap'>"
                                 "<a href='" +
@@ -203,7 +206,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                        "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
                                        "</svg>"
                                        "</a>"
-                                       "<p class='lead text-break'>" +
+                                       "<p class='text-break'>" 
+                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" + item + "' data-bs-path='" + childpath_str + "'>"
+                                       "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                       "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                       "</svg>"
+                                       "</a>" +
                                 item +
                                 "</p>"
                                 "</div>";
@@ -245,6 +253,10 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
                 if (row_count % 9 != (9 - 1))
                     folder_html += "</div>";
+                
+                folders.pop_back();
+                folders.push_back(']');
+                std::cerr << folders << std::endl;
 
                 //@todo: update with html!
                 std::string page =
@@ -300,16 +312,40 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                                "<div class='container-fluid text-start'>"
                                "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
-                               "<div class='col-4'>"
+                               "<div class='col-6'>"
                                "<h1 class='display-6'>"
                                "Drive: " +
                     childpath_str +
                     "</h1>"
                     "</div>"
-                    "<div class='col-8'>"
+                    "<div class='col-1 text-center'>"
+                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#renameModal' disabled>"
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-pen' viewBox='0 0 16 16'>"
+                    "<path d='m13.498.795.149-.149a1.207 1.207 0 1 1 1.707 1.708l-.149.148a1.5 1.5 0 0 1-.059 2.059L4.854 14.854a.5.5 0 0 1-.233.131l-4 1a.5.5 0 0 1-.606-.606l1-4a.5.5 0 0 1 .131-.232l9.642-9.642a.5.5 0 0 0-.642.056L6.854 4.854a.5.5 0 1 1-.708-.708L9.44.854A1.5 1.5 0 0 1 11.5.796a1.5 1.5 0 0 1 1.998-.001m-.644.766a.5.5 0 0 0-.707 0L1.95 11.756l-.764 3.057 3.057-.764L14.44 3.854a.5.5 0 0 0 0-.708z'/>"
+                    "</svg><br/>"
+                    "Rename Item" 
+                    "</button>"
+                    "</div>"
+                    "<div class='col-1 text-center'>"
+                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#moveModal' disabled>"
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-arrows-move' viewBox='0 0 16 16'>"
+                    "<path fill-rule='evenodd' d='M7.646.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 1.707V5.5a.5.5 0 0 1-1 0V1.707L6.354 2.854a.5.5 0 1 1-.708-.708zM8 10a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L7.5 14.293V10.5A.5.5 0 0 1 8 10M.146 8.354a.5.5 0 0 1 0-.708l2-2a.5.5 0 1 1 .708.708L1.707 7.5H5.5a.5.5 0 0 1 0 1H1.707l1.147 1.146a.5.5 0 0 1-.708.708zM10 8a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L14.293 8.5H10.5A.5.5 0 0 1 10 8'/>"
+                    "</svg><br/>"
+                    "Move Item" 
+                    "</button>"
+                    "</div>"
+                    "<div class='col-1 text-center'>"
+                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#createFolderModal'>"
+                    "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
+                    "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'></path>"
+                    "</svg><br/>"
+                    "Create Folder" 
+                    "</button>"
+                    "</div>"
+                    "<div class='col-3'>"
                     "<form class='d-flex' role='upload' method='POST' enctype='multipart/form-data' action='/api/drive/upload/" +
                     childpath_str + "'>"
-                                    "<input class='form-control' style='height: 80%;' type='file' id='formFile' name='file'>"
+                                    "<input class='form-control' style='height: 80%; width: auto;' type='file' id='formFile' name='file'>"
                                     "<input class='btn btn-link link-underline link-underline-opacity-0' type='submit' value='Upload' disabled>"
                                     "</form>" // place upload button here
                                     "<script>"
@@ -330,21 +366,37 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
                     "</div>"
                     "<div class='modal-body'>"
-                    "<p>Warning - deleting this item is an unrecoverable action, that is, this item will be deleted from storage permanently.</p>"
+                    "<p>Deleting this item is an unrecoverable action and will result in this item being deleted from storage permanently!</p>"
                     "<form id='deleteForm' method='POST'>"
-                    "<!-- <div class='mb-3'>"
-                    "<label for='recipient-name' class='col-form-label'>Recipient:</label>"
-                    "<input type='text' class='form-control' id='recipient-name'>"
-                    "</div>"
-                    "<div class='mb-3'>"
-                    "<label for='message-text' class='col-form-label'>Message:</label>"
-                    "<textarea class='form-control' id='message-text'></textarea>"
-                    "</div> -->"
                     "</form>"
                     "</div>"
                     "<div class='modal-footer'>"
                     "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
                     "<button type='submit' class='btn btn-danger' onclick='$(\"#deleteForm\").submit();'>Delete</button>"
+                    "</div>"
+                    "</div>"
+                    "</div>"
+                    "</div>"
+
+                    "<div class='modal fade' id='createFolderModal' tabindex='-1' aria-labelledby='createFolderModalLabel' aria-hidden='true'>"
+                    "<div class='modal-dialog modal-dialog-centered'>"
+                    "<div class='modal-content'>"
+                    "<div class='modal-header'>"
+                    "<h1 class='modal-title fs-5' id='createFolderModalLabel'>Create a new folder</h1>"
+                    "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
+                    "</div>"
+                    "<div class='modal-body'>"
+                    "<form id='createFolderForm' method='POST' action='/api/drive/create/" + childpath_str +  "'>"
+                    "<div class='mb-3'>"
+                    "<label for='folder-name' class='col-form-label'>Folder name:</label>"
+                    "<input name='name' type='text' class='form-control' id='folder-name' minlength=1 maxlength=255 pattern='^[\\w\\-]+$' required placeholder='My_Folder-27' aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
+                    "<div id='folderHelp' class='form-text'>Names can contain letters, numbers, hyphens, and underscores</div>"
+                    "</div>"
+                    "</form>"
+                    "</div>"
+                    "<div class='modal-footer'>"
+                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                    "<button type='submit' class='btn btn-primary' onclick='var folders = " + folders + "; if ($(\"#createFolderForm\")[0].checkValidity()) {if (folders.includes($(\"#createFolderForm\")[0][0].value + \"/\")) { $(\"#createFolderForm\")[0][0].setCustomValidity(\"Folder already exists.\"); $(\"#createFolderForm\")[0].reportValidity(); } else {$(\"#createFolderForm\").submit();} } else {$(\"#createFolderForm\")[0][0].setCustomValidity(($(\"#createFolderForm\")[0][0].value.length !== 0 ? \"Some of the input characters are bad.\" : \"Please fill out this field.\")); $(\"#createFolderForm\")[0].reportValidity();}'>Create</button>"
                     "</div>"
                     "</div>"
                     "</div>"
@@ -359,13 +411,10 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                             "});"
 
                             "$('#deleteModal').on('show.bs.modal', function(e) {"
-                                //let id = $(e.relatedTarget).attr('data-id');
                                 "let item_name = $(e.relatedTarget).attr('data-bs-name');"
                                 "let file_path = $(e.relatedTarget).attr('data-bs-path');"
                                 "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
                                 "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                                // $(e.currentTarget).find('input[id="store_id"]').val(id);
-                                // $(e.currentTarget).find('input[id="store_name"]').val(name);
                             "});"
                     "</script>"
                     "<script>"
