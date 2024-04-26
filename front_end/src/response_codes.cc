@@ -221,7 +221,7 @@ void error_400_page(const HttpRequest &req, HttpResponse &res)
         "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
         "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
         "</head>"
-        "<body>"
+        "<body onload='setTheme()'>"
         "<nav class='navbar bg-body-tertiary'>"
         "<div class='container-fluid'>"
         "<span class='navbar-brand mb-0 h1 flex-grow-1'>"
