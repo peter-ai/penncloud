@@ -172,6 +172,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // @PETER ADDED
                 std::string folder_contents(formatted_content.begin(), formatted_content.end());
                 std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
+                sort(folder_items.begin(), folder_items.end()); // sort items
                 std::string folders = "[";
                 std::string folder_html = "";
                 size_t item_iter = 0;
@@ -259,6 +260,25 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 if (row_count > 0) folders.pop_back();
                 folders.push_back(']');
                 
+                std::vector<std::string> path_elems = Utils::split(childpath_str, "/");
+                std::string drive = "";
+                for (row_count=path_elems.size()-1; row_count >= 0; row_count--) 
+                {
+                    if (path_elems.size() - row_count == 1) 
+                    {
+                        drive = "<a href='./'>" + path_elems[row_count] + "</a>/" + drive;
+                    }
+                    else if (path_elems.size() - row_count < 4)
+                    {
+                        drive = "<a href='" + (path_elems.size() - row_count == 2 ? std::string("../") : std::string("../../")) + "'>" + path_elems[row_count] + "</a>/" + drive;
+                    }
+                    else
+                    {
+                        drive = "../" + drive;
+                        break;
+                    }
+                }
+
                 // construct html page
                 std::string page =
                     "<!doctype html>"
@@ -316,7 +336,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                "<div class='col-5'>"
                                "<h1 class='display-6'>"
                                "Drive: " +
-                    childpath_str +
+                    drive +
                     "</h1>"
                     "</div>"
                     "<div class='col-1 text-center'>"
@@ -739,9 +759,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
                 vector<char> folder_row = row_name;
                 folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
                 vector<char> kvs_resp = FeUtils::kv_put(sockfd, folder_row, {}, {});
-                
-                std::cerr << row_name.data() << std::endl;
-                std::cerr << folder_row.data() << std::endl;
 
                 // get parent folder to show that this folder has been nested
                 // folder_content = FeUtils::kv_get_row(sockfd, row_name);
