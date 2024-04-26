@@ -294,11 +294,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 if (row_count % 9 != (9 - 1))
                     folder_html += "</div>";
                 
-                folders.pop_back();
-                folders.push_back(']');
-                std::cerr << folders << std::endl;
 
-                //@todo: update with html!
+                // construct array of folders in cwd
+                if (row_count > 0) folders.pop_back();
+                folders.push_back(']');
+                
+                // construct html page
                 std::string page =
                     "<!doctype html>"
                     "<html lang='en' data-bs-theme='dark'>"
@@ -352,7 +353,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                                "<div class='container-fluid text-start'>"
                                "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
-                               "<div class='col-6'>"
+                               "<div class='col-5'>"
                                "<h1 class='display-6'>"
                                "Drive: " +
                     childpath_str +
@@ -382,7 +383,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "Create Folder" 
                     "</button>"
                     "</div>"
-                    "<div class='col-3'>"
+                    "<div class='col-4'>"
                     "<form class='d-flex' role='upload' method='POST' enctype='multipart/form-data' action='/api/drive/upload/" +
                     childpath_str + "'>"
                                     "<input class='form-control' style='height: 80%; width: auto;' type='file' id='formFile' name='file'>"
@@ -733,7 +734,9 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
     if (valid_session_id.empty())
     {
         // for now, returning code for check on postman
-        res.set_code(401);
+        res.set_code(303);
+        res.set_header("Location", "/401");
+        // res.set_code(401);
         close(sockfd);
         return;
     }
@@ -750,7 +753,9 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         // if key doesn't exist, return 400
         if (elements.size() < 1)
         {
-            res.set_code(400);
+            res.set_code(303);
+            res.set_header("Location", "/400");
+            // res.set_code(400);
             return;
         }
 
@@ -766,11 +771,13 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
         vector<char> formatted_content = format_folder_contents(contents);
 
-        // if folder name in use
+        // if folder name in use - @PETER add a front-end validation check for this
         if (contains_subseq(formatted_content, folder_name))
         {
             // currently returning 400 but not sure what behavior should be
-            res.set_code(400);
+            res.set_code(303);
+            res.set_header("Location", "/400");
+            // res.set_code(400);
         }
         else
         {
@@ -781,31 +788,40 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
                 vector<char> folder_row = row_name;
                 folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
                 vector<char> kvs_resp = FeUtils::kv_put(sockfd, folder_row, {}, {});
+                
+                std::cerr << row_name.data() << std::endl;
+                std::cerr << folder_row.data() << std::endl;
 
                 // get parent folder to show that this folder has been nested
-                folder_content = FeUtils::kv_get_row(sockfd, row_name);
+                // folder_content = FeUtils::kv_get_row(sockfd, row_name);
 
                 // content list, remove '+OK<sp>'
-                vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-                contents = split_vector(folder_elements, {'\b'});
-                formatted_content = format_folder_contents(contents);
-                res.append_body_bytes(formatted_content.data(), formatted_content.size());
-                res.set_code(200);
+                // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+                // contents = split_vector(folder_elements, {'\b'});
+                // formatted_content = format_folder_contents(contents);
+                // res.append_body_bytes(formatted_content.data(), formatted_content.size());
+                // res.set_code(200);  
+                
+                res.set_code(303);
+                res.set_header("Location", "/drive/" + std::string(row_name.begin(), row_name.end()));
+            
+                // set cookies on response
+                FeUtils::set_cookies(res, username, valid_session_id);
             }
             else
             {
                 // logger error
-                res.set_code(400);
+                res.set_code(303);
+                res.set_header("Location", "/400");
+                // res.set_code(400);
             }
         }
     }
     else
     {
-        res.set_code(400);
+        res.set_code(303);
+        res.set_header("Location", "/400");
     }
-
-    // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
 
     close(sockfd);
 }
