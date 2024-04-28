@@ -1,19 +1,15 @@
 /*
  * loadbalancer.cc
  *
- *
  *  The  LB sits on top of an HTTP server is placed between the clients and the other HTTPS/frontend servers and acts as the first point of contact for all incoming network traffic from the clients.
- *
+ *  Frontend servers send a message to the load balancer upon startup (or periodically) that includes their port number. This message serves as a registration or heartbeat, indicating they are active and available.
+ * 
  * The LB:
  * 1. Accepts the initial HTTP request on PORT 5000 from the client
  * 2. Receives heartbeats from FrontEnd servers on PORT 4000
  * 3. Determines the best server to handle the request based on load and server availability
  * 4. Client is redirected  to the frontend server for all subsequent requests
  * 4. If there is a frontend server failure, client is redirected to the LB to be assigned a new server
- *
- * Dynamic Registration: Frontend servers send a message to the load balancer upon startup (or periodically) that includes their port number. This message serves as a registration or heartbeat, indicating they are active and available.
- *
- *
  *
  */
 
@@ -27,7 +23,7 @@ namespace LoadBalancer
     std::list<int> activeServers;
     std::unordered_map<int, std::mutex> serverMutexes;
     std::mutex server_mutex;
-    std::list<int>::iterator current_server;
+    std::list<int>::iterator current_server = activeServers.end();
     int client_listen_port;
     int server_listen_port;
 
@@ -41,6 +37,8 @@ namespace LoadBalancer
         if (sock < 0)
         {
             loadbalancer_logger.log("Could not create socket", 40);
+            close(sock);
+
             return -1;
         }
         struct sockaddr_in address;
@@ -103,8 +101,8 @@ namespace LoadBalancer
                 }
                 else
                 {
-                    data.isActive = true;                  // Server is up.
-                    activeServers.push_back(server.first); // Add server ID to the active list.
+                    data.isActive = true;                     // Server is up.
+                    activeServersVec.push_back(server.first); // Add server ID to the active list.
                 }
             }
             std::lock_guard<std::mutex> globalLock(server_mutex);
@@ -165,6 +163,7 @@ namespace LoadBalancer
         // Check if no active servers exist
         if (activeServers.empty())
         {
+            current_server = activeServers.end();
             return "No active server available";
         }
 
@@ -207,7 +206,7 @@ namespace LoadBalancer
             {
                 loadbalancer_logger.log("Redirecting client to server with port " + server, 20);
                 // Format the server address properly assuming HTTP protocol and same host
-                std::string redirectUrl = "http://localhost:" + server;
+                std::string redirectUrl = "http://localhost:" + server + "/login.html";
                 // Set the response code to redirect and set the location header to the port of the frontend server it picked
                 response.set_code(307);                       // HTTP 307 Temporary Redirect
                 response.set_header("Location", redirectUrl); // Redirect to the server at the specified port
@@ -215,5 +214,39 @@ namespace LoadBalancer
                 response.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'>" + redirectUrl + "</a></body></html>");
             }
         }
+    }
+
+    void LoadBalancer::lb_to_admin(int admin_port)
+    {
+        int sock = socket(AF_INET, SOCK_STREAM, 0);
+        if (sock < 0)
+        {
+            loadbalancer_logger.log("Could not create socket for ADMIN console", 40);
+            return;
+        }
+        struct sockaddr_in lb_addr;
+        memset(&lb_addr, 0, sizeof(lb_addr));
+        lb_addr.sin_family = AF_INET;
+        lb_addr.sin_port = htons(admin_port);
+        lb_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+        if (connect(sock, (struct sockaddr *)&lb_addr, sizeof(lb_addr)) < 0)
+        {
+            loadbalancer_logger.log("Failed to connect to ADMIN console", 40);
+            close(sock);
+            return;
+        }
+
+        // Expected message format: "PING<SP>NAME<SP>PORT,<SP>NAME<SP>PORT, ...,\r\n"
+        std::string message = "L ";
+        int count = 1;
+        for(auto& server : servers) {
+            message += "FE_Server" + to_string(count) + " " + to_string(server.first) + ", ";
+            count++;
+        }
+        message += "\r\n";
+        send(sock, message.c_str(), message.length(), 0);
+        loadbalancer_logger.log("List of FE servers sent to Admin Console", 20);\
+        close(sock);
     }
 }
