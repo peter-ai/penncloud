@@ -29,7 +29,7 @@ void HttpServer::run(int port, std::string static_dir)
     // check that HTTP port is not LOAD BALANCER's client_listen_port
     if (port != 7500)
     {
-        start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 4000
+        start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 7900
     }
 
     http_logger.log("HTTP server listening for connections on port " + std::to_string(HttpServer::port), 20);

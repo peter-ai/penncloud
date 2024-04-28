@@ -38,13 +38,14 @@ namespace LoadBalancer
     int create_socket(int port);                                             // Set up TCP socket bound to specified port
     void initialize_servers(int numServers, int startingPort);               // initialize # of servers
     std::string select_server();                                             // Select an active server using round-robin scheduling
-    // void handle_client_request(int client_sock, const HttpRequest &request); // Handle client request by redirecting to an appropriate server or sending error if no server is available
-    // void redirect_client_to_server(int client_sock);                         // redirect client to a frontend server
     void receive_heartbeat();                                                // Receive and handle heartbeat from servers
     void health_check();                                                     // Check health of all servers and mark them as active or inactive based on heartbeat
 
     // handlers
     void client_handler(const HttpRequest &request, HttpResponse &response);
+
+    //admin console
+    void lb_to_admin(int admin_port);
 }
 
 #endif // LOADBALANCER_H

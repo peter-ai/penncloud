@@ -17,6 +17,9 @@ int main(int argc, char **argv)
     // 1. Populate map of servers and server mutexes
     LoadBalancer::initialize_servers(numServers, startingPort);
 
+    // Send list of FE servers to Admin Console that sits on port 8080
+    LoadBalancer::lb_to_admin(8080);
+
     // 2. Register GET route to “/” using HttpServer
     HttpServer::get("/", LoadBalancer::client_handler); // register handler
 
@@ -29,7 +32,7 @@ int main(int argc, char **argv)
     // Detach the heartbeat thread
     heartbeatThread.detach();
 
-    // 4. Create threada and pass health check (check if server is alive)
+    // 4. Create threads and pass health check (check if server is alive)
     std::thread healthcheckThread(LoadBalancer::health_check);
     
     // Detach the health check thread
