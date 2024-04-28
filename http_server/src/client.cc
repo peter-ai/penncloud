@@ -257,7 +257,10 @@ void Client::set_req_type()
         // Option 2 - route path has a wildcard as the last token
         // lengths don't need to match BUT req path must be >= route path
 
-        bool route_has_wildcard = route_path_tokens.back() == "*";
+        // check if the route has a wildcard
+        // note that the tokens must be non-empty for us to check this, so we use a conditional here
+        bool route_has_wildcard = route_path_tokens.size() != 0 ? route_path_tokens.back() == "*" : false;
+
         // route does NOT contain wildcard - size of tokens must match directly
         if (!route_has_wildcard && route_path_tokens.size() != req_path_tokens.size())
         {
@@ -271,7 +274,6 @@ void Client::set_req_type()
 
         // iterate route path tokens and check if there's a match for each token
         bool dynamic_route_found = true;
-        bool wildcard_found = false;
         for (size_t i = 0; i < route_path_tokens.size(); i++)
         {
             std::string route_token = route_path_tokens.at(i);

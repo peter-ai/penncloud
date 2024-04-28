@@ -34,7 +34,7 @@ int main(int argc, char **argv)
 
     // 4. Create threads and pass health check (check if server is alive)
     std::thread healthcheckThread(LoadBalancer::health_check);
-    
+
     // Detach the health check thread
     healthcheckThread.detach();
 
