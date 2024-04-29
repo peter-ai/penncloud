@@ -18,42 +18,41 @@
  *  !!! Port pattern for KVS servers is: 6[<0-index server_group#>][<0-indexed server#>]0
  *  !!! E.g.: 127.0.0.1:6000 is the address of the first server in the first server group
  *
- *  1) kvs_responsibilities - unordered_map
- *      Data structure keeps track of, for each letter/char the ip:port
- *      for its current primary and its corresponding secondaries
+ *  1) client_map - unordered_map of vectors of kvs_args structs
+ *      Data structure keeps track of, for each key/letter/char the kvs_args struct
+ *      for each server in its associated cluster
  *      Example for 3 server groups with 2 backups per group
  *      {
- *          'a': {"primary": "127.0.0.1:5000", "secondary1": "127.0.0.1:5010", "secondary2": "127.0.0.1:5020",...},
- *          'b': {"primary": "127.0.0.1:5000", "secondary1": "127.0.0.1:5010", "secondary2": "127.0.0.1:5020",...},
+ *          'a': ["127.0.0.1:6000", "127.0.0.1:6010", "127.0.0.1:6020", ...],
+ *          'b': ["127.0.0.1:6000", "127.0.0.1:6010", "127.0.0.1:6020", ...],
  *          ...,
- *          'j': {"primary": "127.0.0.1:5100", "secondary1": "127.0.0.1:5110", "secondary2": "127.0.0.1:5120",...},
+ *          'j': ["127.0.0.1:6100", "127.0.0.1:6110", "127.0.0.1:6120", ...],
  *          ...,
- *          'z': {"primary": "127.0.0.1:5200", "secondary1": "127.0.0.1:5210", "secondary2": "127.0.0.1:5220",...},
+ *          'z': ["127.0.0.1:6200", "127.0.0.1:6210", "127.0.0.1:6220", ...],
  *      }
- *  2) server_groups - unordered_map
- *      Data structure keeps track of, for each server group,
- *      who the primary is and who the set of secondaries are
- *      and what is the key-value range that is associated with the group
- *      (stores inverse info of kvs_responsibilities)
+ *  2) kvs_clusters - unordered_map of vectors of kvs_args structs
+ *      Data structure keeps track of, for each server group, at a given time
+ *      who are the current kvs servers that are alive and actively 
+ *      available to service requests
  *      Example for 3 server groups with 2 backups per group
  *      {
- *          "127.0.0.1:5000": {"backups": <"127.0.0.1:5010", "127.0.0.1:5020">, "key_range": <"abcdefghi">},
- *          "127.0.0.1:5100": {"backups": <"127.0.0.1:5110", "127.0.0.1:5120">, "key_range": <"jklmnopqr">},
- *          "127.0.0.1:5200": {"backups": <"127.0.0.1:5210", "127.0.0.1:5220">, "key_range": <"stuvwxyz">},
+ *          0: ["127.0.0.1:6010", "127.0.0.1:6020"],
+ *          1: ["127.0.0.1:6100", "127.0.0.1:6110", "127.0.0.1:6120"],
+ *          2: ["127.0.0.1:6200"],
  *      }
- *  3) kvs_health - unordered_map
- *      tracks the health (alive=true, dead=false) for every kvs server in the system
+ *  3) kvs_intranet - unordered_map of kvs_args structs
+ *      tracks every kvs server according to its internal communication port
  *      Example for 3 server groups with 2 backups per group
  *      {
- *          "127.0.0.1:5000": true,
- *          "127.0.0.1:5010": true,
- *          "127.0.0.1:5020": false,
+ *          "127.0.0.1:9000": kvs_args,
+ *          "127.0.0.1:9010": kvs_args,
+ *          "127.0.0.1:9020": kvs_args,
  *          ...,
- *          "127.0.0.1:5100": true,
+ *          "127.0.0.1:9100": kvs_args,
  *          ...,
- *          "127.0.0.1:5200": true,
- *          "127.0.0.1:5210", true,
- *          "127.0.0.1:5220": true,
+ *          "127.0.0.1:9200": kvs_args,
+ *          "127.0.0.1:9210", kvs_args,
+ *          "127.0.0.1:9220": kvs_args,
  *      }
  */
 
