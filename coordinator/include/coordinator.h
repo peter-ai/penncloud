@@ -24,6 +24,9 @@
 #include <strings.h>
 #include <stdlib.h>
 #include <shared_mutex>
+#include <poll.h>
+#include <random>
+
 
 #include "../../utils/include/utils.h"
 
@@ -35,29 +38,43 @@ extern Logger logger;                              // setup logger
 extern int SHUTDOWN;                               // shutdown flag
 extern int VERBOSE;                                // verbose flag
 
-extern std::unordered_map<char, std::unordered_map<std::string, std::string>> kvs_responsibilities;              // tracks the primary and secondaries for all letters
-extern std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> server_groups; // tracks the list of secondaries and the keys for each primary
-extern std::unordered_map<std::string, bool> kvs_health;                                                         // tracks which kvs servers are alive
+/// @brief signal handler
+/// @param sig signal to handle
+void signal_handler(int sig);  
 
-void signal_handler(int sig);   // signal handler
-void *kvs_thread(void *arg);    // work to be done by thread servicing a request from a KVS server
-void *client_thread(void *arg); // work to be done by thread servicing a request from a front-end server
+/// @brief work to be done by thread servicing a request from a KVS server
+/// @param arg a void pointer
+/// @return void
+void *kvs_thread(void *arg);   
 
+/// @brief work to be done by thread servicing a request from a front-end server
+/// @param arg a void pointer
+/// @return void
+void *client_thread(void *arg); 
+
+/// @brief randomly sample an index between [0, length)
+/// @param length the upper bound of the sampling range (exclusive)
+/// @return a random index in range [0, length)
+size_t sample_index(size_t length);
+
+/// @brief client server connection
 struct client_args
 {
-    std::string addr;
-    int fd;
+    std::string addr; // address of
+    int fd;           // file descriptor for coordinator-http communication
 };
 
+/// @brief kvs server connection
 struct kvs_args
 {
-    std::string client_listen_ip;
-    std::string kvs_comms_ip;
-    std::string kv_range;
-    bool primary;
-    bool alive;
-    int kvs_group;
-    int fd;
+    std::string client_addr; // binding address for http connections for the kvs
+    std::string server_addr; // binding address for intra-kvs server communication
+    std::string admin_addr;  // binding address for connections from admin console
+    std::string kv_range;    // key value range kvs is responsible for
+    bool primary;            // primary or not
+    bool alive;              // alive or not
+    int kvs_group;           // kvs cluser number
+    int fd;                  // file descriptor for coordinator-kvs communication
 };
 
 #endif
