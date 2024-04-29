@@ -26,9 +26,10 @@
 #include <shared_mutex>
 #include <poll.h>
 #include <random>
-
+#include <algorithm>
 
 #include "../../utils/include/utils.h"
+#include "../../front_end/utils/include/fe_utils.h"
 
 extern std::unordered_map<pthread_t, int> THREADS; // track threads
 extern std::mutex MAP_MUTEX;                       // mutex for map of threads
@@ -56,6 +57,24 @@ void *client_thread(void *arg);
 /// @param length the upper bound of the sampling range (exclusive)
 /// @return a random index in range [0, length)
 size_t sample_index(size_t length);
+
+/// @brief constructs a specialized message for the given kvs
+/// @param kvs a pointer to a kvs_args struct
+/// @return a message to be sent back to the kvs
+std::string get_kvs_message(kvs_args *kvs);
+
+/// @brief constructs a specialized message for the given kvs
+/// @param kvs an address of a kvs_args struct
+/// @return a message to be sent back to the kvs
+std::string get_kvs_message(kvs_args &kvs);
+
+/// @brief broadcasts a specialized message to each member of the cluster specified by group number
+/// @param group the cluster number of the calling kvs
+void broadcast_to_cluster(int group);
+
+/// @brief constructs message to be sent to admin HTTP server
+/// @return a specialized message to admin
+std::string get_admin_message();
 
 /// @brief client server connection
 struct client_args
