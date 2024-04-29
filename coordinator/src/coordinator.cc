@@ -67,14 +67,9 @@ std::mutex MAP_MUTEX;                       // mutex for map of threads
 int SHUTDOWN = 0;                           // shutdown flag
 int VERBOSE = 0;                            // verbose flag
 
-// coordinator kvs data structures
-/*
-    TODO: THESE WILL NEED MUTEXES ONCE WE SUPPORT RESTORES AND PRIMARY REALLOCATION
-        SINCE THEY WILL NEED TO BE UPDATED DURING REASSIGNMENT OF PRIMARIES
-*/
-std::unordered_map<char, std::unordered_map<std::string, std::string>> kvs_responsibilities;              // tracks the primary and secondaries for all letters
-std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> server_groups; // tracks the list of secondaries and the keys for each primary
-std::unordered_map<std::string, bool> kvs_health;                                                         // tracks which kvs servers are alive
+std::unordered_map<std::string, struct kvs_args> kvs_intranet;      // tracks which kvs intranet ip is associated with each kvs server
+std::unordered_map<int, std::vector<struct kvs_args>> kvs_clusters; // tracks which kvs servers are currently a part of a kvs_cluster (must be alive)
+std::unordered_map<char, std::vector<struct kvs_args>> client_map;  // tracks the kvs servers responsible for each key
 
 int main(int argc, char *argv[])
 {
@@ -180,86 +175,75 @@ int main(int argc, char *argv[])
     /* -------------------- KVS SERVER INFORMATION -------------------- */
     std::string letters = "abcdefghijklmnopqrstuvwxyz";
     std::string ip_addr = "127.0.0.1";
-    int server_group = 0;
-    unsigned long i = 0;
 
-    // set key value ranges for each kvs server group
-    // store primary, secondaries and key value ranges for each server group
-    // establish server health
-    while (i < letters.size())
+    float division = 26.0 / (float)kvs_servers;
+    for (int groups = 0; groups < kvs_servers; groups++)
     {
-        if (i < (((float)letters.length() / (float)kvs_servers) * (float)(server_group + 1)))
+        int lower = ceil((float)(groups)*division);
+        int upper = (groups + 1 != kvs_servers ? ceil((float)(groups + 1) * division) : 26) - lower;
+
+        std::vector<struct kvs_args> kvs_cluster;
+        for (int servers = 0; servers <= kvs_backups; servers++)
         {
-            int server_number = 0;
-            std::unordered_map<std::string, std::string> resp;
-            std::vector<std::string> backups;
-            std::string secondary_kvs;
-            std::string primary_kvs = ip_addr + ":6" + std::to_string(server_group) + std::to_string(server_number) + "0";
+            std::string client_ip = ip_addr + ":6" + std::to_string(groups) + std::to_string(servers) + "0";
+            std::string server_ip = ip_addr + ":9" + std::to_string(groups) + std::to_string(servers) + "0";
+            std::string admin_ip = ip_addr + ":12" + std::to_string(groups) + std::to_string(servers) + "0";
 
-            resp["primary"] = primary_kvs;
+            struct kvs_args kv;
+            kv.alive = false;                           // server is not alive yet
+            kv.kvs_group = groups;                      // set the group number of this server
+            kv.primary = (servers == 0 ? true : false); // if server is 0 then make it primary, otherwise secondary
+            kv.client_addr = client_ip;                 // set the client-facing ip:port address
+            kv.server_addr = server_ip;                 // set the internal ip:port address
+            kv.admin_addr = admin_ip;
+            kv.kv_range = letters.substr(lower, upper); // set the key value range for the given kvs server
 
-            server_number++;
-
-            kvs_health[primary_kvs] = true;
-            server_groups[primary_kvs]["key_range"].push_back(letters.substr(i, 1));
-
-            while (server_number <= kvs_backups)
+            // add kvs to client map
+            for (size_t k = 0; k < kv.kv_range.size(); k++)
             {
-                secondary_kvs = ip_addr + ":6" + std::to_string(server_group) + std::to_string(server_number) + "0";
-                resp["secondary" + std::to_string(server_number)] = secondary_kvs;
-
-                kvs_health[secondary_kvs] = true;
-                backups.push_back(secondary_kvs);
-                server_number++;
+                if (client_map.count(kv.kv_range[k]))
+                    client_map[kv.kv_range[k]].push_back(kv);
+                else
+                    client_map[kv.kv_range[k]] = std::vector<struct kvs_args>({kv});
             }
-            kvs_responsibilities[letters[i]] = resp;
 
-            if (!server_groups[primary_kvs].count("backups"))
-                server_groups[primary_kvs]["backups"] = backups;
+            // store kvs in the intranet storage locator
+            kvs_intranet[kv.server_addr] = kv;
 
-            i++;
+            // add kvs to server group
+            kvs_cluster.push_back(kv);
         }
-        else
-        {
-            server_group++;
-        }
+        // add kvs to server group
+        kvs_clusters[groups] = kvs_cluster;
     }
 
-    // verbose printing
     if (VERBOSE)
     {
-        for (auto &res : kvs_responsibilities)
+        logger.log("Client Map", LOGGER_DEBUG);
+        for (auto &k : client_map)
         {
-            std::string msg = std::string(1, res.first) + " ";
-            for (auto &backups : res.second)
+            std::string msg(1, k.first);
+            msg += " <";
+            for (size_t i = 0; i < k.second.size(); i++)
             {
-                msg += backups.first + "=" + backups.second + " ";
+                msg += (k.second[i].primary ? std::string("P-") : std::string("S-")) + k.second[i].client_addr + "/" + k.second[i].server_addr + ", ";
             }
-            logger.log(msg, LOGGER_INFO);
-        }
-
-        for (auto &group : server_groups)
-        {
-            std::string msg = group.first + " <";
-            for (i = 0; i < group.second["backups"].size(); i++)
-                msg += group.second["backups"][i] + (i != group.second["backups"].size() - 1 ? ", " : "");
-            msg += "> <";
-            for (i = 0; i < group.second["key_range"].size(); i++)
-                msg += group.second["key_range"][i];
+            msg.pop_back();
+            msg.pop_back();
             msg += ">";
-            logger.log(msg, LOGGER_INFO);
+            logger.log(msg, LOGGER_DEBUG);
         }
     }
     logger.log("KVS server responsibilites set", LOGGER_INFO);
+
+
+
 
     /* -------------------- DISPATCHER SETUP -------------------- */
     // create streaming socket
     int dispatcher_fd = socket(PF_INET, SOCK_STREAM, 0);
     THREADS[pthread_self()] = dispatcher_fd;
     int port = 4999;
-
-    // fcntl(listener_fd, F_SETFL, (fcntl(listener_fd, F_GETFL)|O_NONBLOCK));
-    // THREADS[pthread_self()] = listener_fd;
 
     // setup socket details
     struct sockaddr_in servaddr;
@@ -311,10 +295,10 @@ int main(int argc, char *argv[])
             std::string source = std::string(inet_ntoa(src.sin_addr)) + ":" + std::to_string(ntohs(src.sin_port));
 
             // if connection is from a kvs
-            if (kvs_health.count(source))
+            if (kvs_intranet.count(source))
             {
-                struct kvs_args kvs;
-                
+                struct kvs_args kvs = kvs_intranet[source];
+                kvs.fd = comm_fd;
 
                 if (pthread_create(&thid, NULL, kvs_thread, (void *)&kvs) != 0)
                 {
@@ -329,7 +313,7 @@ int main(int argc, char *argv[])
                 client.fd = comm_fd;
 
                 // give thread relavent handler
-                if (pthread_create(&thid, NULL, (kvs_health.count(source) ? kvs_thread : client_thread), (void *)&client) != 0)
+                if (pthread_create(&thid, NULL, client_thread, (void *)&client) != 0)
                 {
                     logger.log("Error, unable to create new thread.", LOGGER_CRITICAL);
                     return 1;
@@ -363,7 +347,8 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-// function to handle the reception of SIGINT and SIGUSR1 signals
+/// @brief signal handler
+/// @param sig signal to handle
 void signal_handler(int sig)
 {
     // if thread received a SIGINT
@@ -392,13 +377,82 @@ void signal_handler(int sig)
     }
 }
 
-// TODO: IMPLEMENT
-// work to be done by thread servicing a request from a KVS server
+/// @brief work to be done by thread servicing a request from a KVS server
+/// @param arg a void pointer
+/// @return void
 void *kvs_thread(void *arg)
 {
     /* -------------------- WORKER SETUP -------------------- */
     // extract the client struct
     struct kvs_args *kvs = (struct kvs_args *)arg;
+    kvs->alive = true;
+
+    // setup polling for KVS server
+    std::vector<struct pollfd> fds(1);
+    fds[0].fd = kvs->fd;
+    fds[0].events = POLLIN;   // awaiting POLLIN event
+    int timeout_msecs = 4000; // timeout 4000 milliseconds = 4 seconds
+    int ret;
+
+    while ((ret = poll(fds.data(), fds.size(), timeout_msecs)) != -1)
+    {
+        // socket is ready to be read
+        if (ret > 0)
+        {
+            // if events triggered, do stuff
+            if (fds[0].revents & POLLIN)
+            {
+                // define string as buffer for requests
+                // std::string request;
+                // request.resize(MAX_REQUEST);
+                // int rlen = 0;
+                // int sent = 0;
+
+                // while (request[rlen-1] != '\n' && request[rlen] != '\n')
+                // // receive incoming request
+                // if ((rlen = recv(kvs->fd, &request[0], request.size() - rlen, 0)) == -1)
+                // {
+                //     logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
+                // }
+                // request.resize(rlen);
+
+                // Scenario 1 - INIT
+
+                // Scenario 2 - PING
+
+                // Scenario 3 - RECO
+
+                /* data may be read from socket */
+                // message.resize(MAX_COMMAND);
+                // int mlen;
+
+                // // read from stdin
+                // if ((mlen = read(STDIN_FILENO, &message[0], message.size())) == -1)
+                // {
+                //     std::cerr << "Failed to send message to " << addr << ":" << port << " (" << strerror(errno) << ")\n";
+                // }
+
+                // // resize message and send to server
+                // message.resize(mlen - 1);
+                // int sent = sendto(sock, &message[0], message.size(), 0, (struct sockaddr *)&dest, sizeof(dest));
+
+                // // if message is a valid quit command than break loop and exit program gracefully
+                // if (message[0] == '/' && validate_quit(message))
+                //     break;
+
+                // message.clear();
+            }
+        }
+        // failure occured
+        else if (ret == -1)
+        {
+            logger.log("Polling socket for KVS " + kvs->client_addr + "/" + kvs->server_addr + "failed. (" + strerror(errno) + ")", LOGGER_ERROR);
+        }
+        // call timed out and no fds are ready to be read from
+        else
+        {
+        }
+    }
 
     // detach self - notify kernel to reclaim resources
     if (SHUTDOWN != 1)
@@ -415,7 +469,9 @@ void *kvs_thread(void *arg)
     pthread_exit((void *)status);
 }
 
-// work to be done by thread servicing a request from a front-end server
+/// @brief work to be done by thread servicing a request from a front-end server
+/// @param arg a void pointer
+/// @return void
 void *client_thread(void *arg)
 {
     /* -------------------- WORKER SETUP -------------------- */
@@ -443,9 +499,11 @@ void *client_thread(void *arg)
 
     if (rlen != -1)
     {
-        // TODO: Revisit kvs server selection logic??
-        // assign appropriate kvs for given request
-        std::string kvs_server = (kvs_responsibilities.count(request[0]) ? kvs_responsibilities[request[0]]["primary"] : "-ERR First character non-alphabetical");
+        // assign appropriate kvs for given request by randomly sampling vector
+        char key = request[0];
+        std::string kvs_server = (client_map.count(key) ? client_map[key][sample_index(client_map[key].size())].client_addr : "-ERR First character non-alphabetical");
+        logger.log("KVS choice for " + std::string(1, key) + " is " + kvs_server, LOGGER_INFO);
+        // std::string kvs_server = (client_map.count(request[0]) ? client_map[request[0]][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
 
         // send response
         if ((sent = send(client->fd, &kvs_server[0], kvs_server.size(), 0)) == -1)
@@ -472,4 +530,15 @@ void *client_thread(void *arg)
     // shutdown thread
     int *status = 0;
     pthread_exit((void *)status);
+}
+
+
+/// @brief randomly sample an index between [0, length)
+/// @param length the upper bound of the sampling range (exclusive)
+/// @return a random index in range [0, length)
+size_t sample_index(size_t length)
+{
+    std::mt19937 generator(std::random_device{}());
+    std::uniform_int_distribution<std::size_t> distribution(0, length-1);
+    return distribution(generator);
 }
