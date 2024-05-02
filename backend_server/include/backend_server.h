@@ -44,6 +44,7 @@ public:
 
     // checkpointing fields
     static std::atomic<bool> is_checkpointing; // tracks if the server is currently checkpointing (atomic since multiple threads can read)
+    static uint32_t checkpoint_version;        // version number of checkpoint
 
     static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a vote for that operation
     static std::mutex votes_recvd_lock;                                        // lock for votes map
