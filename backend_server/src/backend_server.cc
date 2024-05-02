@@ -40,6 +40,8 @@ std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 int BackendServer::seq_num = 0;
 std::mutex BackendServer::seq_num_lock;
 
+std::atomic<bool> BackendServer::is_checkpointing(false);
+
 std::unordered_map<uint32_t, std::vector<std::string>> BackendServer::votes_recvd;
 std::mutex BackendServer::votes_recvd_lock;
 std::unordered_map<uint32_t, int> BackendServer::acks_recvd;
@@ -59,7 +61,7 @@ void BackendServer::run()
         return;
     }
 
-    // Bind server to group connection port and store fd to accept group communication on socket
+    // Bind server to group communication port and store fd to accept group communication on socket
     group_comm_sock_fd = bind_socket(group_port);
     if (group_comm_sock_fd < 0)
     {
@@ -98,8 +100,8 @@ void BackendServer::run()
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
     initialize_tablets();         // initialize static tablets using key range from coordinator
-    send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
     dispatch_group_comm_thread(); // dispatch thread to loop and accept communication from servers in group
+    send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
     accept_and_handle_clients();  // run main server loop to accept client connections
 }
 
@@ -300,31 +302,6 @@ void BackendServer::initialize_tablets()
 // COORDINATOR AND INTER-GROUP COMMUNICATION SETUP
 // **************************************************
 
-// ! this is NOT ready yet
-void ping(int fd)
-{
-    // Sleep for 1 seconds before sending first heartbeat
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    while (true)
-    {
-        std::string ping = "PING";
-        BeUtils::write_to_coord(fd, ping);
-
-        // Sleep for 5 seconds before sending subsequent heartbeat
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-}
-
-// ! this is NOT ready yet
-void BackendServer::send_coordinator_heartbeat()
-{
-    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
-    // // create and detach thread to ping coordinator
-    // be_logger.log("Sending heartbeats to coordinator", 20);
-    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
-    // heartbeat_thread.detach();
-}
-
 // @brief initialize and detach thread to listen for connections from servers in group
 void BackendServer::dispatch_group_comm_thread()
 {
@@ -358,6 +335,67 @@ void BackendServer::accept_and_handle_group_comm()
         std::thread group_server_thread(&KVSGroupServer::read_from_group_server, KVSGroupServer(group_server_fd, group_server_port));
         // ! fix this after everything works (manage multithreading)
         group_server_thread.detach();
+    }
+}
+
+// ! this is NOT ready yet
+void ping(int fd)
+{
+    // Sleep for 1 seconds before sending first heartbeat
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    while (true)
+    {
+        std::string ping = "PING";
+        BeUtils::write_to_coord(fd, ping);
+
+        // Sleep for 5 seconds before sending subsequent heartbeat
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+// ! this is NOT ready yet
+void BackendServer::send_coordinator_heartbeat()
+{
+    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
+    // // create and detach thread to ping coordinator
+    // be_logger.log("Sending heartbeats to coordinator", 20);
+    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
+    // heartbeat_thread.detach();
+}
+
+// **************************************************
+// CHECKPOINTING
+// **************************************************
+
+// @brief initialize and detach thread to checkpoint server tablets
+void BackendServer::dispatch_checkpointing_thread()
+{
+    // dispatch a thread to
+    be_logger.log("Dispatching thread for checkpointing", 20);
+    std::thread checkpointing_thread(checkpoint_tablets);
+    checkpointing_thread.detach();
+}
+
+// @brief initialize and detach thread to checkpoint server tablets
+void BackendServer::checkpoint_tablets()
+{
+    // Sleep for 30 seconds before beginning first checkpoint
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    while (true)
+    {
+        // Only the primary can initiate checkpointing - other servers loop here until they become primary servers
+        if (is_primary)
+        {
+            // Server is beginning checkpointing process - set flag to true to reject write requests
+            is_checkpointing = true;
+            be_logger.log("Primary initiating checkpointing", 20);
+
+            // Set checkpointing flag to false to accept write requests
+            is_checkpointing = false;
+
+            // Sleep for 60 seconds before initiating next checkpoint
+            std::this_thread::sleep_for(std::chrono::seconds(60));
+        }
     }
 }
 
