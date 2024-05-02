@@ -14,21 +14,6 @@
 #include "kvs_client.h"
 #include "../../utils/include/utils.h"
 
-// struct HoldbackOperation
-// {
-//     uint32_t seq_num;
-//     std::vector<char> msg;
-
-//     // Constructor
-//     HoldbackOperation(int seq_num, std::vector<char> &msg) : seq_num(seq_num), msg(msg) {}
-
-//     // comparison operator for HoldbackOperations
-//     bool operator>(const HoldbackOperation &other) const
-//     {
-//         return seq_num > other.seq_num;
-//     }
-// };
-
 class BackendServer
 {
     // fields
@@ -57,6 +42,9 @@ public:
     static int seq_num;             // write operation sequence number (used by both primary and secondary to determine next operation to perform)
     static std::mutex seq_num_lock; // lock to save sequence number for use by 2PC
 
+    // checkpointing fields
+    static std::atomic<bool> is_checkpointing; // tracks if the server is currently checkpointing (atomic since multiple threads can read)
+
     static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a vote for that operation
     static std::mutex votes_recvd_lock;                                        // lock for votes map
     static std::unordered_map<uint32_t, int> acks_recvd;                       // map of msg seq num to set of secondaries that have sent an ACK for that operation
@@ -71,13 +59,21 @@ private:
     // make default constructor private
     BackendServer() {}
 
+    static void accept_and_handle_clients(); // main server loop to accept and handle clients
+
+    // KVS server state initalization
     static int bind_socket(int port);               // creates a socket and binds to the specified port. Returns the fd that the socket is bound to.
     static int initialize_state_from_coordinator(); // contact coordinator to get information
     static void initialize_tablets();               // initialize tablets on this server
-    static void send_coordinator_heartbeat();       // dispatch thread to send heartbeat to coordinator port
-    static void dispatch_group_comm_thread();       // dispatch thread to loop and accept communication from servers in group
-    static void accept_and_handle_group_comm();     // server loop to accept and handle connections from servers in its replica group
-    static void accept_and_handle_clients();        // main server loop to accept and handle clients
+
+    // Communication methods
+    static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm(); // server loop to accept and handle connections from servers in its replica group
+    static void send_coordinator_heartbeat();   // dispatch thread to send heartbeat to coordinator port
+
+    // Checkpointing methods
+    static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets
+    static void checkpoint_tablets();            // loop for primary to initiate coordinated checkpointing
 };
 
 #endif
