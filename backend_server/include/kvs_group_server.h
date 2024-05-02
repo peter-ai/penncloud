@@ -33,7 +33,6 @@ private:
 
     // methods used by PRIMARY
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
-    std::vector<int> open_connection_with_secondary_fds();    // opens connection with each secondary port. Returns list of fds for each connection.
     int construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds);
     void handle_secondary_vote(std::vector<char> &inputs);         // handle vote (secy/secn) from secondary
     std::string extract_row_from_input(std::vector<char> &inputs); // extract row from input operation
