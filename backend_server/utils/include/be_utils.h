@@ -31,7 +31,7 @@ namespace BeUtils
      * Polling
      */
 
-    int wait_for_events(std::vector<int> &fds, int timeout_ms); // Waits for event to occur on all fds within specified timeout
+    int wait_for_events(const std::vector<int> &fds, int timeout_ms); // Waits for event to occur on all fds within specified timeout
 
     // host number <-> network vector conversion
     std::vector<uint8_t> host_num_to_network_vector(uint32_t num);

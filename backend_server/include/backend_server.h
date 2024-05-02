@@ -27,15 +27,16 @@ public:
     static int num_tablets; // number of static tablets on this server - provided at startup
 
     // fields (provided by coordinator)
-    static std::string range_start;          // start of key range managed by this backend server - provided by coordinator
-    static std::string range_end;            // end of key range managed by this backend server - provided by coordinator
-    static std::atomic<bool> is_primary;     // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
-    static int primary_port;                 // port for communication with primary - provided by coordinator
-    static std::vector<int> secondary_ports; // list of secondaries (only used by a primary to communicate with its secondaries) - provided by coordinator
+    static std::string range_start;                 // start of key range managed by this backend server - provided by coordinator
+    static std::string range_end;                   // end of key range managed by this backend server - provided by coordinator
+    static std::atomic<bool> is_primary;            // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
+    static std::atomic<int> primary_port;           // port for communication with primary - provided by coordinator
+    static std::unordered_set<int> secondary_ports; // list of secondaries (only used by a primary to communicate with its secondaries) - provided by coordinator
+    static std::mutex secondary_ports_lock;         // lock for list of secondary ports, since secondary ports may be modified by thread receiving messages from coordinator
 
     // server fields
-    static int client_comm_sock_fd;                             // bound server socket's fd
-    static int group_comm_sock_fd;                              // bound server socket's fd
+    static int client_comm_sock_fd;                             // bound server socket's fd for client communication
+    static int group_comm_sock_fd;                              // bound server socket's fd for group communication
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
     // remote-write related fields
@@ -44,7 +45,8 @@ public:
 
     // checkpointing fields
     static std::atomic<bool> is_checkpointing; // tracks if the server is currently checkpointing (atomic since multiple threads can read)
-    static uint32_t checkpoint_version;        // version number of checkpoint
+    static uint32_t checkpoint_version;        // checkpoint version (ONLY USED BY PRIMARY)
+    static uint32_t last_checkpoint;           // version number of checkpoint received from primary during checkpoint
 
     static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a vote for that operation
     static std::mutex votes_recvd_lock;                                        // lock for votes map
@@ -68,10 +70,12 @@ private:
     static void initialize_tablets();               // initialize tablets on this server
 
     // Communication methods
-    static void dispatch_group_comm_thread();                         // dispatch thread to loop and accept communication from servers in group
-    static void accept_and_handle_group_comm();                       // server loop to accept and handle connections from servers in its replica group
-    static void send_coordinator_heartbeat();                         // dispatch thread to send heartbeat to coordinator port
-    static std::vector<int> open_connection_with_secondary_servers(); // opens connection with each secondary. Returns list of fds for each connection.
+    static void dispatch_group_comm_thread();                                                           // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm();                                                         // server loop to accept and handle connections from servers in its replica group
+    static void send_coordinator_heartbeat();                                                           // dispatch thread to send heartbeat to coordinator port
+    static std::unordered_map<int, int> open_connection_with_secondary_servers();                       // opens connection with each secondary. Returns list of fds for each connection.
+    static void send_message_to_servers(std::vector<char> &msg, std::unordered_map<int, int> &servers); // send message to each fd in list
+    static std::vector<int> wait_for_events_from_servers(std::unordered_map<int, int> &servers);        // read from each server in map of servers. Returns vector of dead servers.
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets

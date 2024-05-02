@@ -64,22 +64,33 @@ int BeUtils::write_to_coord(int fd, std::string &msg)
     return 0;
 }
 
+/// @brief write message to
 int BeUtils::write(int fd, std::vector<char> &msg)
 {
     // Insert size of message at beginning of msg
     std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
     msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
-    // write response to provided fd until all bytes in vector are sent
+    // write msg to provided fd until all bytes in vector are sent
     size_t total_bytes_sent = 0;
+    int num_retries = 3;
     while (total_bytes_sent < msg.size())
     {
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
         if (bytes_sent < 0)
         {
+            // retry sending the message
+            if (num_retries > 0)
+            {
+                num_retries--;
+                continue;
+            }
+
+            // reached max number of retries for send, issue is likely with remote server
             be_utils_logger.log("Unable to send message", 40);
             return -1;
         }
+        num_retries = 3; // reset number of retries on each successful send
         total_bytes_sent += bytes_sent;
     }
     return 0;
@@ -250,7 +261,7 @@ uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
 }
 
 // Waits for an event on a set of fds. Returns 0 if all fds responded. Returns -1 for error or timeout.
-int BeUtils::wait_for_events(std::vector<int> &fds, int timeout_ms)
+int BeUtils::wait_for_events(const std::vector<int> &fds, int timeout_ms)
 {
     // create poll vector containing all input fds
     std::vector<pollfd> pollfds;
