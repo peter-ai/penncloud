@@ -268,24 +268,6 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     send_response(response_msg);
 }
 
-// @brief Open connection with each secondary port and save fd for each connection
-std::vector<int> KVSGroupServer::open_connection_with_secondary_fds()
-{
-    std::vector<int> secondary_fds;
-    for (int secondary_port : BackendServer::secondary_ports)
-    {
-        int secondary_fd = BeUtils::open_connection(secondary_port);
-        // failed to open connection
-        if (secondary_fd < 0)
-        {
-            kvs_group_server_logger.log("Unable to open connection with secondary on port " + std::to_string(secondary_port), 40);
-            break;
-        }
-        secondary_fds.push_back(secondary_fd);
-    }
-    return secondary_fds;
-}
-
 std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
 {
     // extract row from inputs (start at inputs.begin() + 5 to ignore command)

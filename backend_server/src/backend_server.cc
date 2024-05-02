@@ -299,7 +299,36 @@ void BackendServer::initialize_tablets()
 }
 
 // **************************************************
-// COORDINATOR AND INTER-GROUP COMMUNICATION SETUP
+// COORDINATOR COMMUNICATION
+// **************************************************
+
+// ! this is NOT ready yet
+void ping(int fd)
+{
+    // Sleep for 1 seconds before sending first heartbeat
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    while (true)
+    {
+        std::string ping = "PING";
+        BeUtils::write_to_coord(fd, ping);
+
+        // Sleep for 5 seconds before sending subsequent heartbeat
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+// ! this is NOT ready yet
+void BackendServer::send_coordinator_heartbeat()
+{
+    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
+    // // create and detach thread to ping coordinator
+    // be_logger.log("Sending heartbeats to coordinator", 20);
+    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
+    // heartbeat_thread.detach();
+}
+
+// **************************************************
+// INTER-GROUP COMMUNICATION
 // **************************************************
 
 // @brief initialize and detach thread to listen for connections from servers in group
@@ -338,29 +367,33 @@ void BackendServer::accept_and_handle_group_comm()
     }
 }
 
-// ! this is NOT ready yet
-void ping(int fd)
+// @brief Open connection with each secondary port and save fd for each connection
+std::vector<int> BackendServer::open_connection_with_secondary_servers()
 {
-    // Sleep for 1 seconds before sending first heartbeat
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    while (true)
+    std::vector<int> secondary_fds;
+    for (int secondary_port : BackendServer::secondary_ports)
     {
-        std::string ping = "PING";
-        BeUtils::write_to_coord(fd, ping);
+        // retry up to 3 times to open connection with secondary port
+        bool successful_connection = false;
+        for (int i = 0; i < 3; i++)
+        {
+            int secondary_fd = BeUtils::open_connection(secondary_port);
+            // successfully opened connection - break retry loop and go to next port
+            if (secondary_fd > 0)
+            {
+                successful_connection = true;
+                secondary_fds.push_back(secondary_fd);
+                break;
+            }
+        }
 
-        // Sleep for 5 seconds before sending subsequent heartbeat
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // abort if after 3 retries, we're unable to open a connection with a secondary that's supposed to be alive
+        if (!successful_connection)
+        {
+            break;
+        }
     }
-}
-
-// ! this is NOT ready yet
-void BackendServer::send_coordinator_heartbeat()
-{
-    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
-    // // create and detach thread to ping coordinator
-    // be_logger.log("Sending heartbeats to coordinator", 20);
-    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
-    // heartbeat_thread.detach();
+    return secondary_fds;
 }
 
 // **************************************************
@@ -379,10 +412,11 @@ void BackendServer::dispatch_checkpointing_thread()
 // @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::checkpoint_tablets()
 {
-    // Sleep for 30 seconds before beginning first checkpoint
-    std::this_thread::sleep_for(std::chrono::seconds(1));
     while (true)
     {
+        // Sleep for 30 seconds between each checkpoint
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+
         // Only the primary can initiate checkpointing - other servers loop here until they become primary servers
         if (is_primary)
         {
@@ -390,11 +424,160 @@ void BackendServer::checkpoint_tablets()
             is_checkpointing = true;
             be_logger.log("Primary initiating checkpointing", 20);
 
+            // ! START OF COPIED CODE
+
+            // tracks number of acks received from secondary servers
+            std::atomic<int> checkpoint_acks_recvd;
+
+            // open connection with secondary servers
+            be_logger.log("[CP] Opening connection with all secondaries", 20);
+            std::vector<int> secondary_fds = open_connection_with_secondary_servers();
+            // Failed to establish a connection with all secondary servers
+            if (secondary_fds.size() != secondary_ports.size())
+            {
+                // Set checkpointing flag to false to accept write requests
+                is_checkpointing = false;
+                continue;
+            }
+            be_logger.log("[CP] Successfully opened connection with all secondaries", 20);
+
+            // // Send prepare command to all secondaries.
+            // if (construct_and_send_prepare_cmd(operation_seq_num, inputs, secondary_fds) < 0)
+            // {
+            //     // Failure while constructing and sending prepare command
+            //     clean_operation_state(operation_seq_num, secondary_fds);
+            //     send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to send PREP command to secondary");
+            //     return;
+            // }
+
+            // // Wait 2 seconds for secondaries to response to prepare command
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
+            // if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+            // {
+            //     clean_operation_state(operation_seq_num, secondary_fds);
+            //     send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive votes from all secondaries");
+            //     return;
+            // }
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
+
+            // // read votes from all secondaries
+            // for (int secondary_fd : secondary_fds)
+            // {
+            //     BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
+            //     if (msg_from_secondary.error_code != 0)
+            //     {
+            //         clean_operation_state(operation_seq_num, secondary_fds);
+            //         send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary");
+            //         return;
+            //     }
+            //     // process vote sent by secondary
+            //     handle_secondary_vote(msg_from_secondary.byte_stream);
+            // }
+
+            // // iterate votes_recvd and check that all votes were a SECY
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Checking votes from secondaries", 20);
+            // bool all_secondaries_in_favor = true;
+            // for (std::string &vote : BackendServer::votes_recvd.at(operation_seq_num))
+            // {
+            //     if (vote == "secn")
+            //     {
+            //         all_secondaries_in_favor = false;
+            //         break;
+            //     }
+            // }
+
+            // std::vector<char> response_msg;
+            // std::vector<char> abort_commit_msg;
+            // if (all_secondaries_in_favor)
+            // {
+            //     // all secondaries voted yes
+            //     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] All secondaries voted yes", 20);
+
+            //     // execute write operation on primary
+            //     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on primary", 20);
+            //     response_msg = execute_write_operation(inputs);
+
+            //     // construct commit message to send to all secondaries
+            //     abort_commit_msg = {'C', 'M', 'M', 'T', ' '};
+            //     // convert seq number to vector and append to prepare_msg
+            //     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+            //     abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+            //     // append inputs to commit_msg
+            //     abort_commit_msg.insert(abort_commit_msg.end(), inputs.begin(), inputs.end());
+            //     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending CMMT message to secondaries", 20);
+            // }
+            // else
+            // {
+            //     // at least one secondary voted no - construct abort message to send to all secondaries
+            //     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] At least one secondary voted no", 20);
+            //     // extract row from inptus
+            //     std::string row = extract_row_from_input(inputs);
+
+            //     // release lock held by primary
+            //     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+            //     tablet->release_exclusive_row_lock(row);
+
+            //     abort_commit_msg = {'A', 'B', 'R', 'T', ' '};
+            //     // convert seq number to vector and append to prepare_msg
+            //     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+            //     abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+            //     abort_commit_msg.insert(abort_commit_msg.end(), row.begin(), row.end());
+            //     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending ABRT message to secondaries", 20);
+            // }
+
+            // // send abort/commit command
+            // for (int secondary_fd : secondary_fds)
+            // {
+            //     // exit if write failure occurs
+            //     if (BeUtils::write(secondary_fd, abort_commit_msg) < 0)
+            //     {
+            //         // Failure while constructing and sending prepare command
+            //         clean_operation_state(operation_seq_num, secondary_fds);
+            //         send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to send CMMT/ABRT command to secondary");
+            //         return;
+            //     }
+            // }
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Successfully sent CMMT/ABRT command to all secondaries", 20);
+
+            // // Wait 2 seconds for secondaries to response to prepare command
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for ACKS from secondaries", 20);
+            // if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+            // {
+            //     clean_operation_state(operation_seq_num, secondary_fds);
+            //     send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive ACK from all secondaries");
+            //     return;
+            // }
+            // kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all ACKS from secondaries", 20);
+
+            // // read acks from all secondaries
+            // for (int secondary_fd : secondary_fds)
+            // {
+            //     BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
+            //     if (msg_from_secondary.error_code != 0)
+            //     {
+            //         clean_operation_state(operation_seq_num, secondary_fds);
+            //         send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to read ACK from secondary");
+            //         return;
+            //     }
+            //     // process ack sent by secondary
+            //     handle_secondary_ack(msg_from_secondary.byte_stream);
+            // }
+
+            // // didn't receive all acks (shouldn't occur)
+            // if (BackendServer::acks_recvd.at(operation_seq_num) != BackendServer::secondary_ports.size())
+            // {
+            //     clean_operation_state(operation_seq_num, secondary_fds);
+            //     send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive all ACKS from secondaries");
+            //     return;
+            // }
+
+            // clean_operation_state(operation_seq_num, secondary_fds);
+            // send_response(response_msg);
+
+            // ! END OF COPIED CODE
+
             // Set checkpointing flag to false to accept write requests
             is_checkpointing = false;
-
-            // Sleep for 60 seconds before initiating next checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(60));
         }
     }
 }

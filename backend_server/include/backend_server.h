@@ -67,9 +67,10 @@ private:
     static void initialize_tablets();               // initialize tablets on this server
 
     // Communication methods
-    static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
-    static void accept_and_handle_group_comm(); // server loop to accept and handle connections from servers in its replica group
-    static void send_coordinator_heartbeat();   // dispatch thread to send heartbeat to coordinator port
+    static void dispatch_group_comm_thread();                         // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm();                       // server loop to accept and handle connections from servers in its replica group
+    static void send_coordinator_heartbeat();                         // dispatch thread to send heartbeat to coordinator port
+    static std::vector<int> open_connection_with_secondary_servers(); // opens connection with each secondary. Returns list of fds for each connection.
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets
