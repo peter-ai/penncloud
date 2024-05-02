@@ -414,12 +414,12 @@ void BackendServer::checkpoint_tablets()
 {
     while (true)
     {
-        // Sleep for 30 seconds between each checkpoint
-        std::this_thread::sleep_for(std::chrono::seconds(30));
-
         // Only the primary can initiate checkpointing - other servers loop here until they become primary servers
         if (is_primary)
         {
+            // Sleep for 60 seconds between each checkpoint
+            std::this_thread::sleep_for(std::chrono::seconds(60));
+
             // Server is beginning checkpointing process - set flag to true to reject write requests
             is_checkpointing = true;
             be_logger.log("Primary initiating checkpointing", 20);
@@ -440,6 +440,16 @@ void BackendServer::checkpoint_tablets()
                 continue;
             }
             be_logger.log("[CP] Successfully opened connection with all secondaries", 20);
+
+            // write CHECKPOINT message to all secondaries
+            // construct CHECKPOINT message to send to all secondaries
+            std::vector<char> checkpoint_msg = {'C', 'K', 'P', 'T', ' '};
+            // convert checkpoint version number to vector and append to checkpoint_msg
+            // this is necessary in case a server fails, in which case it can use its checkpoint number to determine if its checkpoint is outdated
+            std::vector<uint8_t> version_num_vec = BeUtils::host_num_to_network_vector(checkpoint_version);
+            checkpoint_msg.insert(checkpoint_msg.end(), version_num_vec.begin(), version_num_vec.end());
+            // append inputs to commit_msg
+            be_logger.log("[CP] Sending CHECKPOINT to secondaries", 20);
 
             // // Send prepare command to all secondaries.
             // if (construct_and_send_prepare_cmd(operation_seq_num, inputs, secondary_fds) < 0)
