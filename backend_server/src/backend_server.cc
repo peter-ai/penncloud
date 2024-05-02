@@ -7,6 +7,10 @@
 #include "../include/kvs_client.h"
 #include "../include/kvs_group_server.h"
 
+// *********************************************
+// FIELD INITIALIZATION
+// *********************************************
+
 Logger be_logger = Logger("Backend server");
 
 /**
@@ -41,9 +45,9 @@ std::mutex BackendServer::votes_recvd_lock;
 std::unordered_map<uint32_t, int> BackendServer::acks_recvd;
 std::mutex BackendServer::acks_recvd_lock;
 
-/**
- * BackendServer methods
- */
+// *********************************************
+// MAIN RUN LOGIC
+// *********************************************
 
 void BackendServer::run()
 {
@@ -93,11 +97,43 @@ void BackendServer::run()
     be_logger.log("Group secondaries at " + secondaries, 20);
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
-    initialize_tablets();         // initialize static tablets based on supplied key range
+    initialize_tablets();         // initialize static tablets using key range from coordinator
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
     dispatch_group_comm_thread(); // dispatch thread to loop and accept communication from servers in group
     accept_and_handle_clients();  // run main server loop to accept client connections
 }
+
+// @brief main server loop to accept and handle clients
+void BackendServer::accept_and_handle_clients()
+{
+    be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
+    while (true)
+    {
+        // accept client connection, which returns a fd to communicate directly with the client
+        int client_fd;
+        struct sockaddr_in client_addr;
+        socklen_t client_addr_size = sizeof(client_addr);
+        if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
+        {
+            be_logger.log("Unable to accept incoming connection from client. Skipping", 30);
+            // error with incoming connection should NOT break the server loop
+            continue;
+        }
+
+        // extract port from client connection and initialize KVS_Client object
+        int client_port = ntohs(client_addr.sin_port);
+        be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
+
+        // launch thread to handle client
+        std::thread client_thread(&KVSClient::read_from_client, KVSClient(client_fd, client_port));
+        // ! fix this after everything works (manage multithreading)
+        client_thread.detach();
+    }
+}
+
+// *********************************************
+// KVS SERVER INITIALIZATION
+// *********************************************
 
 // @brief Creates a socket and binds to the specified port
 int BackendServer::bind_socket(int port)
@@ -260,22 +296,9 @@ void BackendServer::initialize_tablets()
     }
 }
 
-// @brief Retrieve tablet containing data for thread to read from
-std::shared_ptr<Tablet> BackendServer::retrieve_data_tablet(std::string &row)
-{
-    // iterate tablets in reverse order and find first tablet that row is "greater" than
-    for (int i = num_tablets - 1; i >= 0; i--)
-    {
-        std::string tablet_start = server_tablets.at(i)->range_start;
-        if (row >= tablet_start)
-        {
-            return server_tablets.at(i);
-        }
-    }
-    // this should never execute
-    be_logger.log("Could not find tablet for given row - this should NOT occur", 50);
-    return nullptr;
-}
+// **************************************************
+// COORDINATOR AND INTER-GROUP COMMUNICATION SETUP
+// **************************************************
 
 // ! this is NOT ready yet
 void ping(int fd)
@@ -338,30 +361,23 @@ void BackendServer::accept_and_handle_group_comm()
     }
 }
 
-// @brief main server loop to accept and handle clients
-void BackendServer::accept_and_handle_clients()
+// *********************************************
+// TABLET INTERACTION
+// *********************************************
+
+// @brief Retrieve tablet containing data for thread to read from
+std::shared_ptr<Tablet> BackendServer::retrieve_data_tablet(std::string &row)
 {
-    be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
-    while (true)
+    // iterate tablets in reverse order and find first tablet that row is "greater" than
+    for (int i = num_tablets - 1; i >= 0; i--)
     {
-        // accept client connection, which returns a fd to communicate directly with the client
-        int client_fd;
-        struct sockaddr_in client_addr;
-        socklen_t client_addr_size = sizeof(client_addr);
-        if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
+        std::string tablet_start = server_tablets.at(i)->range_start;
+        if (row >= tablet_start)
         {
-            be_logger.log("Unable to accept incoming connection from client. Skipping", 30);
-            // error with incoming connection should NOT break the server loop
-            continue;
+            return server_tablets.at(i);
         }
-
-        // extract port from client connection and initialize KVS_Client object
-        int client_port = ntohs(client_addr.sin_port);
-        be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
-
-        // launch thread to handle client
-        std::thread client_thread(&KVSClient::read_from_client, KVSClient(client_fd, client_port));
-        // ! fix this after everything works (manage multithreading)
-        client_thread.detach();
     }
+    // this should never execute
+    be_logger.log("Could not find tablet for given row - this should NOT occur", 50);
+    return nullptr;
 }
