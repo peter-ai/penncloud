@@ -46,12 +46,6 @@ std::atomic<bool> BackendServer::is_checkpointing(false);
 uint32_t BackendServer::checkpoint_version = 0;
 uint32_t BackendServer::last_checkpoint = 0;
 
-// 2PC fields
-std::unordered_map<uint32_t, std::vector<std::string>> BackendServer::votes_recvd;
-std::mutex BackendServer::votes_recvd_lock;
-std::unordered_map<uint32_t, int> BackendServer::acks_recvd;
-std::mutex BackendServer::acks_recvd_lock;
-
 // *********************************************
 // MAIN RUN LOGIC
 // *********************************************
@@ -376,6 +370,7 @@ void BackendServer::accept_and_handle_group_comm()
 std::unordered_map<int, int> BackendServer::open_connection_with_secondary_servers()
 {
     std::unordered_map<int, int> secondary_fds;
+    secondary_ports_lock.lock(); // lock secondary ports map to prevent modifications while opening connections with live servers
     for (int secondary_port : BackendServer::secondary_ports)
     {
         // retry up to 3 times to open connection with secondary port
@@ -390,6 +385,7 @@ std::unordered_map<int, int> BackendServer::open_connection_with_secondary_serve
             }
         }
     }
+    secondary_ports_lock.unlock();
     return secondary_fds;
 }
 

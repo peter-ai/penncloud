@@ -48,15 +48,15 @@ public:
     static uint32_t checkpoint_version;        // checkpoint version (ONLY USED BY PRIMARY)
     static uint32_t last_checkpoint;           // version number of checkpoint received from primary during checkpoint
 
-    static std::unordered_map<uint32_t, std::vector<std::string>> votes_recvd; // map of msg seq num to set of secondaries that have sent a vote for that operation
-    static std::mutex votes_recvd_lock;                                        // lock for votes map
-    static std::unordered_map<uint32_t, int> acks_recvd;                       // map of msg seq num to set of secondaries that have sent an ACK for that operation
-    static std::mutex acks_recvd_lock;                                         // lock for ack map
-
     // methods
 public:
     static void run();                                                     // run server (server does NOT run on initialization, server instance must explicitly call this method)
     static std::shared_ptr<Tablet> retrieve_data_tablet(std::string &row); // retrieve tablet containing data for thread to read from
+
+    // public group server communication methods
+    static std::unordered_map<int, int> open_connection_with_secondary_servers();                       // opens connection with each secondary. Returns list of fds for each connection.
+    static void send_message_to_servers(std::vector<char> &msg, std::unordered_map<int, int> &servers); // send message to each fd in list
+    static std::vector<int> wait_for_events_from_servers(std::unordered_map<int, int> &servers);        // read from each server in map of servers. Returns vector of dead servers.
 
 private:
     // make default constructor private
@@ -70,12 +70,9 @@ private:
     static void initialize_tablets();               // initialize tablets on this server
 
     // Communication methods
-    static void dispatch_group_comm_thread();                                                           // dispatch thread to loop and accept communication from servers in group
-    static void accept_and_handle_group_comm();                                                         // server loop to accept and handle connections from servers in its replica group
-    static void send_coordinator_heartbeat();                                                           // dispatch thread to send heartbeat to coordinator port
-    static std::unordered_map<int, int> open_connection_with_secondary_servers();                       // opens connection with each secondary. Returns list of fds for each connection.
-    static void send_message_to_servers(std::vector<char> &msg, std::unordered_map<int, int> &servers); // send message to each fd in list
-    static std::vector<int> wait_for_events_from_servers(std::unordered_map<int, int> &servers);        // read from each server in map of servers. Returns vector of dead servers.
+    static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm(); // server loop to accept and handle connections from servers in its replica group
+    static void send_coordinator_heartbeat();   // dispatch thread to send heartbeat to coordinator port
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets
