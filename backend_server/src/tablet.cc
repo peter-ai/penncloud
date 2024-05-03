@@ -255,7 +255,16 @@ std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std
 void Tablet::serialize(const std::string &file_name)
 {
     // open file in binary mode for writing
-    std::ofstream file(file_name, std::ofstream::out | std::ofstream::binary);
+    std::ofstream file;
+    file.open(file_name, std::ofstream::out | std::ofstream::binary);
+
+    // verify file was opened
+    if (!file.is_open())
+    {
+        tablet_logger.log("Error opening file for serialization", 40);
+        file.close();
+        return;
+    }
 
     // write start and end range to file (each should be 1 character)
     file.write(range_start.c_str(), range_start.length());
@@ -307,6 +316,7 @@ void Tablet::serialize(const std::string &file_name)
     }
 
     row_locks_mutex.unlock_shared(); // release shared lock on row_lock's mutex
+    file.close();
 }
 
 void Tablet::deserialize(const std::string &file_name)
@@ -319,6 +329,96 @@ void Tablet::deserialize(const std::string &file_name)
     // 5. Once you're done with an inner map, go back to step 2 and repeat.
 
     // for each row you construct, make sure you add an entry in row_locks for it so it has an associated mutex.
+
+    // open file in binary mode for reading
+    std::ifstream file;
+    file.open(file_name, std::ifstream::in | std::ifstream::binary);
+
+    // verify file was opened
+    if (!file.is_open())
+    {
+        tablet_logger.log("Error opening file for deserialization", 40);
+        file.close();
+        return;
+    }
+
+    // read start and end range from file (each should be 1 character)
+    std::vector<char> tablet_start(1);
+    file.read(tablet_start.data(), 1);
+    range_start = std::string(tablet_start.data(), tablet_start.size());
+
+    std::vector<char> tablet_end(1);
+    file.read(tablet_end.data(), 1);
+    range_end = std::string(tablet_end.data(), tablet_end.size());
+
+    // initialize logger for this tablet
+    tablet_logger = Logger("Tablet " + range_start + ":" + range_end);
+
+    // read until the end of the file
+    while (true)
+    {
+        // exit loop if we've reached the end of the file
+        // must be located at the start in case the tablet is empty
+        if (file.eof())
+        {
+            break;
+        }
+
+        // read 4 characters to get the size of the row key
+        std::vector<char> row_name_size_vec(4);
+        file.read(row_name_size_vec.data(), 4);
+        uint32_t row_name_size = BeUtils::network_vector_to_host_num(row_name_size_vec);
+
+        // extract the row name
+        std::vector<char> row_name_vec(row_name_size);
+        file.read(row_name_vec.data(), row_name_size);
+        std::string row_name(row_name_vec.begin(), row_name_vec.end());
+
+        // create mutex for row in row_locks
+        row_locks[row_name];
+
+        // create row in data map
+        data[row_name];
+        // get reference to row
+        auto &row_level_column_map = data.at(row_name);
+
+        // read 4 characters to get the size of all data for this row
+        std::vector<char> row_data_size_vec(4);
+        file.read(row_data_size_vec.data(), 4);
+        uint32_t row_data_size = BeUtils::network_vector_to_host_num(row_data_size_vec);
+
+        uint32_t row_data_processed = 0;
+        while (row_data_processed < row_data_size)
+        {
+            // read 4 characters to get the size of the col key
+            std::vector<char> col_name_size_vec(4);
+            file.read(col_name_size_vec.data(), 4);
+            uint32_t col_name_size = BeUtils::network_vector_to_host_num(col_name_size_vec);
+            row_data_processed += 4;
+
+            // extract the col name
+            std::vector<char> col_name_vec(col_name_size);
+            file.read(col_name_vec.data(), col_name_size);
+            std::string col_name(col_name_vec.begin(), col_name_vec.end());
+            row_data_processed += col_name_size;
+
+            // read 4 characters to get the size of the col data
+            std::vector<char> col_data_size_vec(4);
+            file.read(col_data_size_vec.data(), 4);
+            uint32_t col_data_size = BeUtils::network_vector_to_host_num(col_data_size_vec);
+            row_data_processed += 4;
+
+            // extract the col name
+            std::vector<char> col_data(col_data_size);
+            file.read(col_data.data(), col_data_size);
+            row_data_processed += col_name_size;
+
+            // add col_name and col_data to data map
+            row_level_column_map[col_name] = col_data;
+        }
+    }
+
+    file.close();
 }
 
 // *********************************************
