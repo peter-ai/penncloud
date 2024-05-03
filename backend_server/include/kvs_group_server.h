@@ -33,7 +33,7 @@ private:
 
     // 2PC primary coordination methods
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
-    int construct_and_send_prepare_cmd(int seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds);
+    int construct_and_send_prepare_cmd(int operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);
     void handle_secondary_vote(std::vector<char> &inputs);         // handle vote (secy/secn) from secondary
     std::string extract_row_from_input(std::vector<char> &inputs); // extract row from input operation
     void handle_secondary_ack(std::vector<char> &inputs);          // handle ack from secondary
@@ -56,7 +56,7 @@ private:
     void send_response(std::vector<char> &response_msg); // sends response to group_server_fd on open connection
 
     // 2PC state cleanup
-    void clean_operation_state(int operation_seq_num, std::vector<int> secondary_fds); // clean operation seq num from maps, close connections to secondaries
+    void clean_operation_state(std::unordered_map<int, int> secondary_servers); // close connections to all secondaries
 };
 
 #endif

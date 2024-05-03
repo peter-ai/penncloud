@@ -190,34 +190,39 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 {
     kvs_group_server_logger.log("Primary received write operation - executing two-phase commit", 20);
 
-    // acquire lock for sequence number, increment sequence number, and save this operation's seq_num
+    // primary is centralized sequencer - acquire lock for sequence number and increment sequence number
+    // This operation's seq number is saved for use during the procedure (since another thread may modify the sequence number)
     BackendServer::seq_num_lock.lock();
     BackendServer::seq_num += 1;
     int operation_seq_num = BackendServer::seq_num;
     BackendServer::seq_num_lock.unlock();
 
-    // create entry in votes_rcvd and acks_rcvd map
-    BackendServer::votes_recvd[operation_seq_num];
-    BackendServer::acks_recvd[operation_seq_num];
+    std::vector<std::string> votes_recvd; // track votes received from secondaries after PREPARE
+    int acks_recvd;                       // track number of acks received from secondaries after COMMIT/ABORT
+
+    // extract write command from inputs and convert to lowercase. Erase command from beginning of inputs
+    std::string command(inputs.begin(), inputs.begin() + 4);
+    command = Utils::to_lowercase(command);
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract row from inputs. Erase row from beginning of inputs (+1 to remove delimiter)
+    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
+    std::string row(inputs.begin(), row_end);
+    inputs.erase(inputs.begin(), row_end + 1);
+
+    // log operation and row
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing " + command + " on R[" + row + "]", 20);
 
     // open connection with secondary servers
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opening connection with all secondaries", 20);
-    std::vector<int> secondary_fds = open_connection_with_secondary_fds();
-    // Failed to establish a connection with all secondary servers
-    if (secondary_fds.size() != BackendServer::secondary_ports.size())
-    {
-        clean_operation_state(operation_seq_num, secondary_fds);
-        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to establish connection with all secondaries");
-        return;
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Successfully opened connection with all secondaries", 20);
+    std::unordered_map<int, int> secondary_servers = BackendServer::open_connection_with_secondary_servers();
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
-    // Send prepare command to all secondaries.
-    if (construct_and_send_prepare_cmd(operation_seq_num, inputs, secondary_fds) < 0)
+    // Send PREPARE to all secondaries
+    if (construct_and_send_prepare_cmd(operation_seq_num, command, row, secondary_servers) < 0)
     {
-        // Failure while constructing and sending prepare command
-        clean_operation_state(operation_seq_num, secondary_fds);
-        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to send PREP command to secondary");
+        // Failure while constructing and sending PREPARE
+        clean_operation_state(secondary_servers);
+        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to send PREPARE to secondary");
         return;
     }
 
@@ -356,53 +361,27 @@ std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
 
 // @brief Constructs prepare command to send to secondary servers
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
-int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::vector<char> &inputs, std::vector<int> secondary_fds)
+int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
 {
-    std::string write_operation(inputs.begin(), inputs.begin() + 4); // extract requested write operation from inputs
-    write_operation = Utils::to_lowercase(write_operation);
-
-    // extract row from inputs (start at inputs.begin() + 5 to ignore command)
-    auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
-    // Unable to extract row from inputs due to improper delimiter
-    if (row_end == inputs.end())
-    {
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Malformed row argument while constructing PREP command", 20);
-        return -1;
-    }
-    std::string row(inputs.begin() + 5, row_end);
-
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Acquiring exclusive row lock on primary for R[" + row + "]", 20);
-
     // Primary acquires exclusive lock on row
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
-    if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
+    if (tablet->acquire_exclusive_row_lock(command, row) < 0)
     {
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary failed to acquire exclusive row lock", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary failed to acquire exclusive row lock for R[" + row + "]", 20);
         return -1;
     }
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary acquired exclusive row lock for R[" + row + "]", 20);
 
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending PREP command to all secondaries", 20);
-
-    // construct PREP command to send to secondaries
+    // construct PREPARE message to send to secondaries
     std::vector<char> prepare_msg = {'P', 'R', 'E', 'P', ' '};
-    prepare_msg.insert(prepare_msg.end(), write_operation.begin(), write_operation.end());     // append write operation to prepare_msg
+    prepare_msg.insert(prepare_msg.end(), command.begin(), command.end());                     // append command to PREPARE message
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num); // convert seq number to vector and append to prepare_msg
     prepare_msg.insert(prepare_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
     prepare_msg.insert(prepare_msg.end(), row.begin(), row.end()); // append row to prepare_msg
 
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] PREP COMMAND - " + std::string(prepare_msg.begin(), prepare_msg.end()), 20);
-
-    // send prepare command to all secondary
-    for (int secondary_fd : secondary_fds)
-    {
-        // exit if write failure occurs
-        if (BeUtils::write(secondary_fd, prepare_msg) < 0)
-        {
-            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failure while writing PREP command to secondary", 20);
-            return -1;
-        }
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Successfully sent PREP command to all secondaries", 20);
+    // send prepare command to all secondaries
+    BackendServer::send_message_to_servers(prepare_msg, secondary_servers);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary sent PREPARE command to all secondaries", 20);
     return 0;
 }
 
@@ -739,21 +718,11 @@ void KVSGroupServer::send_response(std::vector<char> &response_msg)
 // 2PC STATE CLEANUP
 // *********************************************
 
-void KVSGroupServer::clean_operation_state(int operation_seq_num, std::vector<int> secondary_fds)
+void KVSGroupServer::clean_operation_state(std::unordered_map<int, int> secondary_servers)
 {
-    // remove operation from votes map
-    BackendServer::votes_recvd_lock.lock();
-    BackendServer::votes_recvd.erase(operation_seq_num);
-    BackendServer::votes_recvd_lock.unlock();
-
-    // remove operation from acks map
-    BackendServer::acks_recvd_lock.lock();
-    BackendServer::acks_recvd.erase(operation_seq_num);
-    BackendServer::acks_recvd_lock.unlock();
-
     // close all connections to secondary servers
-    for (int secondary_fd : secondary_fds)
+    for (const auto &server : secondary_servers)
     {
-        close(secondary_fd);
+        close(server.second);
     }
 }
