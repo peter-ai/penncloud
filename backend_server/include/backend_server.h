@@ -79,7 +79,7 @@ private:
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets
-    static void checkpoint_tablets();            // loop for primary to initiate coordinated checkpointing
+    static void coordinate_checkpoint();         // loop for primary to initiate coordinated checkpointing
 };
 
 #endif
