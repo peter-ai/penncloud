@@ -85,6 +85,7 @@ public:
     /**
      * SERIALIZATION METHODS
      */
+
     void serialize(const std::string &file_name);   // serialize tablet into a file called file_name
     void deserialize(const std::string &file_name); // deserialize file_name into this tablet object
 
