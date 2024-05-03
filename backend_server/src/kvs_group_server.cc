@@ -84,38 +84,47 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     if (command == "ckpt")
     {
         checkpoint(byte_stream);
+        return;
     }
     else if (command == "done")
     {
         done(byte_stream);
+        return;
     }
+
     // write commands
+
+    // primary server
+    if (BackendServer::is_primary)
+    {
+        // Reject writes if primary is currently checkpointing
+        if (BackendServer::is_checkpointing)
+        {
+            // log and send error message
+            send_error_response("Unable to accept write request - server currently checkpointing");
+            return;
+        }
+
+        // write operation forwarded from a server
+        if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
+        {
+            execute_two_phase_commit(byte_stream);
+        }
+    }
+    // secondary server
     else
     {
-        // primary server
-        if (BackendServer::is_primary)
+        if (command == "prep")
         {
-            // write operation forwarded from a server
-            if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
-            {
-                execute_two_phase_commit(byte_stream);
-            }
+            prepare(byte_stream);
         }
-        // secondary server
-        else
+        else if (command == "cmmt")
         {
-            if (command == "prep")
-            {
-                prepare(byte_stream);
-            }
-            else if (command == "cmmt")
-            {
-                commit(byte_stream);
-            }
-            else if (command == "abrt")
-            {
-                abort(byte_stream);
-            }
+            commit(byte_stream);
+        }
+        else if (command == "abrt")
+        {
+            abort(byte_stream);
         }
     }
 }

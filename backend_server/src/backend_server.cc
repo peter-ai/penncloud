@@ -503,7 +503,8 @@ void BackendServer::coordinate_checkpoint()
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Received ACKs from servers", 20);
 
             // Send DONE to all servers with checkpoint number appended to message
-            std::vector<char> done_msg = {'D', 'O', 'N', 'E'};
+            std::vector<char> done_msg = {'D', 'O', 'N', 'E', ' '};
+            done_msg.insert(done_msg.end(), version_num_vec.begin(), version_num_vec.end());
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Sending DONE to servers", 20);
             send_message_to_servers(done_msg, servers);
 
