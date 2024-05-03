@@ -442,12 +442,12 @@ void BackendServer::dispatch_checkpointing_thread()
 {
     // dispatch a thread to
     be_logger.log("Dispatching thread for checkpointing", 20);
-    std::thread checkpointing_thread(checkpoint_tablets);
+    std::thread checkpointing_thread(coordinate_checkpoint);
     checkpointing_thread.detach();
 }
 
 // @brief initialize and detach thread to checkpoint server tablets
-void BackendServer::checkpoint_tablets()
+void BackendServer::coordinate_checkpoint()
 {
     while (true)
     {

@@ -5,6 +5,10 @@
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
 
+// *********************************************
+// MAIN RUN METHODS
+// *********************************************
+
 // @brief Read data from group server and construct command to perform on KVS
 void KVSGroupServer::read_from_group_server()
 {
@@ -76,36 +80,92 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    // primary server
-    if (BackendServer::is_primary)
+    // checkpointing commands
+    if (command == "ckpt")
     {
-        // write operation forwarded from a server
-        if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
-        {
-            execute_two_phase_commit(byte_stream);
-        }
+        checkpoint(byte_stream);
     }
-    // secondary server
+    else if (command == "done")
+    {
+        done(byte_stream);
+    }
+    // write commands
     else
     {
-        if (command == "prep")
+        // primary server
+        if (BackendServer::is_primary)
         {
-            prepare(byte_stream);
+            // write operation forwarded from a server
+            if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
+            {
+                execute_two_phase_commit(byte_stream);
+            }
         }
-        else if (command == "cmmt")
+        // secondary server
+        else
         {
-            commit(byte_stream);
-        }
-        else if (command == "abrt")
-        {
-            abort(byte_stream);
+            if (command == "prep")
+            {
+                prepare(byte_stream);
+            }
+            else if (command == "cmmt")
+            {
+                commit(byte_stream);
+            }
+            else if (command == "abrt")
+            {
+                abort(byte_stream);
+            }
         }
     }
 }
 
-/**
- * GROUP COMMUNICATION METHODS - PRIMARY
- */
+// *********************************************
+// CHECKPOINTING METHODS
+// *********************************************
+
+void KVSGroupServer::checkpoint(std::vector<char> &inputs)
+{
+    // erase CKPT command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract checkpoint version number and erase from inputs
+    uint32_t version_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Server beginning checkpointing", 20);
+
+    // Checkpoint all tablets on server
+    for (const auto &tablet : BackendServer::server_tablets)
+    {
+        // file name of tablet - start_end_tablet_v# (# is operation_seq_num)
+        std::string old_cp_file = tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
+        std::string new_cp_file = tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
+        // write new checkpoint file
+        tablet->serialize(new_cp_file);
+        // delete old checkpoint file
+        std::remove(old_cp_file.c_str());
+        kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpointed tablet " + tablet->range_start + ":" + tablet->range_end, 20);
+    }
+
+    // update version number of last checkpoint on this server
+    BackendServer::last_checkpoint = version_num;
+
+    // Send acknowledgement back to primary
+    std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
+    // convert seq number to vector and append to prepare_msg
+    std::vector<uint8_t> version_num_vec = BeUtils::host_num_to_network_vector(version_num);
+    ack_response.insert(ack_response.end(), version_num_vec.begin(), version_num_vec.end());
+    send_response(ack_response);
+}
+
+void KVSGroupServer::done(std::vector<char> &inputs)
+{
+}
+
+// *********************************************
+// 2PC PRIMARY COORDINATION METHODS
+// *********************************************
 
 // @brief Coordinates 2PC for client that requested a write operation
 void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
@@ -365,9 +425,9 @@ void KVSGroupServer::handle_secondary_ack(std::vector<char> &inputs)
     BackendServer::acks_recvd_lock.unlock();
 }
 
-/**
- * GROUP COMMUNICATION METHODS - SECONDARY
- */
+// *********************************************
+// 2PC SECONDARY RESPONSE METHODS
+// *********************************************
 
 // @brief Secondary responds to prepare command
 void KVSGroupServer::prepare(std::vector<char> &inputs)
@@ -465,9 +525,9 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     send_response(ack_response);
 }
 
-/**
- * WRITE METHODS
- */
+// *********************************************
+// TABLET WRITE OPERATIONS
+// *********************************************
 
 // Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
 std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> inputs)
@@ -657,9 +717,9 @@ void KVSGroupServer::send_response(std::vector<char> &response_msg)
     kvs_group_server_logger.log("Response sent to client on port " + std::to_string(group_server_port), 20);
 }
 
-/**
- * 2PC STATE CLEANUP
- */
+// *********************************************
+// 2PC STATE CLEANUP
+// *********************************************
 
 void KVSGroupServer::clean_operation_state(int operation_seq_num, std::vector<int> secondary_fds)
 {
