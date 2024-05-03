@@ -40,7 +40,7 @@ public:
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
     // remote-write related fields
-    static int seq_num;             // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static uint32_t seq_num;        // write operation sequence number (used by both primary and secondary to determine next operation to perform)
     static std::mutex seq_num_lock; // lock to save sequence number for use by 2PC
 
     // checkpointing fields

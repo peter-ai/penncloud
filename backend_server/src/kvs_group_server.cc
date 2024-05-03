@@ -194,11 +194,10 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // This operation's seq number is saved for use during the procedure (since another thread may modify the sequence number)
     BackendServer::seq_num_lock.lock();
     BackendServer::seq_num += 1;
-    int operation_seq_num = BackendServer::seq_num;
+    uint32_t operation_seq_num = BackendServer::seq_num;
     BackendServer::seq_num_lock.unlock();
 
-    std::vector<std::string> votes_recvd; // track votes received from secondaries after PREPARE
-    int acks_recvd;                       // track number of acks received from secondaries after COMMIT/ABORT
+    int acks_recvd; // track number of acks received from secondaries after COMMIT/ABORT
 
     // extract write command from inputs and convert to lowercase. Erase command from beginning of inputs
     std::string command(inputs.begin(), inputs.begin() + 4);
@@ -226,41 +225,8 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
         return;
     }
 
-    // Wait 2 seconds for secondaries to response to prepare command
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
-    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
-    {
-        clean_operation_state(operation_seq_num, secondary_fds);
-        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive votes from all secondaries");
-        return;
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
-
-    // read votes from all secondaries
-    for (int secondary_fd : secondary_fds)
-    {
-        BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
-        if (msg_from_secondary.error_code != 0)
-        {
-            clean_operation_state(operation_seq_num, secondary_fds);
-            send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary");
-            return;
-        }
-        // process vote sent by secondary
-        handle_secondary_vote(msg_from_secondary.byte_stream);
-    }
-
-    // iterate votes_recvd and check that all votes were a SECY
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Checking votes from secondaries", 20);
-    bool all_secondaries_in_favor = true;
-    for (std::string &vote : BackendServer::votes_recvd.at(operation_seq_num))
-    {
-        if (vote == "secn")
-        {
-            all_secondaries_in_favor = false;
-            break;
-        }
-    }
+    // Wait for votes from all secondaries (with timeout) and
+    bool all_secondaries_in_favor = handle_secondary_votes(operation_seq_num, secondary_servers);
 
     std::vector<char> response_msg;
     std::vector<char> abort_commit_msg;
@@ -351,17 +317,9 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     send_response(response_msg);
 }
 
-std::string KVSGroupServer::extract_row_from_input(std::vector<char> &inputs)
-{
-    // extract row from inputs (start at inputs.begin() + 5 to ignore command)
-    auto row_end = std::find(inputs.begin() + 5, inputs.end(), '\b');
-    std::string row(inputs.begin() + 5, row_end);
-    return row;
-}
-
 // @brief Constructs prepare command to send to secondary servers
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
-int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
+int KVSGroupServer::construct_and_send_prepare_cmd(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
 {
     // Primary acquires exclusive lock on row
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
@@ -386,22 +344,47 @@ int KVSGroupServer::construct_and_send_prepare_cmd(int operation_seq_num, std::s
 }
 
 // @brief Handles primary thread receiving vote from secondary
-void KVSGroupServer::handle_secondary_vote(std::vector<char> &inputs)
+bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers)
 {
-    // extract vote from beginning of inputs
-    std::string vote(inputs.begin(), inputs.begin() + 4);
-    inputs.erase(inputs.begin(), inputs.begin() + 5);
-    // extract sequence number
-    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
 
-    // log vote
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received " + vote + " from secondary", 20);
+    // construct a vector of fds to wait on with timeout
+    std::vector<int> secondary_fds;
+    for (const auto &server : secondary_servers)
+    {
+        secondary_fds.push_back(server.second);
+    }
 
-    // acquire mutex to add vote for sequence number
-    BackendServer::votes_recvd_lock.lock();
-    BackendServer::votes_recvd.at(operation_seq_num).push_back(vote);
-    // release mutex after vote has been added
-    BackendServer::votes_recvd_lock.unlock();
+    // Wait up to 2 seconds for secondaries to respond to PREPARE command
+    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+    {
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Timeout exceeded - failed to receive votes from all secondaries", 20);
+        return false;
+    }
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
+
+    // read votes from all secondaries
+    bool all_secondaries_in_favor = true;
+    for (int secondary_fd : secondary_fds)
+    {
+        BeUtils::ReadResult secondary_read = BeUtils::read(secondary_fd);
+        // return false if there was an error reading from a secondary
+        if (secondary_read.error_code != 0)
+        {
+            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary", 20);
+            return false;
+        }
+        // process vote sent by secondary
+        // extract vote from beginning of inputs
+        std::string vote(secondary_read.byte_stream.begin(), secondary_read.byte_stream.begin() + 4);
+        vote = Utils::to_lowercase(vote);
+        if (vote == "secn")
+        {
+            all_secondaries_in_favor = false;
+        }
+    }
+
+    return true;
 }
 
 // @brief Handles primary thread receiving ACKN from secondary

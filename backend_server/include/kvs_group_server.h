@@ -33,10 +33,9 @@ private:
 
     // 2PC primary coordination methods
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
-    int construct_and_send_prepare_cmd(int operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);
-    void handle_secondary_vote(std::vector<char> &inputs);         // handle vote (secy/secn) from secondary
-    std::string extract_row_from_input(std::vector<char> &inputs); // extract row from input operation
-    void handle_secondary_ack(std::vector<char> &inputs);          // handle ack from secondary
+    int construct_and_send_prepare_cmd(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);
+    bool handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers); // handle vote (secy/secn) from secondary
+    void handle_secondary_ack(std::vector<char> &inputs);                                                     // handle ack from secondary
 
     // 2PC secondary response methods
     void prepare(std::vector<char> &inputs); // handle prepare msg from primary

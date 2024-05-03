@@ -38,7 +38,7 @@ int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 
 // remote-write related fields
-int BackendServer::seq_num = 0;
+uint32_t BackendServer::seq_num = 0;
 std::mutex BackendServer::seq_num_lock;
 
 // checkpointing fields
