@@ -56,7 +56,7 @@ public:
     // public group server communication methods
     static std::unordered_map<int, int> open_connection_with_secondary_servers();                       // opens connection with each secondary. Returns list of fds for each connection.
     static void send_message_to_servers(std::vector<char> &msg, std::unordered_map<int, int> &servers); // send message to each fd in list
-    static std::vector<int> wait_for_events_from_servers(std::unordered_map<int, int> &servers);        // read from each server in map of servers. Returns vector of dead servers.
+    static std::vector<int> wait_for_acks_from_servers(std::unordered_map<int, int> &servers);          // read from each server in map of servers. Returns vector of dead servers.
 
 private:
     // make default constructor private
