@@ -217,7 +217,7 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
     // Send PREPARE to all secondaries
-    if (construct_and_send_prepare_cmd(operation_seq_num, command, row, secondary_servers) < 0)
+    if (construct_and_send_prepare(operation_seq_num, command, row, secondary_servers) < 0)
     {
         // Failure while constructing and sending PREPARE
         clean_operation_state(secondary_servers);
@@ -254,7 +254,7 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 
 /// @brief Constructs prepare command to send to secondary servers
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
-int KVSGroupServer::construct_and_send_prepare_cmd(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
+int KVSGroupServer::construct_and_send_prepare(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
 {
     // Primary acquires exclusive lock on row
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
