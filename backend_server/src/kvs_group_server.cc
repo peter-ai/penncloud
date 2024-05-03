@@ -161,6 +161,15 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
 
 void KVSGroupServer::done(std::vector<char> &inputs)
 {
+    // Since we're not queueing outgoing messages and simply retrying from the frontend, this does not do anything
+    // erase DONE command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract checkpoint version number and erase from inputs
+    uint32_t version_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpoint complete - server received DONE", 20);
 }
 
 // *********************************************
