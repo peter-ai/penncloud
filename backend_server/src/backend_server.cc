@@ -1,5 +1,6 @@
 #include <iostream>
 #include <arpa/inet.h>
+#include <fstream>
 
 #include "../include/backend_server.h"
 #include "../../utils/include/utils.h"
@@ -36,6 +37,7 @@ std::mutex BackendServer::secondary_ports_lock;
 int BackendServer::client_comm_sock_fd = -1;
 int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
+std::string BackendServer::local_storage;
 
 // remote-write related fields
 uint32_t BackendServer::seq_num = 0;
@@ -50,6 +52,7 @@ uint32_t BackendServer::last_checkpoint = 0;
 // MAIN RUN LOGIC
 // *********************************************
 
+/// @brief Initialize server state from coordinator, dispatch threads to read from group and clients, and dispatch checkpointing thread
 void BackendServer::run()
 {
     // Bind server to client connection port and store fd to accept client connections on socket
@@ -98,13 +101,21 @@ void BackendServer::run()
     be_logger.log("Group secondaries at " + secondaries, 20);
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
-    initialize_tablets();         // initialize static tablets using key range from coordinator
+    // initialize node local storage directory
+    local_storage = "KVS_" + std::to_string(client_port) + "/";
+
+    // initialize static tablets and corresponding log using key range from coordinator
+    if (initialize_tablets() < 0)
+    {
+        be_logger.log("Failed to initialize server tablets. Exiting.", 40);
+        return;
+    }
     dispatch_group_comm_thread(); // dispatch thread to loop and accept communication from servers in group
     send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
     accept_and_handle_clients();  // run main server loop to accept client connections
 }
 
-// @brief main server loop to accept and handle clients
+/// @brief main server loop to accept and handle clients
 void BackendServer::accept_and_handle_clients()
 {
     be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
@@ -136,7 +147,7 @@ void BackendServer::accept_and_handle_clients()
 // KVS SERVER INITIALIZATION
 // *********************************************
 
-// @brief Creates a socket and binds to the specified port
+/// @brief Creates a socket and binds to the specified port
 int BackendServer::bind_socket(int port)
 {
     // create server socket
@@ -179,7 +190,7 @@ int BackendServer::bind_socket(int port)
     return sock_fd;
 }
 
-// @brief Contacts coordinator to retrieve initialization state
+/// @brief Contacts coordinator to retrieve initialization state
 // ! look into this later once coordinator is complete
 int BackendServer::initialize_state_from_coordinator()
 {
@@ -259,8 +270,8 @@ int BackendServer::initialize_state_from_coordinator()
     return 0;
 }
 
-// @brief Initialize tablets across key range provided by coordinator
-void BackendServer::initialize_tablets()
+/// @brief Initialize tablets across key range provided by coordinator
+int BackendServer::initialize_tablets()
 {
     // Convert start and end characters to integers and calculate size of range
     char start = range_start[0];
@@ -290,11 +301,23 @@ void BackendServer::initialize_tablets()
         curr_char += curr_tablet_size;
     }
 
-    // Output metadata about each created tablet
+    // Output metadata about each created tablet and create its corresponding append-only log
     for (auto &tablet : server_tablets)
     {
+        // log tablet metadata
         be_logger.log("Initialized tablet for range " + tablet->range_start + ":" + tablet->range_end, 20);
+
+        // create log file for tablet
+        std::string log_filename = local_storage + tablet->range_start + "_" + tablet->range_end + "_log";
+        std::ofstream log_file(log_filename);
+        if (!log_file.is_open())
+        {
+            return -1;
+        }
+        log_file.close();
+        be_logger.log("Created log file for tablet " + tablet->range_start + ":" + tablet->range_end, 20);
     }
+    return 0;
 }
 
 // **************************************************
@@ -433,7 +456,7 @@ std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<in
 // CHECKPOINTING
 // **************************************************
 
-// @brief initialize and detach thread to checkpoint server tablets
+/// @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::dispatch_checkpointing_thread()
 {
     // dispatch a thread to
@@ -442,7 +465,7 @@ void BackendServer::dispatch_checkpointing_thread()
     checkpointing_thread.detach();
 }
 
-// @brief initialize and detach thread to checkpoint server tablets
+/// @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::coordinate_checkpoint()
 {
     while (true)
@@ -514,7 +537,7 @@ void BackendServer::coordinate_checkpoint()
 // TABLET INTERACTION
 // *********************************************
 
-// @brief Retrieve tablet containing data for thread to read from
+/// @brief Retrieve tablet containing data for thread to read from
 std::shared_ptr<Tablet> BackendServer::retrieve_data_tablet(std::string &row)
 {
     // iterate tablets in reverse order and find first tablet that row is "greater" than

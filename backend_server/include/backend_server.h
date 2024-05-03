@@ -38,6 +38,7 @@ public:
     static int client_comm_sock_fd;                             // bound server socket's fd for client communication
     static int group_comm_sock_fd;                              // bound server socket's fd for group communication
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
+    static std::string local_storage;                           // node-local storage directory
 
     // remote-write related fields
     static uint32_t seq_num;        // write operation sequence number (used by both primary and secondary to determine next operation to perform)
@@ -67,7 +68,7 @@ private:
     // KVS server state initalization
     static int bind_socket(int port);               // creates a socket and binds to the specified port. Returns the fd that the socket is bound to.
     static int initialize_state_from_coordinator(); // contact coordinator to get information
-    static void initialize_tablets();               // initialize tablets on this server
+    static int initialize_tablets();                // initialize tablets on this server and each tablet's corresponding append-only log
 
     // Communication methods
     static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
