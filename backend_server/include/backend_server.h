@@ -31,23 +31,25 @@ public:
     static std::string range_end;                   // end of key range managed by this backend server - provided by coordinator
     static std::atomic<bool> is_primary;            // tracks if the server is a primary or secondary server (atomic since multiple client threads can read it)
     static std::atomic<int> primary_port;           // port for communication with primary - provided by coordinator
-    static std::unordered_set<int> secondary_ports; // list of secondaries (only used by a primary to communicate with its secondaries) - provided by coordinator
+    static std::unordered_set<int> secondary_ports; // list of alive secondaries (only used by a primary to communicate with its secondaries) - provided and updated by coordinator
     static std::mutex secondary_ports_lock;         // lock for list of secondary ports, since secondary ports may be modified by thread receiving messages from coordinator
 
-    // server fields
+    // internal server fields
     static int client_comm_sock_fd;                             // bound server socket's fd for client communication
     static int group_comm_sock_fd;                              // bound server socket's fd for group communication
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
-    static std::string local_storage;                           // node-local storage directory
+
+    // storage fields
+    static std::string disk_dir; // node-local storage directory (emulates disk for a server)
 
     // remote-write related fields
-    static uint32_t seq_num;        // write operation sequence number (used by both primary and secondary to determine next operation to perform)
+    static uint32_t seq_num;        // write operation sequence number (used by both primary to sequence an operation, used by secondary to track operations)
     static std::mutex seq_num_lock; // lock to save sequence number for use by 2PC
 
     // checkpointing fields
-    static std::atomic<bool> is_checkpointing; // tracks if the server is currently checkpointing (atomic since multiple threads can read)
-    static uint32_t checkpoint_version;        // checkpoint version (ONLY USED BY PRIMARY)
-    static uint32_t last_checkpoint;           // version number of checkpoint received from primary during checkpoint
+    static std::atomic<bool> is_checkpointing; // tracks if the server is currently checkpointing (atomic since primary thread can read, but checkpointing thread can write)
+    static uint32_t checkpoint_version;        // checkpoint version used by checkpointing thread to update version before initiating checkpoint procedure
+    static uint32_t last_checkpoint;           // last version number of checkpoint received during checkpoint
 
     // methods
 public:

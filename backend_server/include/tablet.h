@@ -12,8 +12,9 @@ class Tablet
 {
     // fields
 public:
-    std::string range_start; // start of key range managed by this tablet
-    std::string range_end;   // end of key range managed by this tablet
+    std::string range_start;  // start of key range managed by this tablet
+    std::string range_end;    // end of key range managed by this tablet
+    std::string log_filename; // name of log file for this tablet
     Logger tablet_logger;
 
 private:
@@ -30,7 +31,7 @@ private:
 public:
     // Constructor to initialize a tablet - used on server start up
     Tablet(std::string range_start, std::string range_end)
-        : range_start(range_start), range_end(range_end), data(), row_locks(), row_locks_mutex(), tablet_logger("Tablet " + range_start + ":" + range_end) {}
+        : range_start(range_start), range_end(range_end), log_filename(range_start + "_" + range_end + "_log"), data(), row_locks(), row_locks_mutex(), tablet_logger("Tablet " + range_start + ":" + range_end) {}
 
     // Default constructor
     // This should ONLY be used when deserializing a file into a tablet.

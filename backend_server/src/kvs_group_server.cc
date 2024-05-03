@@ -1,4 +1,5 @@
 #include <poll.h>
+#include <fstream>
 
 #include "../../utils/include/utils.h"
 #include "../include/kvs_group_server.h"
@@ -110,6 +111,12 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         {
             execute_two_phase_commit(byte_stream);
         }
+        else
+        {
+            // log and send error message
+            send_error_response("Unrecognized command - this should NOT occur");
+            return;
+        }
     }
     // secondary server
     else
@@ -148,8 +155,8 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
     for (const auto &tablet : BackendServer::server_tablets)
     {
         // file name of tablet - start_end_tablet_v# (# is operation_seq_num)
-        std::string old_cp_file = BackendServer::local_storage + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
-        std::string new_cp_file = BackendServer::local_storage + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
+        std::string old_cp_file = BackendServer::disk_dir + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
+        std::string new_cp_file = BackendServer::disk_dir + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
         // write new checkpoint file
         tablet->serialize(new_cp_file);
         // delete old checkpoint file
@@ -188,16 +195,14 @@ void KVSGroupServer::done(std::vector<char> &inputs)
 /// @brief Coordinates 2PC for client that requested a write operation
 void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 {
-    kvs_group_server_logger.log("Primary received write operation - executing two-phase commit", 20);
+    kvs_group_server_logger.log("Primary received write operation - executing 2PC", 20);
 
     // primary is centralized sequencer - acquire lock for sequence number and increment sequence number
-    // This operation's seq number is saved for use during the procedure (since another thread may modify the sequence number)
+    // This operation's seq number is saved for use during 2PC (since another primary thread may receive an operation and modify the sequence number)
     BackendServer::seq_num_lock.lock();
     BackendServer::seq_num += 1;
     uint32_t operation_seq_num = BackendServer::seq_num;
     BackendServer::seq_num_lock.unlock();
-
-    int acks_recvd; // track number of acks received from secondaries after COMMIT/ABORT
 
     // extract write command from inputs and convert to lowercase. Erase command from beginning of inputs
     std::string command(inputs.begin(), inputs.begin() + 4);
@@ -209,12 +214,18 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     std::string row(inputs.begin(), row_end);
     inputs.erase(inputs.begin(), row_end + 1);
 
-    // log operation and row
+    // save the file name of the tablet log you'll be writing logs to
+    std::string operation_log_filename = BackendServer::retrieve_data_tablet(row)->log_filename;
+
+    // print operation and row
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing " + command + " on R[" + row + "]", 20);
 
     // open connection with secondary servers
     std::unordered_map<int, int> secondary_servers = BackendServer::open_connection_with_secondary_servers();
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
+
+    // write BEGIN to log
+    write_to_log(operation_log_filename, operation_seq_num, "BEGN");
 
     // Send PREPARE to all secondaries
     if (construct_and_send_prepare(operation_seq_num, command, row, secondary_servers) < 0)
@@ -232,12 +243,30 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // send commit message if all secondaries voted yes
     if (all_secondaries_in_favor)
     {
+        // write COMMIT to log - requires sequence number, command, row, inputs to commit transaction
+        std::vector<char> commit_log = {'C', 'M', 'M', 'T'};
+        commit_log.insert(commit_log.end(), command.begin(), command.end());                   // add command to log
+        std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length());     // size of row
+        commit_log.insert(commit_log.end(), row_size.begin(), row_size.end());                 // add row size to log
+        commit_log.insert(commit_log.end(), row.begin(), row.end());                           // add row to log
+        std::vector<uint8_t> inputs_size = BeUtils::host_num_to_network_vector(inputs.size()); // size of inputs
+        commit_log.insert(commit_log.end(), inputs_size.begin(), inputs_size.end());           // add input size to log
+        commit_log.insert(commit_log.end(), inputs.begin(), inputs.end());                     // add inputs to log
+        write_to_log(operation_log_filename, operation_seq_num, commit_log);
+
         response_msg = construct_and_send_commit(operation_seq_num, command, row, inputs, secondary_servers);
     }
     // send abort message if all secondaries voted no
     else
     {
-        response_msg = construct_and_send_abort(operation_seq_num, command, row, secondary_servers);
+        // write ABORT to log - requires sequence number, command, row to abort transaction
+        std::vector<char> abort_log = {'A', 'B', 'R', 'T'};
+        std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length()); // size of row
+        abort_log.insert(abort_log.end(), row_size.begin(), row_size.end());               // add row size to log
+        abort_log.insert(abort_log.end(), row.begin(), row.end());                         // add row to log
+        write_to_log(operation_log_filename, operation_seq_num, abort_log);
+
+        response_msg = construct_and_send_abort(operation_seq_num, row, secondary_servers);
     }
 
     // wait for servers to respond with acks
@@ -247,6 +276,10 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     {
         BeUtils::read(server.second); // we don't need to do anything with the ACKs
     }
+
+    // write END to log
+    write_to_log(operation_log_filename, operation_seq_num, "ENDT");
+
     send_error_response("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries");
     clean_operation_state(secondary_servers);
     send_response(response_msg);
@@ -349,7 +382,7 @@ std::vector<char> KVSGroupServer::construct_and_send_commit(uint32_t operation_s
 }
 
 /// @brief Construct and send ABORT to secondary servers
-std::vector<char> KVSGroupServer::construct_and_send_abort(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
+std::vector<char> KVSGroupServer::construct_and_send_abort(uint32_t operation_seq_num, std::string &row, std::unordered_map<int, int> &secondary_servers)
 {
     // at least one secondary voted no - construct abort message to send to all secondaries
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] At least one secondary voted NO - sending ABORT", 20);
@@ -384,8 +417,8 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     inputs.erase(inputs.begin(), inputs.begin() + 5);
 
     // save write operation
-    std::string write_operation(inputs.begin(), inputs.begin() + 4);
-    write_operation = Utils::to_lowercase(write_operation);
+    std::string command(inputs.begin(), inputs.begin() + 4);
+    command = Utils::to_lowercase(command);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
     // extract sequence number and erase from inputs
@@ -395,26 +428,47 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
+    // retrieve tablet for requested row
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+
+    // write BEGIN to log
+    write_to_log(tablet->log_filename, operation_seq_num, "BEGN");
+
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREPARE from primary", 20);
 
     // acquire an exclusive lock on the row
-    // retrieve tablet and put value for row and col combination
-    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> vote_response;
     // failed to acquire exclusive row lock
-    if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
+    if (tablet->acquire_exclusive_row_lock(command, row) < 0)
     {
+        // write ABORT to log - requires sequence number, command, row to abort transaction
+        std::vector<char> abort_log = {'A', 'B', 'R', 'T'};
+        std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length()); // size of row
+        abort_log.insert(abort_log.end(), row_size.begin(), row_size.end());               // add row size to log
+        abort_log.insert(abort_log.end(), row.begin(), row.end());                         // add row to log
+        write_to_log(tablet->log_filename, operation_seq_num, abort_log);
+
+        // construct vote
         vote_response = {'S', 'E', 'C', 'N', ' '};
         kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
     }
     // successfully acquired row lock
     else
     {
+        // write PREPARE to log - requires sequence number, command and row to prepare transaction
+        std::vector<char> prepare_log = {'P', 'R', 'E', 'P'};
+        prepare_log.insert(prepare_log.end(), command.begin(), command.end());             // add command to log
+        std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length()); // size of row
+        prepare_log.insert(prepare_log.end(), row_size.begin(), row_size.end());           // add row size to log
+        prepare_log.insert(prepare_log.end(), row.begin(), row.end());                     // add row to log
+        write_to_log(tablet->log_filename, operation_seq_num, prepare_log);
+
+        // construct vote
         vote_response = {'S', 'E', 'C', 'Y', ' '};
         kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
     }
 
-    // convert seq number to vector and append to prepare_msg
+    // convert seq number to vector and append to vote
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     vote_response.insert(vote_response.end(), seq_num_vec.begin(), seq_num_vec.end());
     send_response(vote_response);
@@ -440,9 +494,24 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
     std::string row(inputs.begin(), row_end);
     inputs.erase(inputs.begin(), row_end + 1);
 
+    // write COMMIT to log - requires sequence number, command, row, inputs to commit transaction
+    std::vector<char> commit_log = {'C', 'M', 'M', 'T'};
+    commit_log.insert(commit_log.end(), command.begin(), command.end());                   // add command to log
+    std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length());     // size of row
+    commit_log.insert(commit_log.end(), row_size.begin(), row_size.end());                 // add row size to log
+    commit_log.insert(commit_log.end(), row.begin(), row.end());                           // add row to log
+    std::vector<uint8_t> inputs_size = BeUtils::host_num_to_network_vector(inputs.size()); // size of inputs
+    commit_log.insert(commit_log.end(), inputs_size.begin(), inputs_size.end());           // add input size to log
+    commit_log.insert(commit_log.end(), inputs.begin(), inputs.end());                     // add inputs to log
+    std::string operation_log_filename = BackendServer::retrieve_data_tablet(row)->log_filename;
+    write_to_log(operation_log_filename, operation_seq_num, commit_log);
+
     // execute write operation
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary for " + command + " on R[" + row + "]", 20);
     execute_write_operation(command, row, inputs);
+
+    // write END to log
+    write_to_log(operation_log_filename, operation_seq_num, "ENDT");
 
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
     // convert seq number to vector and append to prepare_msg
@@ -466,9 +535,21 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
-    // release exclusive lock on row
+    // retrieve tablet for operation
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+
+    // write ABORT to log - requires sequence number and row to abort transaction
+    std::vector<char> abort_log = {'A', 'B', 'R', 'T'};
+    std::vector<uint8_t> row_size = BeUtils::host_num_to_network_vector(row.length()); // size of row
+    abort_log.insert(abort_log.end(), row_size.begin(), row_size.end());               // add row size to log
+    abort_log.insert(abort_log.end(), row.begin(), row.end());                         // add row to log
+    write_to_log(tablet->log_filename, operation_seq_num, abort_log);
+
+    // release exclusive lock on row
     tablet->release_exclusive_row_lock(row);
+
+    // write END to log
+    write_to_log(tablet->log_filename, operation_seq_num, "ENDT");
 
     // send ACK back to primary
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
@@ -644,4 +725,39 @@ void KVSGroupServer::clean_operation_state(std::unordered_map<int, int> secondar
     {
         close(server.second);
     }
+}
+
+// *********************************************
+// WRITE TO LOG
+// *********************************************
+
+int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::string &message)
+{
+    std::vector<char> message_vec(message.begin(), message.end());
+    return write_to_log(log_filename, operation_seq_num, message_vec);
+}
+
+int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::vector<char> &message)
+{
+    // open log file in binary mode for writing
+    std::ofstream log_file;
+    log_file.open(BackendServer::disk_dir + log_filename, std::ofstream::out | std::ofstream::binary);
+
+    // verify log file was opened
+    if (!log_file.is_open())
+    {
+        kvs_group_server_logger.log("Error opening log file", 40);
+        log_file.close();
+        return -1;
+    }
+
+    // write operation sequence number to file
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
+    log_file.write(reinterpret_cast<const char *>(seq_num_vec.data()), seq_num_vec.size());
+
+    // write message to log file
+    log_file.write(message.data(), message.size());
+    log_file.close();
+
+    kvs_group_server_logger.log("Wrote operation to tablet log file", 20);
 }

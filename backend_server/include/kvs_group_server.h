@@ -36,7 +36,7 @@ private:
     int construct_and_send_prepare(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);
     bool handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers); // handle vote (secy/secn) from secondary
     std::vector<char> construct_and_send_commit(uint32_t operation_seq_num, std::string &command, std::string &row, std::vector<char> &inputs, std::unordered_map<int, int> &secondary_servers);
-    std::vector<char> construct_and_send_abort(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);
+    std::vector<char> construct_and_send_abort(uint32_t operation_seq_num, std::string &row, std::unordered_map<int, int> &secondary_servers);
 
     // 2PC secondary response methods
     void prepare(std::vector<char> &inputs); // handle prepare msg from primary
@@ -57,6 +57,10 @@ private:
 
     // 2PC state cleanup
     void clean_operation_state(std::unordered_map<int, int> secondary_servers); // close connections to all secondaries
+
+    // log writing
+    int write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::string &message);
+    int write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::vector<char> &message);
 };
 
 #endif

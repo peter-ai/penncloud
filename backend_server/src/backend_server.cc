@@ -33,11 +33,13 @@ std::atomic<int> BackendServer::primary_port(0);
 std::unordered_set<int> BackendServer::secondary_ports;
 std::mutex BackendServer::secondary_ports_lock;
 
-// server fields
+// internal server fields
 int BackendServer::client_comm_sock_fd = -1;
 int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
-std::string BackendServer::local_storage;
+
+// storage fields
+std::string BackendServer::disk_dir;
 
 // remote-write related fields
 uint32_t BackendServer::seq_num = 0;
@@ -101,10 +103,10 @@ void BackendServer::run()
     be_logger.log("Group secondaries at " + secondaries, 20);
     // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
-    // initialize node local storage directory
-    local_storage = "KVS_" + std::to_string(client_port) + "/";
+    // store node local storage directory
+    disk_dir = "KVS_" + std::to_string(client_port) + "/";
 
-    // initialize static tablets and corresponding log using key range from coordinator
+    // initialize static tablets and create corresponding append-only log using key range from coordinator
     if (initialize_tablets() < 0)
     {
         be_logger.log("Failed to initialize server tablets. Exiting.", 40);
@@ -308,8 +310,8 @@ int BackendServer::initialize_tablets()
         be_logger.log("Initialized tablet for range " + tablet->range_start + ":" + tablet->range_end, 20);
 
         // create log file for tablet
-        std::string log_filename = local_storage + tablet->range_start + "_" + tablet->range_end + "_log";
-        std::ofstream log_file(log_filename);
+        std::string tablet_log = disk_dir + tablet->log_filename;
+        std::ofstream log_file(tablet_log);
         if (!log_file.is_open())
         {
             return -1;
