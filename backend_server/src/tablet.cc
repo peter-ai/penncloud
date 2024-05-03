@@ -1,18 +1,21 @@
 #include "../include/tablet.h"
+#include "../utils/include/be_utils.h"
 
-/**
- * CONSTANTS
- */
+#include <fstream>
+
+// *********************************************
+// CONSTANTS
+// *********************************************
 
 const char Tablet::delimiter = '\b';
 const std::string Tablet::ok = "+OK";
 const std::string Tablet::err = "-ER";
 
-/**
- *  READ-ONLY METHODS
- */
+// *********************************************
+// READ OPERATIONS
+// *********************************************
 
-// @brief Reads all columns at provided row
+/// @brief Reads all columns at provided row
 std::vector<char> Tablet::get_all_rows()
 {
     row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
@@ -37,7 +40,7 @@ std::vector<char> Tablet::get_all_rows()
     return response_msg;
 }
 
-// @brief Reads all columns at provided row
+/// @brief Reads all columns at provided row
 std::vector<char> Tablet::get_row(std::string &row)
 {
     // Return empty vector if row not found in map
@@ -71,7 +74,7 @@ std::vector<char> Tablet::get_row(std::string &row)
     return response_msg;
 }
 
-// @brief Reads value at provided row and column
+/// @brief Reads value at provided row and column
 std::vector<char> Tablet::get_value(std::string &row, std::string &col)
 {
     // Return empty vector if row not found in map
@@ -107,102 +110,11 @@ std::vector<char> Tablet::get_value(std::string &row, std::string &col)
     return response_msg;
 }
 
-/**
- *  WRITE METHODS
- */
+// *********************************************
+// ACQUIRING/RELEASING LOCKS FOR WRITE
+// *********************************************
 
-// @brief Puts value at provided row and column. Creates a row if necessary.
-std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
-{
-    // get data at row
-    auto &row_level_data = data.at(row);
-
-    // add value at column
-    row_level_data[col] = val;
-
-    row_locks.at(row).unlock();      // unlock exclusive lock on row
-    row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
-
-    tablet_logger.log("+OK Inserted value at R[" + row + "], C[" + col + "]", 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    return response_msg;
-}
-
-// @brief Delete provided row
-std::vector<char> Tablet::delete_row(std::string &row)
-{
-    // delete row
-    data.erase(row);
-
-    row_locks.at(row).unlock();      // unlock exclusive lock on row
-    row_locks_mutex.unlock_shared(); // release shared lock on row locks
-
-    // acquire exclusive access to the row_locks map to delete the mutex for the deleted row
-    row_locks_mutex.lock();
-    row_locks.erase(row);
-    row_locks_mutex.unlock();
-
-    tablet_logger.log("+OK Deleted R[" + row + "]", 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    return response_msg;
-}
-
-// @brief Delete value at provided row and column
-std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
-{
-    // get data at row
-    auto &row_level_data = data.at(row);
-
-    // delete value if row column exists
-    if (row_level_data.count(col) == 0)
-    {
-        row_locks.at(row).unlock();      // unlock exclusive lock on row
-        row_locks_mutex.unlock_shared(); // release shared lock on row locks
-        tablet_logger.log("-ER Column not found", 20);
-        return construct_msg("Column not found", true);
-    }
-
-    // delete value and associated column key
-    row_level_data.erase(col);
-
-    row_locks.at(row).unlock();      // unlock exclusive lock on row
-    row_locks_mutex.unlock_shared(); // release shared lock on row locks
-
-    tablet_logger.log("+OK Deleted value at R[" + row + "], C[" + col + "]", 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    return response_msg;
-}
-
-// @brief Conditionally put value at provided row and column if value at row + column matches curr_val
-std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
-{
-    // get data at row
-    auto &row_level_data = data.at(row);
-
-    // exit if data at col does not match curr_val
-    if (row_level_data[col] != curr_val)
-    {
-        row_locks.at(row).unlock();      // unlock exclusive lock on row
-        row_locks_mutex.unlock_shared(); // release shared lock on row locks
-        tablet_logger.log("-ER V1 provided does not match currently stored value", 20);
-        return construct_msg("V1 provided does not match currently stored value", true);
-    }
-
-    // overwrite value at column with new value
-    row_level_data[col] = new_val;
-
-    row_locks.at(row).unlock();      // unlock exclusive lock on row
-    row_locks_mutex.unlock_shared(); // release shared lock on row locks
-    tablet_logger.log("+OK Conditionally inserted value at R[" + row + "], C[" + col + "]", 20);
-    std::vector<char> response_msg(ok.begin(), ok.end());
-    return response_msg;
-}
-
-/**
- * ACQUIRING/RELEASING LOCKS FOR WRITE METHODS
- */
-
-// @brief Acquires exclusive lock on row for a write operation
+/// @brief Acquires exclusive lock on row for a write operation
 int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
 {
     // putv should first create the row if it doesn't exist
@@ -237,7 +149,7 @@ int Tablet::acquire_exclusive_row_lock(std::string &operation, std::string &row)
     return 0;
 }
 
-// @brief Releases exclusive lock on row for a write operation
+/// @brief Releases exclusive lock on row for a write operation
 void Tablet::release_exclusive_row_lock(std::string &row)
 {
     row_locks.at(row).unlock();      // unlock exclusive lock on row
@@ -245,15 +157,156 @@ void Tablet::release_exclusive_row_lock(std::string &row)
     tablet_logger.log("+OK Released exclusive row lock on R[" + row + "]", 20);
 }
 
-/**
- * SERIALIZATION/DESERIALIZATION METHODS
- */
+// *********************************************
+// WRITE OPERATIONS
+// *********************************************
+
+/// @brief Puts value at provided row and column. Creates a row if necessary.
+std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vector<char> &val)
+{
+    // get data at row
+    auto &row_level_data = data.at(row);
+
+    // add value at column
+    row_level_data[col] = val;
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
+
+    tablet_logger.log("+OK Inserted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+/// @brief Delete provided row
+std::vector<char> Tablet::delete_row(std::string &row)
+{
+    // delete row
+    data.erase(row);
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+
+    // acquire exclusive access to the row_locks map to delete the mutex for the deleted row
+    row_locks_mutex.lock();
+    row_locks.erase(row);
+    row_locks_mutex.unlock();
+
+    tablet_logger.log("+OK Deleted R[" + row + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+/// @brief Delete value at provided row and column
+std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
+{
+    // get data at row
+    auto &row_level_data = data.at(row);
+
+    // delete value if row column exists
+    if (row_level_data.count(col) == 0)
+    {
+        row_locks.at(row).unlock();      // unlock exclusive lock on row
+        row_locks_mutex.unlock_shared(); // release shared lock on row locks
+        tablet_logger.log("-ER Column not found", 20);
+        return construct_msg("Column not found", true);
+    }
+
+    // delete value and associated column key
+    row_level_data.erase(col);
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+
+    tablet_logger.log("+OK Deleted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+/// @brief Conditionally put value at provided row and column if value at row + column matches curr_val
+std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
+{
+    // get data at row
+    auto &row_level_data = data.at(row);
+
+    // exit if data at col does not match curr_val
+    if (row_level_data[col] != curr_val)
+    {
+        row_locks.at(row).unlock();      // unlock exclusive lock on row
+        row_locks_mutex.unlock_shared(); // release shared lock on row locks
+        tablet_logger.log("-ER V1 provided does not match currently stored value", 20);
+        return construct_msg("V1 provided does not match currently stored value", true);
+    }
+
+    // overwrite value at column with new value
+    row_level_data[col] = new_val;
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+    tablet_logger.log("+OK Conditionally inserted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
+// *********************************************
+// TABLET SERIALIZATION/DESERIALIZATION
+// *********************************************
 
 void Tablet::serialize(const std::string &file_name)
 {
-    // Don't forget to start with the start range and end range
-    // To serialize, you can take each row, build the vector of chars for it, and then append the size of the entire inner map to the start, then append to end of row size + row.
-    // Repeat this until you get to the end
+    // open file in binary mode for writing
+    std::ofstream file(file_name, std::ofstream::out | std::ofstream::binary);
+
+    // write start and end range to file (each should be 1 character)
+    file.write(range_start.c_str(), range_start.length());
+    file.write(range_end.c_str(), range_end.length());
+
+    row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
+
+    for (const auto &row : data)
+    {
+        row_locks.at(row.first).lock_shared(); // acquire shared lock on this row's mutex
+
+        // write size of row name to file
+        std::vector<uint8_t> row_name_size = BeUtils::host_num_to_network_vector(row.first.length());
+        file.write(reinterpret_cast<const char *>(row_name_size.data()), row_name_size.size());
+        // write row name to file
+        file.write(row.first.c_str(), row.first.length());
+
+        // get reference to data in current row
+        const auto &row_level_column_map = data.at(row.first);
+
+        // calculate size of column data for this row
+        uint32_t column_data_size = 0;
+        for (const auto &col : row_level_column_map)
+        {
+            // add size of column name, data it contains, and 8 bytes to store the size of each (4 for each)
+            column_data_size = col.first.length() + col.second.size() + 8;
+        }
+        // write column data size to file
+        std::vector<uint8_t> column_data_size_vec = BeUtils::host_num_to_network_vector(column_data_size);
+        file.write(reinterpret_cast<const char *>(column_data_size_vec.data()), column_data_size_vec.size());
+
+        // iterate columns and write each column and its data to the file
+        for (const auto &col : row_level_column_map)
+        {
+            // write size of col name to file
+            std::vector<uint8_t> col_name_size = BeUtils::host_num_to_network_vector(col.first.length());
+            file.write(reinterpret_cast<const char *>(col_name_size.data()), col_name_size.size());
+            // write col name to file
+            file.write(col.first.c_str(), col.first.length());
+
+            // write size of col data to file
+            std::vector<uint8_t> col_data_size = BeUtils::host_num_to_network_vector(col.second.size());
+            file.write(reinterpret_cast<const char *>(col_data_size.data()), col_data_size.size());
+            // write col data to file
+            file.write(col.second.data(), col.second.size());
+        }
+
+        row_locks.at(row.first).unlock_shared(); // release shared lock on row's mutex
+    }
+
+    row_locks_mutex.unlock_shared(); // release shared lock on row_lock's mutex
 }
 
 void Tablet::deserialize(const std::string &file_name)
@@ -268,9 +321,9 @@ void Tablet::deserialize(const std::string &file_name)
     // for each row you construct, make sure you add an entry in row_locks for it so it has an associated mutex.
 }
 
-/**
- * RESPONSE CONSTRUCTION
- */
+// *********************************************
+// CONSTRUCT RESPONSE
+// *********************************************
 
 // construct error/success message as vector of chars to send back to client given a string
 std::vector<char> Tablet::construct_msg(const std::string &msg, bool error)

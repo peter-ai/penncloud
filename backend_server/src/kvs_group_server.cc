@@ -148,8 +148,8 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
     for (const auto &tablet : BackendServer::server_tablets)
     {
         // file name of tablet - start_end_tablet_v# (# is operation_seq_num)
-        std::string old_cp_file = tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
-        std::string new_cp_file = tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
+        std::string old_cp_file = BackendServer::local_storage + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
+        std::string new_cp_file = BackendServer::local_storage + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
         // write new checkpoint file
         tablet->serialize(new_cp_file);
         // delete old checkpoint file
