@@ -402,7 +402,7 @@ void BackendServer::send_message_to_servers(std::vector<char> &msg, std::unorder
 }
 
 /// @brief Read from each server in map of servers. Returns vector of dead servers.
-std::vector<int> BackendServer::wait_for_events_from_servers(std::unordered_map<int, int> &servers)
+std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<int, int> &servers)
 {
     // tracks servers that potentially died, so we can remove them from the server map. Otherwise, we must keep trying to read from the server.
     std::vector<int> dead_servers;
@@ -484,7 +484,7 @@ void BackendServer::coordinate_checkpoint()
 
             // Wait for ACKs from all live servers
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Waiting for ACKs from servers", 20);
-            std::vector<int> dead_servers = wait_for_events_from_servers(servers);
+            std::vector<int> dead_servers = wait_for_acks_from_servers(servers);
             // remove dead servers from map of servers
             for (int dead_server : dead_servers)
             {

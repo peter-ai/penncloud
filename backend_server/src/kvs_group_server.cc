@@ -185,7 +185,7 @@ void KVSGroupServer::done(std::vector<char> &inputs)
 // 2PC PRIMARY COORDINATION METHODS
 // *********************************************
 
-// @brief Coordinates 2PC for client that requested a write operation
+/// @brief Coordinates 2PC for client that requested a write operation
 void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 {
     kvs_group_server_logger.log("Primary received write operation - executing two-phase commit", 20);
@@ -225,99 +225,34 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
         return;
     }
 
-    // Wait for votes from all secondaries (with timeout) and
+    // Wait for votes from all secondaries (with timeout)
     bool all_secondaries_in_favor = handle_secondary_votes(operation_seq_num, secondary_servers);
 
     std::vector<char> response_msg;
-    std::vector<char> abort_commit_msg;
+    // send commit message if all secondaries voted yes
     if (all_secondaries_in_favor)
     {
-        // all secondaries voted yes
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] All secondaries voted yes", 20);
-
-        // execute write operation on primary
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on primary", 20);
-        response_msg = execute_write_operation(inputs);
-
-        // construct commit message to send to all secondaries
-        abort_commit_msg = {'C', 'M', 'M', 'T', ' '};
-        // convert seq number to vector and append to prepare_msg
-        std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
-        abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
-        // append inputs to commit_msg
-        abort_commit_msg.insert(abort_commit_msg.end(), inputs.begin(), inputs.end());
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending CMMT message to secondaries", 20);
+        response_msg = construct_and_send_commit(operation_seq_num, command, row, inputs, secondary_servers);
     }
+    // send abort message if all secondaries voted no
     else
     {
-        // at least one secondary voted no - construct abort message to send to all secondaries
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] At least one secondary voted no", 20);
-        // extract row from inptus
-        std::string row = extract_row_from_input(inputs);
-
-        // release lock held by primary
-        std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
-        tablet->release_exclusive_row_lock(row);
-
-        abort_commit_msg = {'A', 'B', 'R', 'T', ' '};
-        // convert seq number to vector and append to prepare_msg
-        std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
-        abort_commit_msg.insert(abort_commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
-        abort_commit_msg.insert(abort_commit_msg.end(), row.begin(), row.end());
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending ABRT message to secondaries", 20);
+        response_msg = construct_and_send_abort(operation_seq_num, command, row, secondary_servers);
     }
 
-    // send abort/commit command
-    for (int secondary_fd : secondary_fds)
+    // wait for servers to respond with acks
+    BackendServer::wait_for_acks_from_servers(secondary_servers);
+    // read acks from all remaining servers, since these servers have read events available on their fds
+    for (const auto &server : secondary_servers)
     {
-        // exit if write failure occurs
-        if (BeUtils::write(secondary_fd, abort_commit_msg) < 0)
-        {
-            // Failure while constructing and sending prepare command
-            clean_operation_state(operation_seq_num, secondary_fds);
-            send_error_response("OP[" + std::to_string(operation_seq_num) + "] Unable to send CMMT/ABRT command to secondary");
-            return;
-        }
+        BeUtils::read(server.second); // we don't need to do anything with the ACKs
     }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Successfully sent CMMT/ABRT command to all secondaries", 20);
-
-    // Wait 2 seconds for secondaries to response to prepare command
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for ACKS from secondaries", 20);
-    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
-    {
-        clean_operation_state(operation_seq_num, secondary_fds);
-        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive ACK from all secondaries");
-        return;
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all ACKS from secondaries", 20);
-
-    // read acks from all secondaries
-    for (int secondary_fd : secondary_fds)
-    {
-        BeUtils::ReadResult msg_from_secondary = BeUtils::read(secondary_fd);
-        if (msg_from_secondary.error_code != 0)
-        {
-            clean_operation_state(operation_seq_num, secondary_fds);
-            send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to read ACK from secondary");
-            return;
-        }
-        // process ack sent by secondary
-        handle_secondary_ack(msg_from_secondary.byte_stream);
-    }
-
-    // didn't receive all acks (shouldn't occur)
-    if (BackendServer::acks_recvd.at(operation_seq_num) != BackendServer::secondary_ports.size())
-    {
-        clean_operation_state(operation_seq_num, secondary_fds);
-        send_error_response("OP[" + std::to_string(operation_seq_num) + "] Failed to receive all ACKS from secondaries");
-        return;
-    }
-
-    clean_operation_state(operation_seq_num, secondary_fds);
+    send_error_response("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries");
+    clean_operation_state(secondary_servers);
     send_response(response_msg);
 }
 
-// @brief Constructs prepare command to send to secondary servers
+/// @brief Constructs prepare command to send to secondary servers
 // Example prepare command: PREP<SP>SEQ_#ROW (note there is no space between the sequence number and the row)
 int KVSGroupServer::construct_and_send_prepare_cmd(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
 {
@@ -339,11 +274,11 @@ int KVSGroupServer::construct_and_send_prepare_cmd(uint32_t operation_seq_num, s
 
     // send prepare command to all secondaries
     BackendServer::send_message_to_servers(prepare_msg, secondary_servers);
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary sent PREPARE command to all secondaries", 20);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary sent PREPARE to all secondaries", 20);
     return 0;
 }
 
-// @brief Handles primary thread receiving vote from secondary
+/// @brief Handles votes from secondaries following PREPARE message
 bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers)
 {
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
@@ -387,29 +322,62 @@ bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::uno
     return true;
 }
 
-// @brief Handles primary thread receiving ACKN from secondary
-void KVSGroupServer::handle_secondary_ack(std::vector<char> &inputs)
+/// @brief Construct and send COMMIT to secondary servers
+std::vector<char> KVSGroupServer::construct_and_send_commit(uint32_t operation_seq_num, std::string &command, std::string &row, std::vector<char> &inputs, std::unordered_map<int, int> &secondary_servers)
 {
-    // erase ackn from beginning of inputs
-    inputs.erase(inputs.begin(), inputs.begin() + 5);
-    // extract sequence number
-    uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    // all secondaries voted yes - construct commit message to send to all secondaries
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] All secondaries voted YES - sending COMMIT", 20);
 
-    // log acknowledgement
-    kvs_group_server_logger.log("Received ACK for operation " + std::to_string(operation_seq_num), 20);
+    // execute write operation on primary
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on primary", 20);
+    std::vector<char> response_msg = execute_write_operation(command, row, inputs);
 
-    // acquire mutex to add vote for sequence number
-    BackendServer::acks_recvd_lock.lock();
-    BackendServer::acks_recvd.at(operation_seq_num) += 1;
-    // release mutex after vote has been added
-    BackendServer::acks_recvd_lock.unlock();
+    // construct commit message to send to all secondaries
+    std::vector<char> commit_msg = {'C', 'M', 'M', 'T', ' '};
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num); // add sequence number to commit_msg
+    commit_msg.insert(commit_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+    commit_msg.insert(commit_msg.end(), command.begin(), command.end()); // add command to commit_msg
+    commit_msg.insert(commit_msg.end(), row.begin(), row.end());         // add row to commit_msg and add space after to differentiate remaining inputs
+    commit_msg.push_back(' ');
+    commit_msg.insert(commit_msg.end(), inputs.begin(), inputs.end()); // add remainder of inputs to commit_msg
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Sending CMMT message to secondaries", 20);
+
+    // send abort/commit command
+    BackendServer::send_message_to_servers(commit_msg, secondary_servers);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary sent COMMIT to all secondaries", 20);
+    return response_msg;
+}
+
+/// @brief Construct and send ABORT to secondary servers
+std::vector<char> KVSGroupServer::construct_and_send_abort(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers)
+{
+    // at least one secondary voted no - construct abort message to send to all secondaries
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] At least one secondary voted NO - sending ABORT", 20);
+
+    // release lock held by primary
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    tablet->release_exclusive_row_lock(row);
+
+    // construct ABORT message
+    std::vector<char> abort_msg = {'A', 'B', 'R', 'T', ' '};
+    std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num); // append sequence number to message
+    abort_msg.insert(abort_msg.end(), seq_num_vec.begin(), seq_num_vec.end());
+    abort_msg.insert(abort_msg.end(), row.begin(), row.end()); // append row to message
+
+    // send abort/commit command
+    BackendServer::send_message_to_servers(abort_msg, secondary_servers);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Primary sent ABORT to all secondaries", 20);
+
+    // send response message back for aborted operation
+    std::string response_msg = "-ER Operation aborted";
+    return std::vector<char>(response_msg.begin(), response_msg.end());
 }
 
 // *********************************************
 // 2PC SECONDARY RESPONSE METHODS
 // *********************************************
 
-// @brief Secondary responds to prepare command
+/// @brief Secondary responds to prepare command
 void KVSGroupServer::prepare(std::vector<char> &inputs)
 {
     // erase PREP command from beginning of inputs
@@ -427,7 +395,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREP from primary", 20);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREPARE from primary", 20);
 
     // acquire an exclusive lock on the row
     // retrieve tablet and put value for row and col combination
@@ -437,13 +405,13 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     if (tablet->acquire_exclusive_row_lock(write_operation, row) < 0)
     {
         vote_response = {'S', 'E', 'C', 'N', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary responded to prepare with SECY", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
     }
     // successfully acquired row lock
     else
     {
         vote_response = {'S', 'E', 'C', 'Y', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary responded to prepare with SECN", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
     }
 
     // convert seq number to vector and append to prepare_msg
@@ -462,14 +430,19 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary", 20);
+    // extract command from inputs and convert to lowercase. Erase command from beginning of inputs
+    std::string command(inputs.begin(), inputs.begin() + 4);
+    command = Utils::to_lowercase(command);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
 
-    // remainder of command is passed to execute write
-    // execute write operation on primary
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Executing write operation on secondary", 20);
-    std::vector<char> response_msg = execute_write_operation(inputs);
+    // extract row from inputs. Erase row from beginning of inputs (+1 to remove delimiter)
+    auto row_end = std::find(inputs.begin(), inputs.end(), ' ');
+    std::string row(inputs.begin(), row_end);
+    inputs.erase(inputs.begin(), row_end + 1);
 
-    // ! what happens if the write fails on the secondary? It sends ACK either way
+    // execute write operation
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary for " + command + " on R[" + row + "]", 20);
+    execute_write_operation(command, row, inputs);
 
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
     // convert seq number to vector and append to prepare_msg
@@ -488,18 +461,17 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received ABRT from primary", 20);
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received ABORT from primary", 20);
 
     // row is remainder of inputs
     std::string row(inputs.begin(), inputs.end());
 
-    // acquire an exclusive lock on the row
-    // retrieve tablet and put value for row and col combination
+    // release exclusive lock on row
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     tablet->release_exclusive_row_lock(row);
 
+    // send ACK back to primary
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
-    // convert seq number to vector and append to prepare_msg
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
     send_response(ack_response);
@@ -510,52 +482,34 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
 // *********************************************
 
 // Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
-std::vector<char> KVSGroupServer::execute_write_operation(std::vector<char> inputs)
+std::vector<char> KVSGroupServer::execute_write_operation(std::string &command, std::string &row, std::vector<char> inputs)
 {
-    // extract command from beginning of inputs and erase command
-    std::string command(inputs.begin(), inputs.begin() + 4);
-    command = Utils::to_lowercase(command);
-    inputs.erase(inputs.begin(), inputs.begin() + 5);
-
     // call handler for command
     if (command == "putv")
     {
-        return putv(inputs);
+        return putv(row, inputs);
     }
     else if (command == "cput")
     {
-        return cput(inputs);
+        return cput(row, inputs);
     }
     else if (command == "delr")
     {
-        return delr(inputs);
+        return delr(row, inputs);
     }
     else if (command == "delv")
     {
-        return delv(inputs);
+        return delv(row, inputs);
     }
     kvs_group_server_logger.log("Unrecognized write command - should NOT occur", 40);
     std::vector<char> res;
     return res;
 }
 
-std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)
+std::vector<char> KVSGroupServer::putv(std::string &row, std::vector<char> &inputs)
 {
-    // find index of \b to extract row from inputs
-    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - row not found";
-        kvs_group_server_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        return res_bytes;
-    }
-    std::string row(inputs.begin(), row_end);
-
     // find index of \b to extract col from inputs
-    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
     // \b not found in index
     if (col_end == inputs.end())
     {
@@ -565,7 +519,7 @@ std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         return res_bytes;
     }
-    std::string col(row_end + 1, col_end);
+    std::string col(inputs.begin(), col_end);
 
     // remainder of input is value
     std::vector<char> val(col_end + 1, inputs.end());
@@ -579,25 +533,12 @@ std::vector<char> KVSGroupServer::putv(std::vector<char> &inputs)
     return response_msg;
 }
 
-std::vector<char> KVSGroupServer::cput(std::vector<char> &inputs)
+std::vector<char> KVSGroupServer::cput(std::string &row, std::vector<char> &inputs)
 {
-    // find index of \b to extract row from inputs
-    auto row_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (row_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - row not found";
-        kvs_group_server_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        return res_bytes;
-    }
-    std::string row(inputs.begin(), row_end);
-
     // find index of \b to extract col from inputs
-    auto col_end = std::find(row_end + 1, inputs.end(), '\b');
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
     // \b not found in index
-    if (row_end == inputs.end())
+    if (col_end == inputs.end())
     {
         // log and send error message
         std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
@@ -605,7 +546,7 @@ std::vector<char> KVSGroupServer::cput(std::vector<char> &inputs)
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         return res_bytes;
     }
-    std::string col(row_end + 1, col_end);
+    std::string col(inputs.begin(), col_end);
 
     // clear inputs UP TO AND INCLUDING the last \b chara
     inputs.erase(inputs.begin(), col_end + 1);
@@ -635,10 +576,8 @@ std::vector<char> KVSGroupServer::cput(std::vector<char> &inputs)
     return response_msg;
 }
 
-std::vector<char> KVSGroupServer::delr(std::vector<char> &inputs)
+std::vector<char> KVSGroupServer::delr(std::string &row, std::vector<char> &inputs)
 {
-    // extract row as string from inputs
-    std::string row(inputs.begin(), inputs.end());
     // log command and args
     kvs_group_server_logger.log("DELR R[" + row + "]", 20);
 
@@ -648,23 +587,20 @@ std::vector<char> KVSGroupServer::delr(std::vector<char> &inputs)
     return response_msg;
 }
 
-std::vector<char> KVSGroupServer::delv(std::vector<char> &inputs)
+std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inputs)
 {
-    // convert vector to string since row and column are string-compatible values and split on delimiter
-    std::string delv_args(inputs.begin(), inputs.end());
-
-    size_t col_index = delv_args.find_first_of('\b');
-    // delimiter not found in string - should be present to split row and column
-    if (col_index == std::string::npos)
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
     {
         // log and send error message
-        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - delimiter after row not found";
+        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - column not found";
         kvs_group_server_logger.log(err_msg, 40);
         std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
         return res_bytes;
     }
-    std::string row = delv_args.substr(0, col_index);
-    std::string col = delv_args.substr(col_index + 1);
+    std::string col(inputs.begin(), col_end);
 
     // log command and args
     kvs_group_server_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
