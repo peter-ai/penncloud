@@ -230,8 +230,7 @@ void BackendServer::handle_coord_comm(int coord_sock_fd)
 int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
 {
     // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string ip = "127.0.0.1:";
-    std::string msg = "INIT " + ip + std::to_string(BackendServer::group_port);
+    std::string msg = "INIT 127.0.0.1:" + std::to_string(BackendServer::group_port);
     if (BeUtils::write_with_crlf(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
@@ -285,10 +284,12 @@ int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
     range_end = range.at(1);
 
     // save primary and list of secondaries
+    std::string ip = "127.0.0.1:";
     primary_port = std::stoi(res_tokens.at(2).substr(ip.length()));
     std::string secondaries;
     for (size_t i = 3; i < res_tokens.size(); i++)
     {
+        secondary_ports.insert(std::stoi(res_tokens.at(i).substr(ip.length())));
         secondary_ports.insert(std::stoi(res_tokens.at(i).substr(ip.length())));
         secondaries += res_tokens.at(i) + " ";
     }
