@@ -43,23 +43,6 @@ unordered_map<string, int> kvs_servers;                // maps backend server na
 unordered_map<string, vector<string>> kvs_servergroup; // server groups to names of all servers within
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
-// // Function to contact the load balancer and coordinator
-// std::string contactServers() {
-//     // Contact the load balancer
-//     std::stringstream lbStream;
-//     lbStream << "fe1,fe2,fe3\r\n"; // Dummy data for frontend nodes
-//     std::string feData = lbStream.str();
-
-//     // Contact the coordinator
-//     std::stringstream coordinatorStream;
-//     coordinatorStream << "kvs1,kvs2,kvs3\r\n"; // Dummy data for KVS components
-//     std::string kvsData = coordinatorStream.str();
-
-//     // Combine the data
-//     std::string combinedData = feData + kvsData;
-
-//     return combinedData;
-// }
 
 void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
 {
@@ -510,117 +493,126 @@ int main()
     logger.log("Admin console init", LOGGER_INFO);
     /* Create sockets on defined ports 8000 and 8001 */
 
-    // // Create socket for port 8080
-    // int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
-    // if (listen_sock == -1)
-    // {
-    //     std::cerr << "Socket creation failed\n";
-    //     return 1;
-    // }
-
-    // // Set socket option to enable address reuse
-    // int enable = 1;
-    // if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    // {
-    //     std::cerr << "Setsockopt failed for port 8080\n";
-    //     return 1;
-    // }
-
-    // string ip_addr = "127.0.0.1";
-    // int listen_port = 8080;
-    // struct sockaddr_in servaddr;
-    // socklen_t servaddr_size = sizeof(servaddr);
-    // bzero(&servaddr, sizeof(servaddr));
-    // servaddr.sin_family = AF_INET;
-    // servaddr.sin_port = htons(listen_port);
-    // inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // // bind socket to port
-    // if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
-    // {
-    //     std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
-    //     logger.log(msg, LOGGER_CRITICAL);
-    //     return 1;
-    // }
-
-    // // Create socket for port 8081
-    // int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
-    // if (kvs_sock == -1)
-    // {
-    //     std::cerr << "Socket creation failed\n";
-    //     return 1;
-    // }
-
-    // // Set socket option to enable address reuse
-    // if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    // {
-    //     std::cerr << "Setsockopt failed for port 8081\n";
-    //     return 1;
-    // }
-
-    // int kvs_port = 8081;
-    // struct sockaddr_in kvs_sock_addr;
-    // socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
-    // bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
-    // kvs_sock_addr.sin_family = AF_INET;
-    // kvs_sock_addr.sin_port = htons(kvs_port);
-    // inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // // bind socket to port
-    // if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
-    // {
-    //     std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
-    //     logger.log(msg, LOGGER_CRITICAL);
-    //     return 1;
-    // }
-
-    // // Listen for incoming connections
-    // if (listen(kvs_sock, 3) < 0)
-    // {
-    //     std::cerr << "Listen failed\n";
-    //     return 1;
-    // }
-
-    // // Accept incoming connections and handle them in separate threads
-    // while (true)
-    // {
-    //     int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
-    //     if (temp_sock < 0)
-    //     {
-    //         std::cerr << "Accept failed for port 8080\n";
-    //         return 1;
-    //     }
-
-    //     // spin up thread
-    //     std::thread serv_thread(get_server_data, temp_sock);
-    //     serv_thread.detach();
-
-    //     // if we got messages from both coord and lb, exit loop
-    //     if (lb_init && coord_init)
-    //     {
-    //         break;
-    //     }
-    // }
-
-    // Initialize frontend (FE) servers
-    for (int i = 1; i <= 4; ++i)
+    // Create socket for port 8080
+    int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (listen_sock == -1)
     {
-        string fe_key = "FE" + to_string(i);
-        int port_number = 8000 + i - 1; // Increment port number for each server
-        lb_servers[fe_key] = port_number;
-        server_status[fe_key] = 1; // Set status to 1 for each FE server
+        std::cerr << "Socket creation failed\n";
+        return 1;
     }
 
-    // Initialize Key-Value Store (KVS) servers
-    for (int i = 1; i <= 2; ++i)
-    { // Assuming two KVS servers
-        string kvs_key = "KVS" + to_string(i);
-        int port_number = 9000 + i - 1; // Increment port number for each server
-        kvs_servers[kvs_key] = port_number;
-        server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    // Set socket option to enable address reuse
+    int enable = 1;
+    if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    {
+        std::cerr << "Setsockopt failed for port 8080\n";
+        return 1;
     }
+
+    string ip_addr = "127.0.0.1";
+    int listen_port = 8080;
+    struct sockaddr_in servaddr;
+    socklen_t servaddr_size = sizeof(servaddr);
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(listen_port);
+    inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // bind socket to port
+    if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
+    {
+        std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
+        logger.log(msg, LOGGER_CRITICAL);
+        return 1;
+    }
+
+    // Listen for incoming connections
+    if (listen(listen_sock, 3) < 0)
+    {
+        std::cerr << "Listen failed\n";
+        return 1;
+    }
+
+
+    // Accept incoming connections and handle them in separate threads
+    while (true)
+    {
+        int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
+        if (temp_sock < 0)
+        {
+            std::cerr << "Accept failed for port 8080\n";
+            return 1;
+        }
+
+        // spin up thread
+        std::thread serv_thread(get_server_data, temp_sock);
+        serv_thread.detach();
+
+        // if we got messages from both coord and lb, exit loop
+        if (lb_init && coord_init)
+        {
+            break;
+        }
+    }
+
+    // // Initialize frontend (FE) servers
+    // for (int i = 1; i <= 4; ++i)
+    // {
+    //     string fe_key = "FE" + to_string(i);
+    //     int port_number = 8000 + i - 1; // Increment port number for each server
+    //     lb_servers[fe_key] = port_number;
+    //     server_status[fe_key] = 1; // Set status to 1 for each FE server
+    // }
+
+    // // Initialize Key-Value Store (KVS) servers
+    // for (int i = 1; i <= 2; ++i)
+    // { // Assuming two KVS servers
+    //     string kvs_key = "KVS" + to_string(i);
+    //     int port_number = 9000 + i - 1; // Increment port number for each server
+    //     kvs_servers[kvs_key] = port_number;
+    //     server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    // }
 
     logger.log("Admin console ready.", LOGGER_INFO);
+
+
+     // Create socket for port 8081
+    int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (kvs_sock == -1)
+    {
+        std::cerr << "Socket creation failed\n";
+        return 1;
+    }
+
+    // Set socket option to enable address reuse
+    if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    {
+        std::cerr << "Setsockopt failed for port 8081\n";
+        return 1;
+    }
+
+    int kvs_port = 8081;
+    struct sockaddr_in kvs_sock_addr;
+    socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
+    bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
+    kvs_sock_addr.sin_family = AF_INET;
+    kvs_sock_addr.sin_port = htons(kvs_port);
+    inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // bind socket to port
+    if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
+    {
+        std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
+        logger.log(msg, LOGGER_CRITICAL);
+        return 1;
+    }
+
+    // Listen for incoming connections
+    if (listen(kvs_sock, 3) < 0)
+    {
+        std::cerr << "Listen failed\n";
+        return 1;
+    }
 
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
