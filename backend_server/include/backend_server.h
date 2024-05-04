@@ -72,21 +72,22 @@ private:
     BackendServer() {}
 
     // State initalization methods
-    static int initialize_state_from_coordinator(); // contact coordinator to get information
-    static int initialize_tablets();                // initialize tablets on this server and each tablet's corresponding append-only log
+    static int initialize_state_from_coordinator(int coord_sock_fd); // contact coordinator to get information
+    static int initialize_tablets();                                 // initialize tablets on this server and each tablet's corresponding append-only log
 
     // Group communication methods
-    static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
-    static void accept_and_handle_group_comm(); // server loop to accept and handle connections from servers in its replica group
+    static int dispatch_group_comm_thread();                          // dispatch thread to loop and accept communication from servers in group
+    static void accept_and_handle_group_comm(int group_comm_sock_fd); // server loop to accept and handle connections from servers in its replica group
 
     // Coordinator communication methods
-    static void send_coordinator_heartbeat(); // dispatch thread to send heartbeat to coordinator port
+    static int dispatch_coord_comm_thread();          // dispatch thread to send heartbeat to coordinator port
+    static void handle_coord_comm(int coord_sock_fd); // sends heartbeat to coordinator
 
     // Admin communication
-    static void dispatch_admin_listener_thread(); // dispatch thread to read from admin
-    static void accept_and_handle_admin_comm();   // open connection with admin port and read messages
-    static void admin_kill();                     // handles kill command from admin console
-    static void admin_live();                     // handles live command from admin console
+    static int dispatch_admin_listener_thread();                 // dispatch thread to read from admin
+    static void accept_and_handle_admin_comm(int admin_sock_fd); // open connection with admin port and read messages
+    static void admin_kill();                                    // handles kill command from admin console
+    static void admin_live();                                    // handles live command from admin console
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets

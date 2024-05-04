@@ -39,6 +39,14 @@ std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 std::string BackendServer::disk_dir;
 std::atomic<bool> BackendServer::is_dead(false);
 
+// active connection fields (clients)
+std::unordered_map<pthread_t, std::atomic<bool>> BackendServer::client_connections;
+std::mutex BackendServer::client_connections_lock;
+
+// active connection fields (group servers)
+std::unordered_map<pthread_t, std::atomic<bool>> BackendServer::group_server_connections;
+std::mutex BackendServer::group_server_connections_lock;
+
 // remote-write related fields
 uint32_t BackendServer::seq_num = 0;
 std::mutex BackendServer::seq_num_lock;
@@ -68,59 +76,30 @@ void BackendServer::run()
 {
     /**
      * Steps
-     * 1. Initialize state from coordinator
-     * 2. Initialize storage tablets
-     * 3. Dispatch admin listener thread
-     * 4. Dispatch group communication thread
-     * 5. Dispatch checkpointing thread
-     * 6. Dispatch heartbeat thread
-     * 7. Accept and handle client connections
+     * 1. Dispatch thread to communicate with coordinator (initializes state, creates tablets, sends heartbeats)
+     * 2. Dispatch admin listener thread
+     * 3. Dispatch group communication thread
+     * 4. Dispatch checkpointing thread
+     * 5. Accept and handle client connections
      */
-
-    // ! COORDINATOR STATE INITIALIZATION
-    // // initialize server's state from coordinator
-    // if (initialize_state_from_coordinator() < 0)
-    // {
-    //     be_logger.log("Failed to initialize server state from coordinator. Exiting.", 40);
-    //     close(coord_sock_fd);
-    //     return;
-    // }
-    // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
-    is_primary = true;
-    primary_port = 7501;
-    secondary_ports = {7500};
-    range_start = "a";
-    range_end = "z";
-
-    // TODO note that all of this logging will be moved inside initialize_state_from_coordinator()
-    is_primary
-        ? be_logger.log("Server type [PRIMARY]", 20)
-        : be_logger.log("Server type [SECONDARY]", 20);
-    be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
-
-    be_logger.log("Group primary at " + std::to_string(primary_port), 20);
-    std::string secondaries;
-    for (int secondary_port : secondary_ports)
-    {
-        secondaries += std::to_string(secondary_port) + " ";
-    }
-    be_logger.log("Group secondaries at " + secondaries, 20);
-    // ! DEFAULT VALUES UNTIL COORDINATOR COMMUNICATION IS SET UP
 
     // store node local storage directory
     disk_dir = "KVS_" + std::to_string(client_port) + "/";
 
-    // initialize static tablets and create corresponding append-only log using key range from coordinator
-    if (initialize_tablets() < 0)
-    {
-        be_logger.log("Failed to initialize server tablets. Exiting.", 40);
+    // dispatch thread to communicate with coordinator
+    if (dispatch_coord_comm_thread() < 0)
         return;
-    }
-    dispatch_admin_listener_thread(); // dispatch thread to accept communication from admin
-    dispatch_group_comm_thread();     // dispatch thread to accept communication from servers in group
-    dispatch_checkpointing_thread();  // dispatch thread to checkpoint storage tablets
-    send_coordinator_heartbeat();     // dispatch thread to send heartbeats to coordinator
-    accept_and_handle_clients();      // run main server loop to accept client connections
+
+    // dispatch thread to accept communication from admin
+    if (dispatch_admin_listener_thread() < 0)
+        return;
+
+    // dispatch thread to accept communication from servers in group
+    if (dispatch_group_comm_thread() < 0)
+        return;
+
+    dispatch_checkpointing_thread(); // dispatch thread to checkpoint storage tablets
+    accept_and_handle_clients();     // run main server loop to accept client connections
 }
 
 /// @brief main server loop to accept and handle clients
@@ -186,17 +165,14 @@ void BackendServer::accept_and_handle_clients()
     }
 }
 
-// *********************************************
-// KVS SERVER INITIALIZATION
-// *********************************************
+// **************************************************
+// COORDINATOR COMMUNICATION
+// **************************************************
 
-/// @brief Contacts coordinator to retrieve initialization state
-// ! look into this later once coordinator is complete
-int BackendServer::initialize_state_from_coordinator()
+/// @brief initialize and detach thread to communicate with coordinator
+int BackendServer::dispatch_coord_comm_thread()
 {
-    be_logger.log("Contacting coordinator on port " + std::to_string(BackendServer::coord_port), 20);
-
-    // open connection with coordinator
+    // open long-running connection with coordinator
     int coord_sock_fd = BeUtils::open_connection(coord_port);
     if (coord_sock_fd < 0)
     {
@@ -204,9 +180,54 @@ int BackendServer::initialize_state_from_coordinator()
         return -1;
     }
 
+    be_logger.log("Backend server opened connection with coordinator on port " + std::to_string(coord_port), 20);
+
+    // initialize server state from coordinator
+    if (initialize_state_from_coordinator(coord_sock_fd) < 0)
+    {
+        be_logger.log("Failed to initialize server state from coordinator. Exiting", 40);
+        return -1;
+    }
+
+    // initialize static tablets and create corresponding append-only log using key range from coordinator
+    if (initialize_tablets() < 0)
+    {
+        be_logger.log("Failed to initialize server tablets. Exiting", 40);
+        return -1;
+    }
+
+    // create and detach thread for subsequent communication with coordinator
+    std::thread coord_comm_thread(handle_coord_comm, coord_sock_fd);
+    coord_comm_thread.detach();
+    return 0;
+}
+
+/// @brief sends heartbeat to coordinator at frequency of 1 second. Poll coordinator in between heartbeats.
+void BackendServer::handle_coord_comm(int coord_sock_fd)
+{
+    be_logger.log("Sending heartbeats to coordinator", 20);
+    // Sleep for 1 seconds before sending first heartbeat
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    // send heartbeats as long as the server is alive
+    while (!is_dead)
+    {
+        std::string ping = "PING";
+        BeUtils::write_with_crlf(coord_sock_fd, ping);
+        // Sleep for 1 seconds before sending subsequent heartbeat
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
+
+// *********************************************
+// KVS SERVER INITIALIZATION
+// *********************************************
+
+/// @brief Contacts coordinator to retrieve initialization state
+int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
+{
     // send initialization message to coordinator to inform coordinator that this server is starting up
     std::string msg = "INIT " + std::to_string(client_port);
-    if (BeUtils::write_to_coord(coord_sock_fd, msg) < 0)
+    if (BeUtils::write_with_crlf(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
         return -1;
@@ -260,13 +281,21 @@ int BackendServer::initialize_state_from_coordinator()
 
     // save primary and list of secondaries
     primary_port = std::stoi(res_tokens.at(2));
-    be_logger.log("PRIMARY AT 127.0.0.1:" + std::to_string(primary_port), 20);
+    std::string secondaries;
     for (size_t i = 3; i < res_tokens.size(); i++)
     {
         secondary_ports.insert(std::stoi(res_tokens.at(i)));
-        be_logger.log("SECONDARY AT 127.0.0.1:" + res_tokens.at(i), 20);
+        secondaries += res_tokens.at(i) + " ";
     }
 
+    // log information about server
+    is_primary
+        ? be_logger.log("Server type [PRIMARY]", 20)
+        : be_logger.log("Server type [SECONDARY]", 20);
+    be_logger.log("Managing key range " + BackendServer::range_start + ":" + BackendServer::range_end, 20);
+
+    be_logger.log("Group primary at " + std::to_string(primary_port), 20);
+    be_logger.log("Group secondaries at " + secondaries, 20);
     return 0;
 }
 
@@ -321,58 +350,29 @@ int BackendServer::initialize_tablets()
 }
 
 // **************************************************
-// COORDINATOR COMMUNICATION
-// **************************************************
-
-// ! this is NOT ready yet
-void ping(int fd)
-{
-    // Sleep for 1 seconds before sending first heartbeat
-    std::this_thread::sleep_for(std::chrono::seconds(1));
-    while (true)
-    {
-        std::string ping = "PING";
-        BeUtils::write_to_coord(fd, ping);
-
-        // Sleep for 5 seconds before sending subsequent heartbeat
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-}
-
-// ! this is NOT ready yet
-void BackendServer::send_coordinator_heartbeat()
-{
-    // TODO commented out because coordinator is not alive atm (prints error messages that connection failed)
-    // // create and detach thread to ping coordinator
-    // be_logger.log("Sending heartbeats to coordinator", 20);
-    // std::thread heartbeat_thread(ping, BackendServer::server_sock_fd);
-    // heartbeat_thread.detach();
-}
-
-// **************************************************
 // INTER-GROUP COMMUNICATION
 // **************************************************
 
 /// @brief initialize and detach thread to listen for connections from servers in group
-void BackendServer::dispatch_group_comm_thread()
-{
-    be_logger.log("Dispatching thread to accept and handle group communication", 20);
-    std::thread group_comm_thread(accept_and_handle_group_comm);
-    group_comm_thread.detach();
-}
-
-/// @brief server loop to accept and handle connections from servers in replica group
-void BackendServer::accept_and_handle_group_comm()
+int BackendServer::dispatch_group_comm_thread()
 {
     // Bind server to group communication port and store fd to accept group communication on socket
     int group_comm_sock_fd = BeUtils::bind_socket(group_port);
     if (group_comm_sock_fd < 0)
     {
         be_logger.log("Failed to bind server to group port " + std::to_string(group_port) + ". Exiting.", 40);
-        return;
+        return -1;
     }
 
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
+    std::thread group_comm_thread(accept_and_handle_group_comm, group_comm_sock_fd);
+    group_comm_thread.detach();
+    return 0;
+}
+
+/// @brief server loop to accept and handle connections from servers in replica group
+void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
+{
     // accept group connections as long as the server is alive
     while (!is_dead)
     {
@@ -455,7 +455,7 @@ void BackendServer::send_message_to_servers(std::vector<char> &msg, std::unorder
         // write message to server
         // retries are integrated into write, so if write fails, it's likely due to an issue with the server
         // if an issue occurred with the server, we'll catch it when trying to read from the fd
-        BeUtils::write(server.second, msg);
+        BeUtils::write_with_size(server.second, msg);
     }
 }
 
@@ -492,25 +492,25 @@ std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<in
 // **************************************************
 
 /// @brief initialize and detach thread to listen for messages from admin
-void BackendServer::dispatch_admin_listener_thread()
-{
-    be_logger.log("Dispatching thread to accept and handle admin communication", 20);
-    std::thread admin_thread(accept_and_handle_admin_comm);
-    admin_thread.detach();
-}
-
-/// @brief server loop to accept and handle connections from admin console
-void BackendServer::accept_and_handle_admin_comm()
+int BackendServer::dispatch_admin_listener_thread()
 {
     // Bind server to admin port and store fd to accept admin communication on socket
     int admin_sock_fd = BeUtils::bind_socket(admin_port);
     if (admin_sock_fd < 0)
     {
         be_logger.log("Failed to bind server to admin port " + std::to_string(admin_port) + ". Exiting.", 40);
-        return;
+        return -1;
     }
 
     be_logger.log("Backend server accepting messages from admin on port " + std::to_string(admin_port), 20);
+    std::thread admin_thread(accept_and_handle_admin_comm);
+    admin_thread.detach();
+    return 0;
+}
+
+/// @brief server loop to accept and handle connections from admin console
+void BackendServer::accept_and_handle_admin_comm(int admin_sock_fd)
+{
     while (true)
     {
         // accept connection from admin, which returns a fd to communicate directly with the server
@@ -577,6 +577,7 @@ void BackendServer::admin_kill()
 }
 
 /// @brief restarts server after pseudo kill from admin
+// TODO implement this function
 void BackendServer::admin_live()
 {
     // set flag to indicate server is now alive
@@ -597,7 +598,7 @@ void BackendServer::admin_live()
 /// @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::dispatch_checkpointing_thread()
 {
-    // dispatch a thread to
+    // dispatch a thread to start checkpointing
     be_logger.log("Dispatching thread for checkpointing", 20);
     std::thread checkpointing_thread(coordinate_checkpoint);
     checkpointing_thread.detach();
