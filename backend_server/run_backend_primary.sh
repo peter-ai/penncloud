@@ -10,4 +10,6 @@ cd ..
 cd backend_server
 make clean
 make
-./backend_main -c 6001 -g 7501 -t 5
+rm -rf KVS_6000
+mkdir KVS_6000
+./backend_main -c 6000 -t 5

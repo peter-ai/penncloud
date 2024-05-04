@@ -354,6 +354,9 @@ void Tablet::deserialize(const std::string &file_name)
     // initialize logger for this tablet
     tablet_logger = Logger("Tablet " + range_start + ":" + range_end);
 
+    // set log file name for this tablet
+    log_filename = range_start + "_" + range_end + "_log";
+
     // read until the end of the file
     while (true)
     {
