@@ -9,15 +9,26 @@
 int main(int argc, char *argv[])
 {
     int opt;
-    while ((opt = getopt(argc, argv, "p:t:")) != -1)
+    while ((opt = getopt(argc, argv, "c:g:t:")) != -1)
     {
         switch (opt)
         {
-        case 'p':
+        case 'c':
             try
             {
-                // set storage server's port
-                BackendServer::port = std::stoi(optarg);
+                // set storage server's client port
+                BackendServer::client_port = std::stoi(optarg);
+            }
+            catch (std::invalid_argument const &ex)
+            {
+                return -1;
+            }
+            break;
+        case 'g':
+            try
+            {
+                // set storage server's group communication port
+                BackendServer::group_port = std::stoi(optarg);
             }
             catch (std::invalid_argument const &ex)
             {

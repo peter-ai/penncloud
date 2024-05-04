@@ -15,8 +15,7 @@ public:
     // NOTE: if the key range is "aa" to "bz", this tablet will manage every key UP TO AND INCLUDING "bz"
     // For example, a key called bzzzz would be managed in this server. The next server would start at "ca"
     std::string range_start; // start of key range managed by this backend server
-    // ! might not need to store end of range
-    std::string range_end; // end of key range managed by this backend server
+    std::string range_end;   // end of key range managed by this backend server
 
 private:
     static const char delimiter;
@@ -55,6 +54,14 @@ public:
 
     // read value from tablet data
     std::vector<char> get_value(std::string &row, std::string &col);
+
+    // acquire exclusive lock on row
+    // this should precede ALL write operations and should be called when responding to PREPARE command
+    int acquire_exclusive_row_lock(std::string &operation, std::string &row);
+
+    // release exclusive lock on row
+    // this should only be called during an ABORT operation, since write didn't actually occur
+    void release_exclusive_row_lock(std::string &row);
 
     // add value at supplied row and column to tablet data
     // this operation acquires exclusive access to the row

@@ -10,7 +10,7 @@ struct EmailData
 	string from;
 	string subject;
 	string body;
-	string forwardedMessage; // This will hold the UIDLs of the email we are trying to forward
+	string oldBody;
 };
 
 std::string parseEmailField(const std::string &emailContents, const std::string &field, size_t limit)
@@ -44,41 +44,166 @@ EmailData parseEmail(const std::vector<char> &source)
 	if (forwardPos != std::string::npos)
 	{
 		// If there is a forwarded message, capture it
-		data.forwardedMessage = emailContents.substr(forwardPos);
+		data.oldBody = emailContents.substr(forwardPos);
 	}
 	return data;
 }
+
+vector<char> charifyEmailContent(const EmailData &email)
+{
+	string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
+	std::vector<char> char_vector(data.begin(), data.end());
+	return char_vector;
+}
+
+// Function to split a vector<char> based on a vector<char> delimiter
+std::vector<std::vector<char>> split_vector_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
+{
+	std::vector<std::vector<char>> result;
+	size_t start = 0;
+	size_t end = data.size();
+
+	while (start < end)
+	{
+		// Find the next occurrence of delimiter starting from 'start'
+		auto pos = std::search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
+
+		if (pos == data.end())
+		{
+			// No delimiter found, copy the rest of the vector
+			result.emplace_back(data.begin() + start, data.end());
+			break;
+		}
+		else
+		{
+			// Delimiter found, copy up to the delimiter and move 'start' past the delimiter
+			result.emplace_back(data.begin() + start, pos);
+			start = std::distance(data.begin(), pos) + delimiter.size();
+		}
+	}
+
+	return result;
+}
+
+// Function to split a vector<char> based on the first occurrence of a vector<char> delimiter
+std::vector<std::vector<char>> split_vec_first_delim_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
+{
+	std::vector<std::vector<char>> result;
+	size_t start = 0;
+
+	// Find the first occurrence of delimiter in data
+	auto pos = std::search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
+
+	if (pos == data.end())
+	{
+		// No delimiter found, return the whole vector as a single part
+		result.emplace_back(data.begin(), data.end());
+	}
+	else
+	{
+		// Delimiter found, split at the delimiter
+		result.emplace_back(data.begin() + start, pos);			 // Part before the delimiter
+		result.emplace_back(pos + delimiter.size(), data.end()); // Part after the delimiter
+	}
+
+	return result;
+}
+
+EmailData parseEmailFromMailForm(const HttpRequest &req)
+{
+	EmailData emailData;
+
+	// Check if the request contains a body
+	if (!req.body_as_bytes().empty())
+	{
+
+		// Find form boundary
+		std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
+		std::string header_str(headers[0]);
+
+		// boundary provided by form
+		std::vector<std::string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
+		std::vector<char> bound_vec(find_boundary.back().begin(), find_boundary.back().end());
+
+		std::vector<char> line_feed = {'\r', '\n'};
+
+		// split body on boundary
+		std::vector<std::vector<char>> parts = split_vector_mbox(req.body_as_bytes(), bound_vec);
+
+		// Skip the first and the last part as they are the boundary preamble and closing
+		for (size_t i = 1; i < parts.size() - 1; ++i)
+		{
+
+			std::vector<char> double_line_feed = {'\r', '\n', '\r', '\n'}; // Correct delimiter for headers and body separation
+
+			std::vector<std::vector<char>> header_and_body = split_vec_first_delim_mbox(parts[i], double_line_feed);
+
+			if (header_and_body.size() < 2)
+				continue; // In case of any parsing error
+
+			std::string headers(header_and_body[0].begin(), header_and_body[0].end());
+			std::string body(header_and_body[1].begin(), header_and_body[1].end());
+
+			headers = Utils::trim(headers);
+			body = Utils::trim(body);
+
+			// cout << "Header:" << headers << endl;
+			// cout << "Bodyy:" << body << endl;
+
+			// Finding the name attribute in the headers
+			auto name_pos = headers.find("name=");
+
+			if (name_pos != std::string::npos)
+			{
+				size_t start = name_pos + 6; // Skip 'name="'
+
+				size_t end = headers.find('"', start);
+				std::string name = headers.substr(start, end - start);
+
+				// cout << name << endl;
+
+				// Store the corresponding value in the correct field
+				if (name == "time")
+				{
+					emailData.time = "time: " + body;
+				}
+				else if (name == "from")
+				{
+					emailData.from = "from: " + body;
+				}
+				else if (name == "to")
+				{
+					emailData.to = "to: " + body;
+				}
+				else if (name == "subject")
+				{
+					emailData.subject = "subject: " + body;
+				}
+				else if (name == "body")
+				{
+					emailData.body = "body: " + body;
+				}
+				else if (name == "oldBody")
+				{
+					emailData.oldBody = "oldBody: " + body;
+				}
+			}
+		}
+	}
+	std::cout << "Time: " << emailData.time << std::endl;
+
+	std::cout << "To: " << emailData.to << std::endl;
+	std::cout << "From: " << emailData.from << std::endl;
+	std::cout << "Subject: " << emailData.subject << std::endl;
+	std::cout << "Body: " << emailData.body << std::endl;
+	std::cout << "Old Body: " << emailData.oldBody << std::endl;
+
+	return emailData;
+}
+
 /**
  * Helper functions
  */
-
-void computeDigest(char *data, int dataLengthBytes,
-				   unsigned char *digestBuffer)
-{
-	/* The digest will be written to digestBuffer, which must be at least MD5_DIGEST_LENGTH bytes long */
-	MD5_CTX c;
-	MD5_Init(&c);
-	MD5_Update(&c, data, dataLengthBytes);
-	MD5_Final(digestBuffer, &c);
-}
-
-// compute unique hash for email ID
-string computeEmailMD5(const string &emailText)
-{
-	unsigned char digestBuffer[MD5_DIGEST_LENGTH];
-
-	computeDigest(const_cast<char *>(emailText.data()), emailText.length(),
-				  digestBuffer);
-
-	stringstream hexStream;
-
-	hexStream << hex << std::setfill('0');
-	for (int i = 0; i < MD5_DIGEST_LENGTH; ++i)
-	{
-		hexStream << std::setw(2) << (unsigned int)digestBuffer[i];
-	}
-	return hexStream.str();
-}
 
 // takes the a path's request and parses it to user mailbox key "user1-mailbox/"
 string parseMailboxPathToRowKey(const string &path)
@@ -94,7 +219,16 @@ string parseMailboxPathToRowKey(const string &path)
 			return matches[1].str() + "-mailbox/"; // Return the captured username
 		}
 	}
+	// Execute the regex search
+	if (std::regex_search(path, matches, pattern))
+	{
+		if (matches.size() > 1)
+		{										   // Check if there is a capturing group
+			return matches[1].str() + "-mailbox/"; // Return the captured username
+		}
+	}
 
+	return ""; // Return empty string if no username is found
 	return ""; // Return empty string if no username is found
 }
 
@@ -137,73 +271,18 @@ bool startsWith(const std::vector<char> &vec, const std::string &prefix)
 	return std::string(vec.begin(), vec.begin() + prefix.size()) == prefix;
 }
 
-// retrieves query parameter from a request's path /api/user/mailbox/send?uidl=12345
-// std::string get_query_parameter(const string& path, const std::string &key)
-// {
-// 	std::unordered_map<std::string, std::string> query_params;
-// 	size_t queryStart = path.find('?');
-// 	if (queryStart != std::string::npos)
-// 	{
-// 		std::string queryString = path.substr(queryStart + 1);
-// 		std::istringstream queryStream(queryString);
-// 		std::string param;
-// 		while (std::getline(queryStream, param, '&'))
-// 		{
-// 			size_t equals = param.find('=');
-// 			if (equals != std::string::npos)
-// 			{
-// 				std::string param_key = param.substr(0, equals);
-// 				std::string param_value = param.substr(equals + 1);
-// 				query_params[param_key] = param_value;
-// 			}
-// 		}
-// 	}
-// 	// Attempt to find the key in the parsed query parameters
-// 	auto it = query_params.find(key);
-// 	if (it != query_params.end())
-// 	{
-// 		return it->second;
-// 	}
-// 	return ""; // Return empty string if key is not found
-// }
-
-vector<char> modifyForwardedEmail(vector<char> emailData)
-{
-}
-
 /**
  * HANDLERS
  */
 
 // UIDL: time, to, from, subject
-
 // EMAIL FORMAT //
-
 // time: Fri Mar 15 18:47:23 2024\n
 // to: recipient@example.com\n
 // from: sender@example.com\n
 // subject: Your Subject Here\n
 // body: Hello, this is the body of the email.\n
-// response: UIDL of message we are responding to
 // forward: UIDL of message that we are forwarding
-// ---------- Forwarded message ---------
-// time: Fri Mar 15 18:47:23 2024\n
-// to: recipient@example.com\n
-// from: sender@example.com\n
-// subject: Your Subject Here\n
-// body: Hello, this is the body of the email.\n
-
-// time: Fri Mar 15 18:47:23 2024\n
-// to: recipient@example.com\n
-// from: sender@example.com\n
-// subject: Your Subject Here\n
-// body: Hello, this is the body of the email.\n
-// forwarded message:
-// time: Fri Mar 15 18:47:23 2024\n
-// to: recipient@example.com\n
-// from: sender@example.com\n
-// subject: Your Subject Here\n
-// body: Hello, this is the body of the email.\n
 
 void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
@@ -227,63 +306,31 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 	if (startsWith(kvsResponse, "+OK "))
 	{
 		const string prefix = "+OK ";
-		// Check if the vector is long enough to contain the prefix and if the prefix exists
-		if (kvsResponse.size() >= prefix.size() && std::equal(prefix.begin(), prefix.end(), kvsResponse.begin()))
-		{
-			// Erase the prefix "+OK " from the vector
-			kvsResponse.erase(kvsResponse.begin(), kvsResponse.begin() + prefix.size());
-			EmailData storedEmail = parseEmail(kvsResponse);
-			// CASE 1: forwarding an email that has not been forwarded yet
-			if (storedEmail.forwardedMessage.empty())
-			{
-				EmailData emailToStore = parseEmail(request.body_as_bytes());
-				vector<string> recipientsEmails = parseRecipients(emailToStore.to);
-				for (string recipientEmail : recipientsEmails)
-				{
-					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
-					vector<char> col(colKey.begin(), colKey.end());
-					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-					vector<char> row(rowKey.begin(), rowKey.end());
-					vector<char> value(emailToStore.body.begin(), emailToStore.body.end());
-					vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-					if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
-					{
-						response.set_code(501); // Internal Server Error
-						response.append_body_str("-ER Failed to forward email.");
-						break;
-					}
-				}
-				response.set_code(200); // Success
-				response.append_body_str("+OK Email forwarded successfully.");
-			}
-			// CASE 2: forwarding an already forwarded email
-			// subject of og email = subject of forwarded email
-			// kvs response of get body append to forwarded body of email to store
-			else
-			{
-				EmailData emailToStore = parseEmail(request.body_as_bytes());
-				vector<string> recipientsEmails = parseRecipients(emailToStore.to);
-				for (string recipientEmail : recipientsEmails)
-				{
-					string colKey = computeEmailMD5(emailToStore.time + emailToStore.from + emailToStore.to + emailToStore.subject);
-					vector<char> col(colKey.begin(), colKey.end());
-					string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-					vector<char> row(rowKey.begin(), rowKey.end());
-					vector<char> value(emailToStore.body.begin(), emailToStore.body.end());
-					vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-					if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
-					{
-						response.set_code(501); // Internal Server Error
-						response.append_body_str("-ER Failed to forward email.");
-						break;
-					}
-				}
-				response.set_code(200); // Success
-				response.append_body_str("+OK Email forwarded successfully.");
 
-				// must append
+		// Erase the prefix "+OK " from the vector
+		kvsResponse.erase(kvsResponse.begin(), kvsResponse.begin() + prefix.size());
+		EmailData storedEmail = parseEmail(kvsResponse);
+		// CASE 1: forwarding an email that has not been forwarded yet
+
+		EmailData emailToForward = parseEmailFromMailForm(request);
+		vector<string> recipientsEmails = parseRecipients(emailToForward.to);
+		for (string recipientEmail : recipientsEmails)
+		{
+			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
+			vector<char> col(colKey.begin(), colKey.end());
+			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+			vector<char> row(rowKey.begin(), rowKey.end());
+			vector<char> value = charifyEmailContent(emailToForward);
+			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+			{
+				response.set_code(501); // Internal Server Error
+				response.append_body_str("-ER Failed to forward email.");
+				break;
 			}
 		}
+		response.set_code(200); // Success
+		response.append_body_str("+OK Email forwarded successfully.");
 	}
 	// else couldn't find first email
 	else
@@ -309,46 +356,44 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	string colKey = request.get_qparam("uidl");
 
 	// prepare char vectors as arguments to kvs util
-	vector<char> value_original = request.body_as_bytes();
 	vector<char> row(rowKey.begin(), rowKey.end());
 	vector<char> col(colKey.begin(), colKey.end());
 
 	// kvs response
 	vector<char> kvsGetResponse = FeUtils::kv_get(socket_fd, row, col);
 
-	if (!kvsGetResponse.empty() && startsWith(kvsGetResponse, "+OK"))
+	if (startsWith(kvsGetResponse, "+OK "))
 	{
-		// we append the kvs response
-		EmailData responseEmail = parseEmail(request.body_as_bytes());
-		vector<string> recipientsEmails = parseRecipients(responseEmail.to);
+		const string prefix = "+OK ";
 
+		// Erase the prefix "+OK " from the vector
+		kvsGetResponse.erase(kvsGetResponse.begin(), kvsGetResponse.begin() + prefix.size());
+		EmailData storedEmail = parseEmail(kvsGetResponse);
+		EmailData emailResponse = parseEmailFromMailForm(request);
+		vector<string> recipientsEmails = parseRecipients(emailResponse.to);
 		for (string recipientEmail : recipientsEmails)
 		{
-			cout << "entering recipient loop" << endl;
-			string colKey = computeEmailMD5(responseEmail.time + responseEmail.from + responseEmail.to + responseEmail.subject);
+			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value_response(responseEmail.body.begin(), responseEmail.body.end());
-
-			// we also need to append the original email to the body of the response email
-			value_response.insert(value_response.end(), value_original.begin(), value_original.end());
-
-			vector<char> kvsPutResponse = FeUtils::kv_put(socket_fd, row, col, value_response);
-			if (startsWith(kvsPutResponse, "-ER "))
+			vector<char> value = charifyEmailContent(emailResponse);
+			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
 			{
 				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to respond to email.");
+				response.append_body_str("-ER Failed to forward email.");
 				break;
 			}
 		}
 		response.set_code(200); // Success
-		response.append_body_str("+OK Reply sent successfully.");
+		response.append_body_str("+OK Email forwarded successfully.");
 	}
+	// else couldn't find first email
 	else
 	{
-		response.set_code(404); // Internal Server Error
-		response.append_body_str("-ER Failed to respond to email.");
+		response.append_body_str("-ER Error processing request.");
+		response.set_code(400); // Bad request
 	}
 	response.set_header("Content-Type", "text/html");
 	close(socket_fd);
@@ -397,40 +442,38 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
+	EmailData email = parseEmailFromMailForm(request);
 
-	// Parse individual parts
-	EmailData email = parseEmail(request.body_as_bytes());
+	// recipients
+	vector<string> recipientsEmails = parseRecipients(email.to);
 
-	// compute unique hash UIDL (column value) based on email's time, to, from, subject lines
-	string colKey = computeEmailMD5(email.time + email.from + email.to + email.subject);
-	string rowKey = extractUsernameFromEmailAddress(email.from) + "-mailbox/";
-
-	vector<char> value = request.body_as_bytes();
-	vector<char> row(rowKey.begin(), rowKey.end());
-	vector<char> col(colKey.begin(), colKey.end());
-
-	vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-
-	if (!kvsResponse.empty() && startsWith(kvsResponse, "+OK"))
+	for (string recipientEmail : recipientsEmails)
 	{
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email sent successfully.");
-	}
-	else
-	{
-		response.set_code(501); // Internal Server Error
-		response.append_body_str("-ER Failed to send email.");
-	}
+		string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
+		string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+		vector<char> value = charifyEmailContent(email);
+		vector<char> row(rowKey.begin(), rowKey.end());
+		vector<char> col(colKey.begin(), colKey.end());
+		vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
+		if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+		{
+			response.set_code(501); // Internal Server Error
+			response.append_body_str("-ER Failed to send email.");
+			break;
+		}
+	}
+	response.set_code(200); // Success
+	response.append_body_str("+OK Email sent successfully.");
 	response.set_header("Content-Type", "text/html");
 	close(socket_fd);
-	// end of handler --> http server sends response back to client
 }
 
 // retrieves an email
 void email_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Email Handler");
+	logger.log("Received POST request", LOGGER_INFO);
 	logger.log("Received POST request", LOGGER_INFO);
 	logger.log("Path is: " + request.path, LOGGER_INFO);
 
@@ -441,7 +484,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
-	string rowKey = parseMailboxPathToRowKey(request.path); // TODO: @Milan - this function does not work - it returns an empty string for some reason
+	string rowKey = parseMailboxPathToRowKey(request.path);
 	// get UIDL from path query
 	string colKey = request.get_qparam("uidl");
 
