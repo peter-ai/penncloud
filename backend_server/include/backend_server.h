@@ -1,6 +1,7 @@
 #ifndef BACKEND_SERVER_H
 #define BACKEND_SERVER_H
 
+#include <fcntl.h>
 #include <sys/socket.h> // socket
 #include <netinet/in.h> // sockaddr_in
 #include <thread>       // std::thread
