@@ -23,7 +23,8 @@ public:
 
     // fields (provided at startup to run server)
     static int client_port; // port server accepts client connections on - provided at startup
-    static int group_port;  // port server accepts intergroup communication on - provided at startup
+    static int group_port;  // port server accepts intergroup communication on (calculated from client port)
+    static int admin_port;  // port server accepts admin communication on (calculated from client port)
     static int num_tablets; // number of static tablets on this server - provided at startup
 
     // fields (provided by coordinator)
@@ -35,8 +36,6 @@ public:
     static std::mutex secondary_ports_lock;         // lock for list of secondary ports, since secondary ports may be modified by thread receiving messages from coordinator
 
     // internal server fields
-    static int client_comm_sock_fd;                             // bound server socket's fd for client communication
-    static int group_comm_sock_fd;                              // bound server socket's fd for group communication
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
 
     // storage fields
@@ -65,21 +64,29 @@ private:
     // make default constructor private
     BackendServer() {}
 
-    static void accept_and_handle_clients(); // main server loop to accept and handle clients
-
-    // KVS server state initalization
-    static int bind_socket(int port);               // creates a socket and binds to the specified port. Returns the fd that the socket is bound to.
+    // State initalization methods
     static int initialize_state_from_coordinator(); // contact coordinator to get information
     static int initialize_tablets();                // initialize tablets on this server and each tablet's corresponding append-only log
 
-    // Communication methods
+    // Group communication methods
     static void dispatch_group_comm_thread();   // dispatch thread to loop and accept communication from servers in group
     static void accept_and_handle_group_comm(); // server loop to accept and handle connections from servers in its replica group
-    static void send_coordinator_heartbeat();   // dispatch thread to send heartbeat to coordinator port
+
+    // Coordinator communication methods
+    static void send_coordinator_heartbeat(); // dispatch thread to send heartbeat to coordinator port
+
+    // Admin communication
+    static void dispatch_admin_listener_thread(); // dispatch thread to read from admin
+    static void accept_and_handle_admin_comm();   // open connection with admin port and read messages
+    static void admin_kill();                     // handles kill command from admin console
+    static void admin_live();                     // handles live command from admin console
 
     // Checkpointing methods
     static void dispatch_checkpointing_thread(); // dispatch thread to checkpoint server tablets
     static void coordinate_checkpoint();         // loop for primary to initiate coordinated checkpointing
+
+    // Client communication methods
+    static void accept_and_handle_clients(); // main server loop to accept and handle clients
 };
 
 #endif

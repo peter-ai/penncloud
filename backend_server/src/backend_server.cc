@@ -23,6 +23,7 @@ const int BackendServer::coord_port = 4999;
 // fields provided at startup
 int BackendServer::client_port = 0;
 int BackendServer::group_port = 0;
+int BackendServer::admin_port = 0;
 int BackendServer::num_tablets = 0;
 
 // fields provided by coordinator
@@ -34,8 +35,6 @@ std::unordered_set<int> BackendServer::secondary_ports;
 std::mutex BackendServer::secondary_ports_lock;
 
 // internal server fields
-int BackendServer::client_comm_sock_fd = -1;
-int BackendServer::group_comm_sock_fd = -1;
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 
 // storage fields
@@ -57,21 +56,16 @@ uint32_t BackendServer::last_checkpoint = 0;
 /// @brief Initialize server state from coordinator, dispatch threads to read from group and clients, and dispatch checkpointing thread
 void BackendServer::run()
 {
-    // Bind server to client connection port and store fd to accept client connections on socket
-    client_comm_sock_fd = bind_socket(client_port);
-    if (client_comm_sock_fd < 0)
-    {
-        be_logger.log("Failed to bind server to client port " + std::to_string(client_port) + ". Exiting.", 40);
-        return;
-    }
-
-    // Bind server to group communication port and store fd to accept group communication on socket
-    group_comm_sock_fd = bind_socket(group_port);
-    if (group_comm_sock_fd < 0)
-    {
-        be_logger.log("Failed to bind server to group port " + std::to_string(group_port) + ". Exiting.", 40);
-        return;
-    }
+    /**
+     * Steps
+     * 1. Initialize state from coordinator
+     * 2. Initialize storage tablets
+     * 3. Dispatch admin listener thread
+     * 4. Dispatch group communication thread
+     * 5. Dispatch checkpointing thread
+     * 6. Dispatch heartbeat thread
+     * 7. Accept and handle client connections
+     */
 
     // ! COORDINATOR STATE INITIALIZATION
     // // initialize server's state from coordinator
@@ -112,14 +106,24 @@ void BackendServer::run()
         be_logger.log("Failed to initialize server tablets. Exiting.", 40);
         return;
     }
-    dispatch_group_comm_thread(); // dispatch thread to loop and accept communication from servers in group
-    send_coordinator_heartbeat(); // dispatch thread to send heartbeats to coordinator
-    accept_and_handle_clients();  // run main server loop to accept client connections
+    dispatch_admin_listener_thread(); // dispatch thread to accept communication from admin
+    dispatch_group_comm_thread();     // dispatch thread to accept communication from servers in group
+    dispatch_checkpointing_thread();  // dispatch thread to checkpoint storage tablets
+    send_coordinator_heartbeat();     // dispatch thread to send heartbeats to coordinator
+    accept_and_handle_clients();      // run main server loop to accept client connections
 }
 
 /// @brief main server loop to accept and handle clients
 void BackendServer::accept_and_handle_clients()
 {
+    // Bind server to client connection port and store fd to accept client connections on socket
+    int client_comm_sock_fd = BeUtils::bind_socket(client_port);
+    if (client_comm_sock_fd < 0)
+    {
+        be_logger.log("Failed to bind server to client port " + std::to_string(client_port) + ". Exiting.", 40);
+        return;
+    }
+
     be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
     while (true)
     {
@@ -148,49 +152,6 @@ void BackendServer::accept_and_handle_clients()
 // *********************************************
 // KVS SERVER INITIALIZATION
 // *********************************************
-
-/// @brief Creates a socket and binds to the specified port
-int BackendServer::bind_socket(int port)
-{
-    // create server socket
-    int sock_fd;
-    if ((sock_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
-    {
-        be_logger.log("Unable to create server socket.", 40);
-        return -1;
-    }
-
-    // bind server socket to provided port (ensure port can be reused)
-    sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(port);
-    server_addr.sin_addr.s_addr = INADDR_ANY;
-
-    int opt = 1;
-    if ((setsockopt(sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
-    {
-        be_logger.log("Unable to reuse port to bind socket.", 40);
-        return -1;
-    }
-
-    if ((bind(sock_fd, (const sockaddr *)&server_addr, sizeof(server_addr))) < 0)
-    {
-        be_logger.log("Unable to bind socket to port.", 40);
-        return -1;
-    }
-
-    // listen for connections on port
-    const int BACKLOG = 20;
-    if ((listen(sock_fd, BACKLOG)) < 0)
-    {
-        be_logger.log("Unable to listen for connections on bound socket.", 40);
-        return -1;
-    }
-
-    be_logger.log("Backend server successfully bound on port " + std::to_string(port), 20);
-    return sock_fd;
-}
 
 /// @brief Contacts coordinator to retrieve initialization state
 // ! look into this later once coordinator is complete
@@ -366,6 +327,14 @@ void BackendServer::dispatch_group_comm_thread()
 /// @brief server loop to accept and handle connections from servers in replica group
 void BackendServer::accept_and_handle_group_comm()
 {
+    // Bind server to group communication port and store fd to accept group communication on socket
+    int group_comm_sock_fd = BeUtils::bind_socket(group_port);
+    if (group_comm_sock_fd < 0)
+    {
+        be_logger.log("Failed to bind server to group port " + std::to_string(group_port) + ". Exiting.", 40);
+        return;
+    }
+
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
     while (true)
     {
@@ -452,6 +421,79 @@ std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<in
         }
     }
     return dead_servers;
+}
+
+// **************************************************
+// ADMIN COMMUNICATION
+// **************************************************
+
+/// @brief initialize and detach thread to listen for messages from admin
+void BackendServer::dispatch_admin_listener_thread()
+{
+    be_logger.log("Dispatching thread to accept and handle admin communication", 20);
+    std::thread admin_thread(accept_and_handle_admin_comm);
+    admin_thread.detach();
+}
+
+/// @brief server loop to accept and handle connections from admin console
+void BackendServer::accept_and_handle_admin_comm()
+{
+    // Bind server to admin port and store fd to accept admin communication on socket
+    int admin_sock_fd = BeUtils::bind_socket(admin_port);
+    if (admin_sock_fd < 0)
+    {
+        be_logger.log("Failed to bind server to admin port " + std::to_string(admin_port) + ". Exiting.", 40);
+        return;
+    }
+
+    be_logger.log("Backend server accepting messages from admin on port " + std::to_string(admin_port), 20);
+    while (true)
+    {
+        // accept connection from admin, which returns a fd to communicate directly with the server
+        int admin_fd;
+        struct sockaddr_in admin_addr;
+        socklen_t admin_addr_size = sizeof(admin_addr);
+        if ((admin_fd = accept(admin_sock_fd, (sockaddr *)&admin_addr, &admin_addr_size)) < 0)
+        {
+            be_logger.log("Unable to accept incoming connection from admin. Skipping", 30);
+            close(admin_fd);
+            // error with incoming connection should NOT break the loop
+            continue;
+        }
+
+        // read message from admin console
+        BeUtils::ReadResult admin_msg = BeUtils::read_with_crlf(admin_fd);
+        if (admin_msg.error_code < 0)
+        {
+            be_logger.log("Error reading message from admin.", 30);
+            close(admin_fd);
+            continue;
+        }
+        // convert admin message to string, since it's string compatible
+        std::string admin_msg_str(admin_msg.byte_stream.begin(), admin_msg.byte_stream.end());
+        if (admin_msg_str == "KILL")
+        {
+            admin_kill();
+        }
+        else if (admin_msg_str == "LIVE")
+        {
+            admin_live();
+        }
+        else
+        {
+            be_logger.log("Unrecognized command from admin. This should NOT occur", 50);
+        }
+        // close connection with admin after handling command
+        close(admin_fd);
+    }
+}
+
+void BackendServer::admin_kill()
+{
+}
+
+void BackendServer::admin_live()
+{
 }
 
 // **************************************************
