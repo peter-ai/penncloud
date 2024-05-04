@@ -9,7 +9,54 @@
 
 Logger be_utils_logger = Logger("BE Utils");
 
-// @brief Open a connection to the specified port. Returns a fd if successful.
+// *********************************************
+// CONNECTION METHODS
+// *********************************************
+
+/// @brief Creates a socket and binds the server to listen on the specified port. Returns a fd if successful, -1 otherwise.
+int BeUtils::bind_socket(int port)
+{
+    // create server socket
+    int sock_fd;
+    if ((sock_fd = socket(PF_INET, SOCK_STREAM, 0)) < 0)
+    {
+        be_utils_logger.log("Unable to create server socket.", 40);
+        return -1;
+    }
+
+    // bind server socket to provided port (ensure port can be reused)
+    sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(port);
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+
+    int opt = 1;
+    if ((setsockopt(sock_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
+    {
+        be_utils_logger.log("Unable to reuse port to bind socket.", 40);
+        return -1;
+    }
+
+    if ((bind(sock_fd, (const sockaddr *)&server_addr, sizeof(server_addr))) < 0)
+    {
+        be_utils_logger.log("Unable to bind socket to port.", 40);
+        return -1;
+    }
+
+    // listen for connections on port
+    const int BACKLOG = 20;
+    if ((listen(sock_fd, BACKLOG)) < 0)
+    {
+        be_utils_logger.log("Unable to listen for connections on bound socket.", 40);
+        return -1;
+    }
+
+    be_utils_logger.log("Server successfully bound on port " + std::to_string(port), 20);
+    return sock_fd;
+}
+
+/// @brief Open a connection with the specified port. Returns a fd if successful, -1 otherwise.
 int BeUtils::open_connection(int port)
 {
     be_utils_logger.log("Opening connection with port " + std::to_string(port), 20);
@@ -42,21 +89,21 @@ int BeUtils::open_connection(int port)
     return sock_fd;
 }
 
-/**
- * WRITE OPERATIONS
- */
+// *********************************************
+// WRITE METHODS
+// *********************************************
 
-int BeUtils::write_to_coord(int fd, std::string &msg)
+int BeUtils::write_with_crlf(int fd, std::string &msg)
 {
-    // append delimiter to end of coordinator msg
+    // append delimiter to end of msg
     msg += "\r\n";
-    // send msg to coordinator
+    // send msg to fd
     int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
     while (bytes_sent != msg.length())
     {
         if (bytes_sent < 0)
         {
-            be_utils_logger.log("Unable to send message to coordinator", 40);
+            be_utils_logger.log("Unable to send message", 40);
             return -1;
         }
         bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
@@ -64,78 +111,153 @@ int BeUtils::write_to_coord(int fd, std::string &msg)
     return 0;
 }
 
-int BeUtils::write(int fd, std::vector<char> &msg)
+/// @brief Write message to fd, with message size (4 bytes) prepended to start of message
+int BeUtils::write_with_size(int fd, std::vector<char> &msg)
 {
     // Insert size of message at beginning of msg
     std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
     msg.insert(msg.begin(), size_prefix.begin(), size_prefix.end());
 
-    // write response to provided fd until all bytes in vector are sent
+    // write msg to provided fd until all bytes in vector are sent
     size_t total_bytes_sent = 0;
+    int num_retries = 3;
     while (total_bytes_sent < msg.size())
     {
         int bytes_sent = send(fd, msg.data() + total_bytes_sent, msg.size() - total_bytes_sent, 0);
         if (bytes_sent < 0)
         {
+            // retry sending the message
+            if (num_retries > 0)
+            {
+                num_retries--;
+                continue;
+            }
+
+            // reached max number of retries for send, issue is likely with remote server
             be_utils_logger.log("Unable to send message", 40);
             return -1;
         }
+        num_retries = 3; // reset number of retries on each successful send
         total_bytes_sent += bytes_sent;
     }
     return 0;
 }
 
-/**
- * READ OPERATIONS
- */
+// *********************************************
+// READ METHODS
+// *********************************************
 
-// ! might need to rework this to send back a ReadResult too
-std::string BeUtils::read_from_coord(int fd)
+/// @brief Waits for READ events on a set of fds. Returns 0 if all fds responded. Returns -1 for error or timeout.
+int BeUtils::wait_for_events(const std::vector<int> &fds, int timeout_ms)
 {
+    // create poll vector containing all input fds
+    std::vector<pollfd> pollfds;
+    for (int fd : fds)
+    {
+        pollfd pfd;
+        pfd.fd = fd;
+        pfd.events = POLLIN; // Waiting for input event to fd
+        pollfds.push_back(pfd);
+    }
+
+    // set start time for polling and time left until polling expires
+    auto start = std::chrono::system_clock::now();
+    auto end = start + std::chrono::milliseconds(timeout_ms);
+    int remaining_ms = timeout_ms;
+
+    // loop until event is recorded on each fd or timeout occurs
+    while (true)
+    {
+        int result = poll(pollfds.data(), pollfds.size(), remaining_ms);
+        // error occurred
+        if (result == -1)
+        {
+            be_utils_logger.log("Error occurred while polling", 40);
+            return -1;
+        }
+        // timeout occurred
+        else if (result == 0)
+        {
+            be_utils_logger.log("Timeout occurred while polling", 20);
+            return -1;
+        }
+        else
+        {
+            // check if an event was recorded on all fds
+            bool all_fds_responded = true;
+            for (const auto &pfd : pollfds)
+            {
+                // read event did not occur on this file descriptor - need to continue reading
+                if (!(pfd.revents & POLLIN))
+                {
+                    all_fds_responded = false;
+                    break;
+                }
+            }
+            // read event occurred on all fds, return 0
+            if (all_fds_responded)
+            {
+                be_utils_logger.log("Read event available on all fds", 20);
+                return 0;
+            }
+
+            // Update remaining timeout
+            auto now = std::chrono::system_clock::now();
+            remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count();
+            // no timeout left, return
+            if (remaining_ms <= 0)
+            {
+                be_utils_logger.log("Timeout occurred while polling", 20);
+                return -1;
+            }
+        }
+    }
+}
+
+/// @brief Read message from fd, with CRLF marking the end of the message
+BeUtils::ReadResult BeUtils::read_with_crlf(int fd)
+{
+    // struct to return from method
+    BeUtils::ReadResult result;
+
     // read from fd
-    std::string response;
     int bytes_recvd;
-    bool res_complete = false;
     while (true)
     {
         char buf[1024]; // size of buffer for CURRENT read
         bytes_recvd = recv(fd, buf, sizeof(buf), 0);
 
-        // error while reading from coordinator
+        // error while reading from source
         if (bytes_recvd < 0)
         {
-            be_utils_logger.log("Unable to receive message from coordinator", 40);
+            be_utils_logger.log("Error reading from source", 40);
+            result.error_code = -1;
             break;
         }
-        // check condition where connection was preemptively closed by coordinator
+        // check condition where connection was preemptively closed by source
         else if (bytes_recvd == 0)
         {
-            be_utils_logger.log("Connection to coordinator closed", 50);
+            be_utils_logger.log("Remote socket closed connection", 40);
+            result.error_code = -1;
             break;
         }
 
         for (int i = 0; i < bytes_recvd; i++)
         {
             // check last index of coordinator's response for \r and curr index in buf for \n
-            if (response.length() > 0 && response.back() == '\r' && buf[i] == '\n')
+            if (result.byte_stream.size() > 0 && result.byte_stream.back() == '\r' && buf[i] == '\n')
             {
-                response.pop_back(); // delete \r in client message
-                res_complete = true; // exit loop, we have full response from coordinator
+                result.byte_stream.pop_back(); // delete \r in client message
+                return result;
             }
-            response += buf[i];
+            result.byte_stream.push_back(buf[i]);
         }
     }
-
-    // only continue past this point if the response was complete (\r\n found at end of stream)
-    if (!res_complete)
-    {
-        return "";
-    }
-    return response;
+    return result;
 }
 
-// @brief Read byte stream from fd
-BeUtils::ReadResult BeUtils::read(int fd)
+/// @brief Read message from fd, with message size (4 bytes) prepended to start of message
+BeUtils::ReadResult BeUtils::read_with_size(int fd)
 {
     // struct to return from method
     BeUtils::ReadResult result;
@@ -201,35 +323,11 @@ BeUtils::ReadResult BeUtils::read(int fd)
     return result;
 }
 
-// // @brief Read byte stream from fd with timeout for read
-// BeUtils::ReadResult BeUtils::read_with_timeout(int fd, int timeout_s)
-// {
-//     // initialize fd set to monitor for reads
-//     fd_set read_fds;
-//     FD_ZERO(&read_fds);
-//     FD_SET(fd, &read_fds);
+// *********************************************
+// HOST NUMBER <-> NETWORK VECTOR CONVERSION
+// *********************************************
 
-//     // set timeout duration
-//     struct timeval timeout;
-//     timeout.tv_sec = timeout_s;
-//     timeout.tv_usec = 0;
-
-//     BeUtils::ReadResult read_result;
-
-//     // call select with specified timeout
-//     int result = select(fd + 1, &read_fds, nullptr, nullptr, &timeout);
-//     // error or timeout occurred during select call
-//     if (result <= 0)
-//     {
-//         read_result.error_code = -1;
-//         return read_result;
-//     }
-
-//     // data in fd - call read utility method to read from fd
-//     read_result = read(fd);
-//     return read_result;
-// }
-
+/// @brief Converts number in host order to number in network byte order, returning result as byte stream
 std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)
 {
     // convert to network order and interpret msg_size as bytes
@@ -240,6 +338,7 @@ std::vector<uint8_t> BeUtils::host_num_to_network_vector(uint32_t num)
     return num_vec;
 }
 
+/// @brief Converts number in network byte order to host order, returning result as unsigned integer
 uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
 {
     // parse size from first 4 bytes of num vector
@@ -247,71 +346,4 @@ uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
     std::memcpy(&num, num_vec.data(), sizeof(uint32_t));
     // convert number received from network order to host order
     return ntohl(num);
-}
-
-// Waits for an event on a set of fds. Returns 0 if all fds responded. Returns -1 for error or timeout.
-int BeUtils::wait_for_events(std::vector<int> &fds, int timeout_ms)
-{
-    // create poll vector containing all input fds
-    std::vector<pollfd> pollfds;
-    for (int fd : fds)
-    {
-        pollfd pfd;
-        pfd.fd = fd;
-        pfd.events = POLLIN; // Waiting for input event to fd
-        pollfds.push_back(pfd);
-    }
-
-    // set start time for polling and time left until polling expires
-    auto start = std::chrono::system_clock::now();
-    auto end = start + std::chrono::milliseconds(timeout_ms);
-    int remaining_ms = timeout_ms;
-
-    // loop until event is recorded on each fd or timeout occurs
-    while (true)
-    {
-        int result = poll(pollfds.data(), pollfds.size(), remaining_ms);
-        // error occurred
-        if (result == -1)
-        {
-            be_utils_logger.log("Error occurred while polling", 40);
-            return -1;
-        }
-        // timeout occurred
-        else if (result == 0)
-        {
-            be_utils_logger.log("Timeout occurred while polling", 20);
-            return -1;
-        }
-        else
-        {
-            // check if an event was recorded on all fds
-            bool all_fds_responded = true;
-            for (const auto &pfd : pollfds)
-            {
-                // read event did not occur on this file descriptor - need to continue reading
-                if (!(pfd.revents & POLLIN))
-                {
-                    all_fds_responded = false;
-                    break;
-                }
-            }
-            // read event occurred on all fds, return 0
-            if (all_fds_responded)
-            {
-                be_utils_logger.log("Read event available on all fds", 20);
-                return 0;
-            }
-
-            // Update remaining timeout
-            auto now = std::chrono::system_clock::now();
-            remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - now).count();
-            // no timeout left, return
-            if (remaining_ms <= 0)
-            {
-                be_utils_logger.log("Timeout occurred while polling", 20);
-                return -1;
-            }
-        }
-    }
 }

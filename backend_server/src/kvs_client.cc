@@ -65,6 +65,9 @@ void KVSClient::read_from_client()
             }
         }
     }
+
+    // set this thread's flag to false to indicate that thread should be joined
+    BackendServer::client_connections[pthread_self()] = false;
     close(client_fd);
 }
 
@@ -169,7 +172,7 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
     }
 
     // write message to primary
-    BeUtils::write(primary_fd, inputs);
+    BeUtils::write_with_size(primary_fd, inputs);
 
     // wait for primary to respond
     kvs_client_logger.log("Waiting for response from primary", 20);
@@ -183,7 +186,7 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
         return res_bytes;
     }
     kvs_client_logger.log("Received response from primary - sending response to client", 20);
-    BeUtils::ReadResult primary_res = BeUtils::read(primary_fd);
+    BeUtils::ReadResult primary_res = BeUtils::read_with_size(primary_fd);
     if (primary_res.error_code < 0)
     {
         std::string err_msg = "-ER Failed to read response from primary";
@@ -200,7 +203,7 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
 
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
-    if (BeUtils::write(client_fd, response_msg) < 0)
+    if (BeUtils::write_with_size(client_fd, response_msg) < 0)
     {
         kvs_client_logger.log("Failed to send response to client on port " + std::to_string(client_port), 20);
     }
