@@ -558,10 +558,22 @@ void BackendServer::admin_kill()
     // set flag to indicate server is dead
     is_dead = true;
 
-    // TODO kill all live client and group communication threads
+    // kill all live client connection threads
+    for (const auto &live_thread : client_connections)
+    {
+        pthread_cancel(live_thread.first);
+    }
 
-    // remove all tablets from memory
-    server_tablets.clear();
+    // kill all live group server connection threads
+    for (const auto &live_thread : group_server_connections)
+    {
+        pthread_cancel(live_thread.first);
+    }
+
+    // clear all state
+    server_tablets.clear();           // remove tablets from memory
+    client_connections.clear();       // clear map of active client connections
+    group_server_connections.clear(); // clear map of active group server connections
 }
 
 /// @brief restarts server after pseudo kill from admin
