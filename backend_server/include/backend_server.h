@@ -37,9 +37,16 @@ public:
 
     // internal server fields
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
+    static std::string disk_dir;                                // node-local storage directory (emulates disk for a server)
+    static std::atomic<bool> is_dead;                           // tracks if the server is currently dead (from an admin kill command)
 
-    // storage fields
-    static std::string disk_dir; // node-local storage directory (emulates disk for a server)
+    // active connection fields (clients)
+    static std::unordered_map<pthread_t, std::atomic<bool>> client_connections;
+    static std::mutex client_connections_lock;
+
+    // active connection fields (group servers)
+    static std::unordered_map<pthread_t, std::atomic<bool>> group_server_connections;
+    static std::mutex group_server_connections_lock;
 
     // remote-write related fields
     static uint32_t seq_num;        // write operation sequence number (used by both primary to sequence an operation, used by secondary to track operations)

@@ -71,6 +71,8 @@ void KVSGroupServer::read_from_group_server()
             }
         }
     }
+    // set this thread's flag to false to indicate that thread should be joined
+    BackendServer::group_server_connections[pthread_self()] = false;
     close(group_server_fd);
 }
 
@@ -274,7 +276,7 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // read acks from all remaining servers, since these servers have read events available on their fds
     for (const auto &server : secondary_servers)
     {
-        BeUtils::read(server.second); // we don't need to do anything with the ACKs
+        BeUtils::read_with_size(server.second); // we don't need to do anything with the ACKs
     }
 
     // write END to log
@@ -335,7 +337,7 @@ bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::uno
     bool all_secondaries_in_favor = true;
     for (int secondary_fd : secondary_fds)
     {
-        BeUtils::ReadResult secondary_read = BeUtils::read(secondary_fd);
+        BeUtils::ReadResult secondary_read = BeUtils::read_with_size(secondary_fd);
         // return false if there was an error reading from a secondary
         if (secondary_read.error_code != 0)
         {
