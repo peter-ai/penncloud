@@ -50,12 +50,14 @@ public:
         code = res_code;
         const std::unordered_map<int, std::string> response_codes = {
             {200, "OK"},
+            {307, "Temporary Redirect"}, //load balancer
             {400, "Bad Request"},  // request is not as the API expects
             {401, "Unauthorized"}, // no credentials or invalid credentials
             {403, "Forbidden"},    // valid credentials but not enough privileges to perform an action on a resource
             {404, "Not Found"},
             {405, "Method Not Allowed"},
             {501, "Not Implemented"},
+            {503, "Service Unavailable"},
             {505, "HTTP Version Not Supported"}};
         reason = response_codes.at(res_code);
     }
