@@ -246,7 +246,8 @@ namespace LoadBalancer
         }
         message += "\r\n";
         send(sock, message.c_str(), message.length(), 0);
-        loadbalancer_logger.log("List of FE servers sent to Admin Console", 20);\
+        loadbalancer_logger.log("List of FE servers sent to Admin Console", 20);
+        loadbalancer_logger.log("Num of FE servers sent " + to_string(count -1 ), 20);
         close(sock);
     }
 }
