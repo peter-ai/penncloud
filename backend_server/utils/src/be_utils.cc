@@ -93,17 +93,17 @@ int BeUtils::open_connection(int port)
 // WRITE METHODS
 // *********************************************
 
-int BeUtils::write_to_coord(int fd, std::string &msg)
+int BeUtils::write_with_crlf(int fd, std::string &msg)
 {
-    // append delimiter to end of coordinator msg
+    // append delimiter to end of msg
     msg += "\r\n";
-    // send msg to coordinator
+    // send msg to fd
     int bytes_sent = send(fd, (char *)msg.c_str(), msg.length(), 0);
     while (bytes_sent != msg.length())
     {
         if (bytes_sent < 0)
         {
-            be_utils_logger.log("Unable to send message to coordinator", 40);
+            be_utils_logger.log("Unable to send message", 40);
             return -1;
         }
         bytes_sent += send(fd, (char *)msg.c_str(), msg.length(), 0);
@@ -111,8 +111,8 @@ int BeUtils::write_to_coord(int fd, std::string &msg)
     return 0;
 }
 
-/// @brief write message to
-int BeUtils::write(int fd, std::vector<char> &msg)
+/// @brief Write message to fd, with message size (4 bytes) prepended to start of message
+int BeUtils::write_with_size(int fd, std::vector<char> &msg)
 {
     // Insert size of message at beginning of msg
     std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());

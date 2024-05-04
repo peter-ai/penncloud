@@ -712,7 +712,7 @@ void KVSGroupServer::send_error_response(const std::string &err_msg)
 
 void KVSGroupServer::send_response(std::vector<char> &response_msg)
 {
-    BeUtils::write(group_server_fd, response_msg);
+    BeUtils::write_with_size(group_server_fd, response_msg);
     kvs_group_server_logger.log("Response sent to client on port " + std::to_string(group_server_port), 20);
 }
 

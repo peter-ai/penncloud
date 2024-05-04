@@ -172,7 +172,7 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
     }
 
     // write message to primary
-    BeUtils::write(primary_fd, inputs);
+    BeUtils::write_with_size(primary_fd, inputs);
 
     // wait for primary to respond
     kvs_client_logger.log("Waiting for response from primary", 20);
@@ -203,7 +203,7 @@ std::vector<char> KVSClient::forward_operation_to_primary(std::vector<char> &inp
 
 void KVSClient::send_response(std::vector<char> &response_msg)
 {
-    if (BeUtils::write(client_fd, response_msg) < 0)
+    if (BeUtils::write_with_size(client_fd, response_msg) < 0)
     {
         kvs_client_logger.log("Failed to send response to client on port " + std::to_string(client_port), 20);
     }
