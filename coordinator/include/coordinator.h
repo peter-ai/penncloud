@@ -12,6 +12,7 @@
  *  range assigned to each KVS server
  */
 
+#include <fcntl.h>
 #include <iostream>
 #include <unistd.h>
 #include <string>
@@ -70,6 +71,8 @@ void broadcast_to_cluster(int group);
 /// @brief constructs message to be sent to admin HTTP server
 /// @return a specialized message to admin
 std::string get_admin_message();
+
+bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 
 /// @brief client server connection
 struct client_args
