@@ -43,7 +43,6 @@ unordered_map<string, int> kvs_servers;                // maps backend server na
 unordered_map<string, vector<string>> kvs_servergroup; // server groups to names of all servers within
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
-
 void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
 {
     for (const auto &pair : myMap)
@@ -365,6 +364,10 @@ void parse_coord_msg(string &msg)
         for (const auto &fe_str : fe_serv_strs)
         {
             string trimmed = Utils::l_trim(fe_str);
+            if (trimmed.empty())
+            {
+                continue;
+            }
             vector<string> fe_vec = Utils::split(trimmed, " ");
             // put name and port into map
             string server_name = fe_vec[0];
@@ -389,13 +392,28 @@ void parse_lb_msg(string &msg)
 {
     // msg is of format name<sp>port, name<sp>port,
 
+    logger.log("In parse lb message", LOGGER_DEBUG);
+    logger.log("Message=" + msg, LOGGER_DEBUG);
+
+    msg = Utils::trim(msg);
+
     // split string by commas
     vector<string> fe_serv_strs = Utils::split(msg, ",");
+
+    // int i = 0;
+    // for (const auto &fe_str : fe_serv_strs){
+    //     cout << i << " " + fe_str << endl;
+    //     ++i;
+    // }
 
     // iterate thru vector, and split again by whitespace
     for (const auto &fe_str : fe_serv_strs)
     {
         string trimmed = Utils::l_trim(fe_str);
+        if (trimmed.empty())
+        {
+            continue;
+        }
         vector<string> fe_vec = Utils::split(trimmed, " ");
         // put name and port into map
         string name = fe_vec[0];
@@ -444,14 +462,14 @@ void get_server_data(int sockfd)
             if (crlfPos != string::npos)
             {
                 // Found CRLF, process the message up to this point
-                string messageUpToCRLF = receivedMessage.substr(0, crlfPos);
-                cout << "Received message: " << messageUpToCRLF << endl;
-
+                receivedMessage = receivedMessage.substr(0, crlfPos);
                 // Erase the processed part of the message from the string
-                receivedMessage.clear();
+                // receivedMessage.clear();
             }
         }
     }
+
+    logger.log(receivedMessage, LOGGER_DEBUG);
 
     if (receivedMessage[0] == 'C') // if message from coordinator
     {
@@ -476,13 +494,13 @@ void get_server_data(int sockfd)
 Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
-{   
+{
     int server = 7500;
     logger.log("Redirecting client to server with port " + server, LOGGER_INFO);
     // Format the server address properly assuming HTTP protocol and same host
     std::string redirectUrl = "http://localhost:" + server;
     res.set_code(303);
-    //Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
+    // Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
     res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
     res.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'›" + redirectUrl + "</a></body></html>");
 }
@@ -533,7 +551,6 @@ int main()
         return 1;
     }
 
-
     // Accept incoming connections and handle them in separate threads
     while (true)
     {
@@ -575,8 +592,7 @@ int main()
 
     logger.log("Admin console ready.", LOGGER_INFO);
 
-
-     // Create socket for port 8081
+    // Create socket for port 8081
     int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (kvs_sock == -1)
     {
