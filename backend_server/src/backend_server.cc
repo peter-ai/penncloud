@@ -36,9 +36,8 @@ std::mutex BackendServer::secondary_ports_lock;
 
 // internal server fields
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
-
-// storage fields
 std::string BackendServer::disk_dir;
+std::atomic<bool> BackendServer::is_dead(false);
 
 // remote-write related fields
 uint32_t BackendServer::seq_num = 0;
@@ -48,6 +47,17 @@ std::mutex BackendServer::seq_num_lock;
 std::atomic<bool> BackendServer::is_checkpointing(false);
 uint32_t BackendServer::checkpoint_version = 0;
 uint32_t BackendServer::last_checkpoint = 0;
+
+// *********************************************
+// THREAD FN WRAPPER FOR SERVER CONNECTIONS
+// *********************************************
+
+void *connection_thread_fn(void *arg)
+{
+    auto fn = *static_cast<std::function<void()> *>(arg);
+    fn(); // Call member function
+    return nullptr;
+}
 
 // *********************************************
 // MAIN RUN LOGIC
@@ -125,8 +135,27 @@ void BackendServer::accept_and_handle_clients()
     }
 
     be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
-    while (true)
+    // accept client connections as long as the server is alive
+    while (!is_dead)
     {
+        // join threads for clients that have been serviced
+        auto it = client_connections.begin();
+        for (it; it != client_connections.end();)
+        {
+            // false indicates thread should be joined
+            if (it->second == false)
+            {
+                pthread_join(it->first, NULL);
+                client_connections_lock.lock();
+                it = client_connections.erase(it); // erases current value in map and re-points iterator
+                client_connections_lock.unlock();
+            }
+            else
+            {
+                it++;
+            }
+        }
+
         // accept client connection, which returns a fd to communicate directly with the client
         int client_fd;
         struct sockaddr_in client_addr;
@@ -142,10 +171,18 @@ void BackendServer::accept_and_handle_clients()
         int client_port = ntohs(client_addr.sin_port);
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
-        // launch thread to handle client
-        std::thread client_thread(&KVSClient::read_from_client, KVSClient(client_fd, client_port));
-        // ! fix this after everything works (manage multithreading)
-        client_thread.detach();
+        // initialize KVSClient object
+        KVSClient kvs_client(client_fd, client_port);
+        // capture object using lambda and call actual thread function (function that accepts client connections)
+        auto fn = std::function<void()>([&kvs_client]()
+                                        { kvs_client.read_from_client(); });
+        pthread_t client_thread;
+        pthread_create(&client_thread, nullptr, connection_thread_fn, &fn);
+
+        // add thread to map of client connections
+        client_connections_lock.lock();
+        client_connections[client_thread] = true;
+        client_connections_lock.unlock();
     }
 }
 
@@ -175,9 +212,9 @@ int BackendServer::initialize_state_from_coordinator()
         return -1;
     }
 
-    std::string coord_response = BeUtils::read_from_coord(coord_sock_fd);
-    // coordinator didn't send back a full response (\r\n at the end)
-    if (coord_response.empty())
+    BeUtils::ReadResult coord_response = BeUtils::read_with_crlf(coord_sock_fd);
+    // error in coordinator's response
+    if (coord_response.error_code < 0)
     {
         be_logger.log("Failed to receive initialization state from coordinator", 40);
         return -1;
@@ -185,7 +222,7 @@ int BackendServer::initialize_state_from_coordinator()
 
     // split response into tokens and extract data
     // Assume message is of the form "P/S<SP>START_RANGE:END_RANGE<SP>PRIMARY_ADDRESS<SP>SECONDARY1\r\n"
-    std::vector<std::string> res_tokens = Utils::split(coord_response, " ");
+    std::vector<std::string> res_tokens = Utils::split(std::string(coord_response.byte_stream.begin(), coord_response.byte_stream.end()), " ");
 
     // basic check, tokens should be at least 4 tokens long (assumes at least 1 secondary)
     if (res_tokens.size() < 4)
@@ -336,8 +373,27 @@ void BackendServer::accept_and_handle_group_comm()
     }
 
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
-    while (true)
+    // accept group connections as long as the server is alive
+    while (!is_dead)
     {
+        // join threads for group server connections that have been serviced
+        auto it = group_server_connections.begin();
+        for (it; it != group_server_connections.end();)
+        {
+            // false indicates thread should be joined
+            if (it->second == false)
+            {
+                pthread_join(it->first, NULL);
+                group_server_connections_lock.lock();
+                it = group_server_connections.erase(it); // erases current value in map and re-points iterator
+                group_server_connections_lock.unlock();
+            }
+            else
+            {
+                it++;
+            }
+        }
+
         // accept connection from server in group, which returns a fd to communicate directly with the server
         int group_server_fd;
         struct sockaddr_in group_server_addr;
@@ -353,10 +409,18 @@ void BackendServer::accept_and_handle_group_comm()
         int group_server_port = ntohs(group_server_addr.sin_port);
         be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
 
-        // launch thread to handle communication with group server
-        std::thread group_server_thread(&KVSGroupServer::read_from_group_server, KVSGroupServer(group_server_fd, group_server_port));
-        // ! fix this after everything works (manage multithreading)
-        group_server_thread.detach();
+        // initialize KVSGroupServer object
+        KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
+        // capture object using lambda and call actual thread function (function that accepts group server connections)
+        auto fn = std::function<void()>([&kvs_group_server]()
+                                        { kvs_group_server.read_from_group_server(); });
+        pthread_t group_server_thread;
+        pthread_create(&group_server_thread, nullptr, connection_thread_fn, &fn);
+
+        // add thread to map of group server connections connections
+        group_server_connections_lock.lock();
+        group_server_connections[group_server_thread] = true;
+        group_server_connections_lock.unlock();
     }
 }
 
@@ -488,12 +552,30 @@ void BackendServer::accept_and_handle_admin_comm()
     }
 }
 
+/// @brief performs pseudo-kill on server
 void BackendServer::admin_kill()
 {
+    // set flag to indicate server is dead
+    is_dead = true;
+
+    // TODO kill all live client and group communication threads
+
+    // remove all tablets from memory
+    server_tablets.clear();
 }
 
+/// @brief restarts server after pseudo kill from admin
 void BackendServer::admin_live()
 {
+    // set flag to indicate server is now alive
+    is_dead = false;
+
+    // TODO server should enter recovery mode
+    // add flag for server indicating that it's in recovery
+    // send message to coordinator asking for current primary
+    // send message to primary asking for its latest version number
+    // if version number is the same, ask primary for log and perform operations. When you're done, turn off recovery mode
+    // if version number is different, ask primary for its serialized tablets + its logs
 }
 
 // **************************************************
@@ -512,7 +594,8 @@ void BackendServer::dispatch_checkpointing_thread()
 /// @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::coordinate_checkpoint()
 {
-    while (true)
+    // initiate checkpoint as long as the server is alive
+    while (!is_dead)
     {
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
         if (is_primary)
@@ -561,7 +644,7 @@ void BackendServer::coordinate_checkpoint()
             // read acks from all remaining servers, since these servers have read events available on their fds
             for (const auto &server : servers)
             {
-                BeUtils::read(server.second); // we don't need to do anything with the ACKs
+                BeUtils::read_with_size(server.second); // we don't need to do anything with the ACKs
             }
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Received ACKs from servers", 20);
 
