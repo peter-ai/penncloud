@@ -22,6 +22,7 @@
 #include "../../http_server/include/http_server.h"
 #include "../../front_end/utils/include/fe_utils.h"
 #include "../../utils/include/utils.h"
+#include "../../http_server/include/http_server.h"
 
 Logger logger("Admin Console"); // setup logger
 
@@ -60,23 +61,119 @@ unordered_map<string, int> server_status;              // @todo easier to do typ
 //     return combinedData;
 // }
 
-
-void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int>& myMap) {
-    for (const auto& pair : myMap) {
+void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
+{
+    for (const auto &pair : myMap)
+    {
         std::cout << "Key: " << pair.first << ", Value: " << pair.second << std::endl;
     }
 }
 
-void iterateMapOfStringToVectorOfString(const std::unordered_map<std::string, std::vector<std::string>>& myMap) {
-    for (const auto& pair : myMap) {
+void iterateMapOfStringToVectorOfString(const std::unordered_map<std::string, std::vector<std::string>> &myMap)
+{
+    for (const auto &pair : myMap)
+    {
         std::cout << "Key: " << pair.first << ", Values:" << std::endl;
-        for (const auto& value : pair.second) {
+        for (const auto &value : pair.second)
+        {
             std::cout << "- " << value << std::endl;
         }
     }
 }
 
+void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Extract form parameters (status and component id) from the HTTP request body
+    std::string requestBody = req.body_as_string();
+    std::unordered_map<std::string, std::string> formParams;
 
+    // Parse the request body to extract form parameters
+    size_t pos = 0;
+    while ((pos = requestBody.find('&')) != std::string::npos)
+    {
+        std::string token = requestBody.substr(0, pos);
+        size_t equalPos = token.find('=');
+        std::string key = token.substr(0, equalPos);
+        std::string value = token.substr(equalPos + 1);
+        formParams[key] = value;
+        requestBody.erase(0, pos + 1);
+    }
+    // Handle the last parameter
+    size_t equalPos = requestBody.find('=');
+    std::string key = requestBody.substr(0, equalPos);
+    std::string value = requestBody.substr(equalPos + 1);
+    formParams[key] = value;
+
+    // Extract status and component ID from form parameters
+    std::string status_str = formParams["status"];
+    std::string servername = formParams["component_id"];
+
+    // Convert status to integer
+    int status = std::stoi(status_str);
+
+    string msg = "";
+    string cmd = "KILL";
+    if (status == 0)
+    {
+        msg = "KILL\r\n";
+    }
+    else
+    {
+        msg = "WAKE\r\n";
+        cmd = "WAKE";
+    }
+
+    // if server is kvs
+    if (kvs_servers.find(servername) != kvs_servers.end())
+    {
+        int port = kvs_servers[servername];
+        // int fd = FeUtils::open_socket("127.0.0.1", port);
+
+        //   ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
+        // temp: @todo uncomment
+         ssize_t bytes_sent = 5;
+        if (bytes_sent < 0)
+        {
+            logger.log(cmd + " command could not be sent to KVS server at port " + to_string(port), LOGGER_ERROR);
+        }
+        else
+        {
+            logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
+        }
+        server_status[servername] = status;
+         // close(fd)
+    }
+    else if (lb_servers.find(servername) != lb_servers.end())
+    {
+        int port = lb_servers[servername];
+        // int fd = FeUtils::open_socket("127.0.0.1", port);
+
+        // ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
+
+         // temp: @todo uncomment
+         ssize_t bytes_sent = 5;
+        if (bytes_sent < 0)
+        {
+            logger.log(cmd + " command could not be sent to FE server at port " + to_string(port), LOGGER_ERROR);
+        }
+        else
+        {
+            logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
+        }
+        server_status[servername] = status;
+        // close(fd)
+    }
+    else
+    {
+        logger.log("Server does not exist - " + servername, LOGGER_ERROR);
+    }
+
+    cout << "168" << endl;
+    // @todo ask B + P abt redirection
+    //res.set_code(303); // OK
+    // res.set_header("Location", "/admin/dashboard");
+    cout << "171" << endl;
+}
 
 void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 {
@@ -96,6 +193,19 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
         "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
         "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
         "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+        "<style>"
+        "/* Custom CSS for toggle switch */"
+        ".toggle-switch {"
+        "    width: 30px; /* Adjust width as needed */"
+        "    height: 15px; /* Adjust height as needed */"
+        "}"
+        ""
+        ".form-check-label::after {"
+        "    width: 15px; /* Adjust width of the switch */"
+        "    height: 15px; /* Adjust height of the switch */"
+        "    border-radius: 50%; /* Make the switch round */"
+        "}"
+        "</style>"
         "</head>"
 
         "<body onload='setTheme()'>"
@@ -138,29 +248,22 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 
                "<div class='container mt-4'>"
                "<h1 class='mb-4'>Admin Console</h1>"
-               // "<h2>Theme</h2>"
-               // "<div class='form-check form-switch'>"
-               // // "<label class='form-check-label' for='darkmode'>Dark Mode</label>"
-               // // "<label class='switch'>"
-               // "<input type='checkbox' id='darkmode'>"
-               // "<span class='slider round'></span>"
-               // "</label>"
-               "</div>"
                "<div class='row'>";
 
     // Frontend Nodes
     page += "<div class='row'>";
     page += "<div class='col'>";
     page += "<h2>Frontend Nodes</h2>";
-    for (int i = 1; i <= 3; ++i)
+    for (const auto &server : lb_servers)
     {
+        int status = server_status[server.first]; // Retrieve status from server_status using server key
+
         page += "<div class='form-check form-switch'>";
-        page += "<label class='form-check-label' for='fe" + std::to_string(i) + "'>FE" + std::to_string(i) + "</label>";
-        page += "<label class='switch'>";
-        page += "<input type='checkbox' id='fe" + std::to_string(i) + "'>";
-        page += "<span class='slider round'></span>";
-        page += "</label>";
+        page += "<label class='form-check-label' for='" + server.first + "'>" + server.first + "</label>";
+        page += "<input type='checkbox' class='form-check-input toggle-switch fe-server-switch' id='" + server.first + "' checked='" + to_string(status) + "'>";
+        page += "<label class='form-check-label' for='" + server.first + "'></label>";
         page += "</div>";
+        page += "</label>";
     }
     page += "</div>";
 
@@ -236,8 +339,21 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             "}"
             "}"
             "};"
-            "</script>"
-            "</body>"
+            "</script>";
+    page += "<script>"
+            "$(document).ready(function() {"
+            "    $('.fe-server-switch').change(function() {"
+            "        var serverName = $(this).attr('id');"
+            "        var isChecked = $(this).prop('checked');"
+            "        var toggleState = isChecked ? 1 : 0 ;"
+            "        $.post('/admin/component/toggle', { serverName: serverName, toggleState: toggleState }, function(data, status) {"
+            "            console.log('Toggle status for ' + serverName + ': ' + data);"
+            "        });"
+            "    });"
+            "});"
+            "</script>";
+
+    page += "</body>"
             "</html>";
 
     res.set_code(200);
@@ -376,103 +492,124 @@ void get_server_data(int sockfd)
 int main()
 {
 
+    logger.log("Admin console init", LOGGER_INFO);
     /* Create sockets on defined ports 8000 and 8001 */
 
-    // Create socket for port 8080
-    int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
-    if (listen_sock == -1)
+    // // Create socket for port 8080
+    // int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
+    // if (listen_sock == -1)
+    // {
+    //     std::cerr << "Socket creation failed\n";
+    //     return 1;
+    // }
+
+    // // Set socket option to enable address reuse
+    // int enable = 1;
+    // if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    // {
+    //     std::cerr << "Setsockopt failed for port 8080\n";
+    //     return 1;
+    // }
+
+    // string ip_addr = "127.0.0.1";
+    // int listen_port = 8080;
+    // struct sockaddr_in servaddr;
+    // socklen_t servaddr_size = sizeof(servaddr);
+    // bzero(&servaddr, sizeof(servaddr));
+    // servaddr.sin_family = AF_INET;
+    // servaddr.sin_port = htons(listen_port);
+    // inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // // bind socket to port
+    // if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
+    // {
+    //     std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
+    //     logger.log(msg, LOGGER_CRITICAL);
+    //     return 1;
+    // }
+
+    // // Create socket for port 8081
+    // int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
+    // if (kvs_sock == -1)
+    // {
+    //     std::cerr << "Socket creation failed\n";
+    //     return 1;
+    // }
+
+    // // Set socket option to enable address reuse
+    // if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    // {
+    //     std::cerr << "Setsockopt failed for port 8081\n";
+    //     return 1;
+    // }
+
+    // int kvs_port = 8081;
+    // struct sockaddr_in kvs_sock_addr;
+    // socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
+    // bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
+    // kvs_sock_addr.sin_family = AF_INET;
+    // kvs_sock_addr.sin_port = htons(kvs_port);
+    // inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // // bind socket to port
+    // if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
+    // {
+    //     std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
+    //     logger.log(msg, LOGGER_CRITICAL);
+    //     return 1;
+    // }
+
+    // // Listen for incoming connections
+    // if (listen(kvs_sock, 3) < 0)
+    // {
+    //     std::cerr << "Listen failed\n";
+    //     return 1;
+    // }
+
+    // // Accept incoming connections and handle them in separate threads
+    // while (true)
+    // {
+    //     int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
+    //     if (temp_sock < 0)
+    //     {
+    //         std::cerr << "Accept failed for port 8080\n";
+    //         return 1;
+    //     }
+
+    //     // spin up thread
+    //     std::thread serv_thread(get_server_data, temp_sock);
+    //     serv_thread.detach();
+
+    //     // if we got messages from both coord and lb, exit loop
+    //     if (lb_init && coord_init)
+    //     {
+    //         break;
+    //     }
+    // }
+
+    // Initialize frontend (FE) servers
+    for (int i = 1; i <= 4; ++i)
     {
-        std::cerr << "Socket creation failed\n";
-        return 1;
+        string fe_key = "FE" + to_string(i);
+        int port_number = 8000 + i - 1; // Increment port number for each server
+        lb_servers[fe_key] = port_number;
+        server_status[fe_key] = 1; // Set status to 1 for each FE server
     }
 
-    // Set socket option to enable address reuse
-    int enable = 1;
-    if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    {
-        std::cerr << "Setsockopt failed for port 8080\n";
-        return 1;
+    // Initialize Key-Value Store (KVS) servers
+    for (int i = 1; i <= 2; ++i)
+    { // Assuming two KVS servers
+        string kvs_key = "KVS" + to_string(i);
+        int port_number = 9000 + i - 1; // Increment port number for each server
+        kvs_servers[kvs_key] = port_number;
+        server_status[kvs_key] = 1; // Set status to 1 for each KVS server
     }
 
-    string ip_addr = "127.0.0.1";
-    int listen_port = 8080;
-    struct sockaddr_in servaddr;
-    socklen_t servaddr_size = sizeof(servaddr);
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(listen_port);
-    inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // bind socket to port
-    if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
-    {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
-        logger.log(msg, LOGGER_CRITICAL);
-        return 1;
-    }
-
-    // Create socket for port 8081
-    int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (kvs_sock == -1)
-    {
-        std::cerr << "Socket creation failed\n";
-        return 1;
-    }
-
-    // Set socket option to enable address reuse
-    if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    {
-        std::cerr << "Setsockopt failed for port 8081\n";
-        return 1;
-    }
-
-    int kvs_port = 8081;
-    struct sockaddr_in kvs_sock_addr;
-    socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
-    bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
-    kvs_sock_addr.sin_family = AF_INET;
-    kvs_sock_addr.sin_port = htons(kvs_port);
-    inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // bind socket to port
-    if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
-    {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
-        logger.log(msg, LOGGER_CRITICAL);
-        return 1;
-    }
-
-    // Listen for incoming connections
-    if (listen(kvs_sock, 3) < 0)
-    {
-        std::cerr << "Listen failed\n";
-        return 1;
-    }
-
-    // Accept incoming connections and handle them in separate threads
-    while (true)
-    {
-        int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
-        if (temp_sock < 0)
-        {
-            std::cerr << "Accept failed for port 8080\n";
-            return 1;
-        }
-
-        // spin up thread
-        std::thread serv_thread(get_server_data, temp_sock);
-        serv_thread.detach();
-
-        // if we got messages from both coord and lb, exit loop
-        if (lb_init && coord_init)
-        {
-            break;
-        }
-    }
+    logger.log("Admin console ready.", LOGGER_INFO);
 
     // Define Admin Console routes
-    HttpServer::get("/admin/dashboard", dashboard_handler); // Display admin dashboard
-    // HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
+    HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
+    HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
 
     // Run Admin HTTP server
     HttpServer::run(8080); // Assuming port 8080 for Admin Console
