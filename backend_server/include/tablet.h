@@ -31,12 +31,12 @@ private:
 public:
     // Constructor to initialize a tablet - used on server start up
     Tablet(std::string range_start, std::string range_end)
-        : range_start(range_start), range_end(range_end), log_filename(range_start + "_" + range_end + "_log"), data(), row_locks(), row_locks_mutex(), tablet_logger("Tablet " + range_start + ":" + range_end) {}
+        : range_start(range_start), range_end(range_end), log_filename(range_start + "_" + range_end + "_log"), tablet_logger("Tablet " + range_start + ":" + range_end), data(), row_locks(), row_locks_mutex() {}
 
     // Default constructor
     // This should ONLY be used when deserializing a file into a tablet.
     // To deserialize a file, initialize a tablet using this default constructor, then call deserialize on the tablet to populate its fields
-    Tablet() : range_start(""), range_end(""), data(), row_locks(), row_locks_mutex(), tablet_logger("Tablet") {}
+    Tablet() : range_start(""), range_end(""), log_filename(""), tablet_logger("Tablet"), data(), row_locks(), row_locks_mutex() {}
 
     /**
      *  READ-ONLY METHODS

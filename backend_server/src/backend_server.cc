@@ -119,7 +119,7 @@ void BackendServer::accept_and_handle_clients()
     {
         // join threads for clients that have been serviced
         auto it = client_connections.begin();
-        for (it; it != client_connections.end();)
+        for (; it != client_connections.end();)
         {
             // false indicates thread should be joined
             if (it->second == false)
@@ -226,7 +226,7 @@ void BackendServer::handle_coord_comm(int coord_sock_fd)
 int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
 {
     // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string msg = "INIT " + std::to_string(client_port);
+    std::string msg = "INIT";
     if (BeUtils::write_with_crlf(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
@@ -378,7 +378,7 @@ void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
     {
         // join threads for group server connections that have been serviced
         auto it = group_server_connections.begin();
-        for (it; it != group_server_connections.end();)
+        for (; it != group_server_connections.end();)
         {
             // false indicates thread should be joined
             if (it->second == false)
@@ -503,7 +503,7 @@ int BackendServer::dispatch_admin_listener_thread()
     }
 
     be_logger.log("Backend server accepting messages from admin on port " + std::to_string(admin_port), 20);
-    std::thread admin_thread(accept_and_handle_admin_comm);
+    std::thread admin_thread(accept_and_handle_admin_comm, admin_sock_fd);
     admin_thread.detach();
     return 0;
 }

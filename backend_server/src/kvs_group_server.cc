@@ -354,7 +354,7 @@ bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::uno
         }
     }
 
-    return true;
+    return all_secondaries_in_favor;
 }
 
 /// @brief Construct and send COMMIT to secondary servers
@@ -694,11 +694,11 @@ std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inpu
     return response_msg;
 }
 
-/**
- * SENDING CLIENT RESPONSE
- */
+// *********************************************
+// CLIENT RESPONSE
+// *********************************************
 
-// @brief constructs an error response and internally calls send_response()
+/// @brief constructs an error response and internally calls send_response()
 void KVSGroupServer::send_error_response(const std::string &err_msg)
 {
     // add "-ER " to front of error message
@@ -762,4 +762,5 @@ int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_s
     log_file.close();
 
     kvs_group_server_logger.log("Wrote operation to tablet log file", 20);
+    return 0;
 }
