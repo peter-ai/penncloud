@@ -131,7 +131,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 
         //   ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
         // temp: @todo uncomment
-         ssize_t bytes_sent = 5;
+        ssize_t bytes_sent = 5;
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to KVS server at port " + to_string(port), LOGGER_ERROR);
@@ -141,7 +141,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
             logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
         }
         server_status[servername] = status;
-         // close(fd)
+        // close(fd)
     }
     else if (lb_servers.find(servername) != lb_servers.end())
     {
@@ -150,8 +150,8 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 
         // ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
 
-         // temp: @todo uncomment
-         ssize_t bytes_sent = 5;
+        // temp: @todo uncomment
+        ssize_t bytes_sent = 5;
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to FE server at port " + to_string(port), LOGGER_ERROR);
@@ -168,11 +168,9 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         logger.log("Server does not exist - " + servername, LOGGER_ERROR);
     }
 
-    cout << "168" << endl;
     // @todo ask B + P abt redirection
-    //res.set_code(303); // OK
-    // res.set_header("Location", "/admin/dashboard");
-    cout << "171" << endl;
+    res.set_code(303); // OK
+    res.set_header("Location", "/admin/dashboard");
 }
 
 void dashboard_handler(const HttpRequest &req, HttpResponse &res)
@@ -474,6 +472,8 @@ void get_server_data(int sockfd)
 
     if (receivedMessage[0] == 'C') // if message from coordinator
     {
+        string msg = receivedMessage.substr(2);
+        parse_coord_msg(msg);
     }
     else if (receivedMessage[0] == 'L') // message from load balancer
     {
@@ -487,6 +487,21 @@ void get_server_data(int sockfd)
 
     // Close the socket
     close(sockfd);
+}
+
+/*
+Redirect to load balancer if user wants a different page
+*/
+void redirect_handler(const HttpRequest &req, HttpResponse &res)
+{   
+    int server = 7500;
+    logger.log("Redirecting client to server with port " + server, LOGGER_INFO);
+    // Format the server address properly assuming HTTP protocol and same host
+    std::string redirectUrl = "http://localhost:" + server;
+    res.set_code(303);
+    //Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
+    res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
+    res.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'›" + redirectUrl + "</a></body></html>");
 }
 
 int main()
@@ -610,6 +625,9 @@ int main()
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
     HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
+
+    // @todo add redirect to LB
+    HttpServer::get("*", redirect_handler);
 
     // Run Admin HTTP server
     HttpServer::run(8080); // Assuming port 8080 for Admin Console
