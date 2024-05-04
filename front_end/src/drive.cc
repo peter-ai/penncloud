@@ -160,17 +160,46 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // check req method
 
-        // path is /api/drive/:childpath where parent dir is the page that is being displayed
+        // path is drive/:childpath where parent dir is the page that is being displayed
+        string childpath_str = req.path.substr(7);
+        vector<char> child_path(childpath_str.begin(), childpath_str.end());
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
 
-        std::string childpath_str = req.path.substr(7);
-        std::vector<char> child_path(childpath_str.begin(), childpath_str.end());
-        int sockfd = FeUtils::open_socket();
+        // check if we know already know the KVS server address for user
+        if (present)
+        {
+            kvs_addr = HttpServer::get_kvs_addr(username);
+        }
+        // otherwise get KVS server address from coordinator
+        else
+        {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        // create socket for communication with KVS server
+        int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        // if invalid, return an error?
+        // @todo :: redirect to login page?
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+            res.set_code(303);
+            res.set_header("Location", "/401");
+            FeUtils::expire_cookies(res, username, sid);
+            close(sockfd);
+            return;
+        }
 
         // if we are looking up a folder, use get row
         if (is_folder(child_path))
         {
 
-            std::vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
+            vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
             if (kv_successful(folder_content))
             {
@@ -661,9 +690,18 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         if (kv_successful(kvs_resp))
         {
             // @todo should we instead get row for the page they are on?
-            res.set_code(200); // OK
-            std::vector<char> folder_contents = FeUtils::kv_get_row(sockfd, row_vec);
-            res.append_body_bytes(folder_contents.data(), folder_contents.size());
+            res.set_code(303); // OK
+            res.set_header("Location", "/drive/" + parentpath_str);
+            // vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
+
+            // // content list, remove '+OK<sp>'
+            // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // // split on delim
+            // vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
+            // vector<char> formatted_content = format_folder_contents(contents);
+
+            // //@todo: update with html!
+            // res.append_body_bytes(formatted_content.data(), formatted_content.size());
         }
         else
         {

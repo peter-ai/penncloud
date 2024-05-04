@@ -32,7 +32,7 @@
  *      }
  *  2) kvs_clusters - unordered_map of vectors of kvs_args structs
  *      Data structure keeps track of, for each server group, at a given time
- *      who are the current kvs servers that are alive and actively 
+ *      who are the current kvs servers that are alive and actively
  *      available to service requests
  *      Example for 3 server groups with 2 backups per group
  *      {
@@ -238,14 +238,13 @@ int main(int argc, char *argv[])
     }
     logger.log("KVS server responsibilites set", LOGGER_INFO);
 
-    
     /* -------------------- SEND ADMIN MESSAGE -------------------- */
     // get details and open socket for comms
     int admin_port = 8080;
     int admin_sock = FeUtils::open_socket(ip_addr, admin_port);
 
     // construct message
-    std::string admin_msg = get_admin_message();    
+    std::string admin_msg = get_admin_message();
 
     // send message
     int sent = 0;
@@ -258,7 +257,7 @@ int main(int argc, char *argv[])
         if (VERBOSE)
             logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
     }
-    
+
     // close socket
     close(admin_sock);
 
@@ -518,20 +517,33 @@ void *kvs_thread(void *arg)
             kvs->alive = false;
 
             // remove dead server from client map
+            std::vector<struct kvs_args>::iterator position;
             client_map_mutex.lock();
             for (auto &key : kvs->kv_range)
             {
-                std::vector<kvs_args>::iterator position = std::find(client_map[key].begin(), client_map[key].end(), kvs);
-                if (position != client_map[key].end())
-                    client_map[key].erase(position);
+                for (size_t i = 0; i < client_map[key].size(); i++)
+                {
+                    if (client_map[key][i].client_addr.compare(kvs->client_addr) == 0)
+                    {
+                        position = client_map[key].begin() + i;
+                        break;
+                    }
+                }
+                client_map[key].erase(position);
             }
             client_map_mutex.unlock();
 
             // remove dead server from cluster group
             cluster_mutex.lock();
-            std::vector<kvs_args>::iterator position = std::find(kvs_clusters[kvs->kvs_group].begin(), kvs_clusters[kvs->kvs_group].end(), kvs);
-            if (position != kvs_clusters[kvs->kvs_group].end())
-                kvs_clusters[kvs->kvs_group].erase(position);
+            for (size_t i = 0; i < kvs_clusters[kvs->kvs_group].size(); i++)
+            {
+                if (kvs_clusters[kvs->kvs_group][i].client_addr.compare(kvs->client_addr) == 0)
+                {
+                    position = kvs_clusters[kvs->kvs_group].begin() + i;
+                    break;
+                }
+            }
+            kvs_clusters[kvs->kvs_group].erase(position);
 
             // if current server was primary select a new primary
             if (kvs->primary)
@@ -643,7 +655,7 @@ size_t sample_index(size_t length)
 /// @brief constructs a specialized message for the given kvs
 /// @param kvs an address of a kvs_args struct
 /// @return a message to be sent back to the kvs
-std::string get_kvs_message(kvs_args &kvs)
+std::string get_kvs_message(struct kvs_args &kvs)
 {
     // construct message
     std::string response = std::string(1, kvs.kv_range[0]) + ":" + std::string(1, kvs.kv_range.back()) + " "; // add key value range to message
@@ -696,31 +708,31 @@ std::string get_admin_message()
     std::string message = "C ";
 
     cluster_mutex.lock_shared();
-    for (auto &cluster: kvs_clusters)
+    for (auto &cluster : kvs_clusters)
     {
         // add group number
         message += "SG" + std::to_string(cluster.first) + ": ";
-        
+
         // create list of servers for each cluster/group
         bool primary = false;
         std::string temp = "";
         for (size_t i = 0; i < cluster.second.size(); i++)
-        {   
+        {
             kvs_args kv = cluster.second[i];
 
             // add name
-            if (kv.primary) 
+            if (kv.primary)
             {
                 temp += "primary ";
                 primary = true;
-            }    
-            else 
+            }
+            else
             {
-                temp += "secondary" + (primary ? std::to_string(i) : std::to_string(i-1)) + " ";
+                temp += "secondary" + (primary ? std::to_string(i) : std::to_string(i - 1)) + " ";
             }
 
             // add port
-            temp += kv.server_addr.substr(kv.server_addr.find(':')+1) + ",";
+            temp += kv.server_addr.substr(kv.server_addr.find(':') + 1) + ",";
         }
         temp.pop_back();
 
@@ -728,7 +740,7 @@ std::string get_admin_message()
         message += temp + "\n";
     }
     cluster_mutex.unlock_shared();
-    
+
     message += "\r\n"; // add terminating characters
     return message;
-}  
+}

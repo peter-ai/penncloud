@@ -49,16 +49,11 @@ EmailData parseEmail(const std::vector<char> &source)
 	return data;
 }
 
-vector<char> charifyEmailContent(const EmailData &email){
-	string data = email.time + "\n" 
-	+ email.from + "\n"
-	+ email.to + "\n"
-	+ email.subject + "\n"
-	+ email.body + "\n"
-	+ email.oldBody + "\n";
+vector<char> charifyEmailContent(const EmailData &email)
+{
+	string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
 	std::vector<char> char_vector(data.begin(), data.end());
 	return char_vector;
-
 }
 
 // Function to split a vector<char> based on a vector<char> delimiter
@@ -188,21 +183,20 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 				{
 					emailData.body = "body: " + body;
 				}
-				else if (name == "oldBody"){
+				else if (name == "oldBody")
+				{
 					emailData.oldBody = "oldBody: " + body;
 				}
 			}
 		}
 	}
-		std::cout << "Time: " << emailData.time << std::endl;
+	std::cout << "Time: " << emailData.time << std::endl;
 
 	std::cout << "To: " << emailData.to << std::endl;
 	std::cout << "From: " << emailData.from << std::endl;
 	std::cout << "Subject: " << emailData.subject << std::endl;
 	std::cout << "Body: " << emailData.body << std::endl;
-		std::cout << "Old Body: " << emailData.oldBody << std::endl;
-
-
+	std::cout << "Old Body: " << emailData.oldBody << std::endl;
 
 	return emailData;
 }
@@ -214,7 +208,7 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 // takes the a path's request and parses it to user mailbox key "user1-mailbox/"
 string parseMailboxPathToRowKey(const string &path)
 {
-	std::regex pattern("/api/([^/]*)");
+	std::regex pattern("/([^/]*)");
 	std::smatch matches;
 
 	// Execute the regex search
@@ -225,7 +219,16 @@ string parseMailboxPathToRowKey(const string &path)
 			return matches[1].str() + "-mailbox/"; // Return the captured username
 		}
 	}
+	// Execute the regex search
+	if (std::regex_search(path, matches, pattern))
+	{
+		if (matches.size() > 1)
+		{										   // Check if there is a capturing group
+			return matches[1].str() + "-mailbox/"; // Return the captured username
+		}
+	}
 
+	return ""; // Return empty string if no username is found
 	return ""; // Return empty string if no username is found
 }
 
@@ -471,6 +474,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Email Handler");
 	logger.log("Received POST request", LOGGER_INFO);
+	logger.log("Received POST request", LOGGER_INFO);
 	logger.log("Path is: " + request.path, LOGGER_INFO);
 
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
@@ -547,7 +551,18 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		// }
 		// path is: /api/mailbox/{username}/
 
-	// string recipientAddress;
+		// string recipientAddress;
+
+		string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(kvs_sock);
+			return;
+		}
 
 		string rowKey = parseMailboxPathToRowKey(request.path);
 		vector<char> row(rowKey.begin(), rowKey.end());
