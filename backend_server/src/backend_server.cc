@@ -580,15 +580,16 @@ void BackendServer::admin_kill()
 // TODO implement this function
 void BackendServer::admin_live()
 {
-    // set flag to indicate server is now alive
-    is_dead = false;
+    // send RECO to coordinator
+    // wait for message from coordinator about server state
 
-    // TODO server should enter recovery mode
-    // add flag for server indicating that it's in recovery
-    // send message to coordinator asking for current primary
     // send message to primary asking for its latest version number
     // if version number is the same, ask primary for log and perform operations. When you're done, turn off recovery mode
     // if version number is different, ask primary for its serialized tablets + its logs
+
+    // set flag to indicate server is now alive
+    // do this LAST
+    is_dead = false;
 }
 
 // **************************************************
