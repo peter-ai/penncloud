@@ -50,6 +50,8 @@ private:
     std::vector<char> cput(std::string &row, std::vector<char> &inputs);
     std::vector<char> delr(std::string &row, std::vector<char> &inputs);
     std::vector<char> delv(std::string &row, std::vector<char> &inputs);
+    std::vector<char> rnmr(std::string &row, std::vector<char> &inputs);
+    std::vector<char> rnmc(std::string &row, std::vector<char> &inputs);
 
     // Client response methods
     void send_error_response(const std::string &msg);    // constructs an error response and internally calls send_response()
