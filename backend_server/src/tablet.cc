@@ -178,6 +178,31 @@ std::vector<char> Tablet::put_value(std::string &row, std::string &col, std::vec
     return response_msg;
 }
 
+/// @brief Conditionally put value at provided row and column if value at row + column matches curr_val
+std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
+{
+    // get data at row
+    auto &row_level_data = data.at(row);
+
+    // exit if data at col does not match curr_val
+    if (row_level_data[col] != curr_val)
+    {
+        row_locks.at(row).unlock();      // unlock exclusive lock on row
+        row_locks_mutex.unlock_shared(); // release shared lock on row locks
+        tablet_logger.log("-ER V1 provided does not match currently stored value", 20);
+        return construct_msg("V1 provided does not match currently stored value", true);
+    }
+
+    // overwrite value at column with new value
+    row_level_data[col] = new_val;
+
+    row_locks.at(row).unlock();      // unlock exclusive lock on row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
+    tablet_logger.log("+OK Conditionally inserted value at R[" + row + "], C[" + col + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
+}
+
 /// @brief Delete provided row
 std::vector<char> Tablet::delete_row(std::string &row)
 {
@@ -223,27 +248,50 @@ std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
     return response_msg;
 }
 
-/// @brief Conditionally put value at provided row and column if value at row + column matches curr_val
-std::vector<char> Tablet::cond_put_value(std::string &row, std::string &col, std::vector<char> &curr_val, std::vector<char> &new_val)
+/// @brief Rename row with name "old_row" to name "new_row"
+std::vector<char> Tablet::rename_row(std::string &old_row, std::string &new_row)
+{
+    // // add value at column
+    // row_level_data[col] = val;
+
+    // row_locks.at(row).unlock();      // unlock exclusive lock on row
+    // row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
+
+    // tablet_logger.log("+OK Inserted value at R[" + row + "], C[" + col + "]", 20);
+    // std::vector<char> response_msg(ok.begin(), ok.end());
+    // return response_msg;
+
+    // // delete row
+    // data.erase(row);
+
+    // row_locks.at(row).unlock();      // unlock exclusive lock on row
+    // row_locks_mutex.unlock_shared(); // release shared lock on row locks
+
+    // // acquire exclusive access to the row_locks map to delete the mutex for the deleted row
+    // row_locks_mutex.lock();
+    // row_locks.erase(row);
+    // row_locks_mutex.unlock();
+
+    // tablet_logger.log("+OK Deleted R[" + row + "]", 20);
+    // std::vector<char> response_msg(ok.begin(), ok.end());
+    // return response_msg;
+}
+
+/// @brief Rename column with name "old_col" to name "new_col" in row
+std::vector<char> Tablet::rename_column(std::string &row, std::string &old_col, std::string &new_col)
 {
     // get data at row
     auto &row_level_data = data.at(row);
 
-    // exit if data at col does not match curr_val
-    if (row_level_data[col] != curr_val)
-    {
-        row_locks.at(row).unlock();      // unlock exclusive lock on row
-        row_locks_mutex.unlock_shared(); // release shared lock on row locks
-        tablet_logger.log("-ER V1 provided does not match currently stored value", 20);
-        return construct_msg("V1 provided does not match currently stored value", true);
-    }
-
-    // overwrite value at column with new value
-    row_level_data[col] = new_val;
+    // put data at old_col in new_col
+    row_level_data[new_col] = row_level_data[old_col];
+    // erase old_col key from row
+    row_level_data.erase(old_col);
 
     row_locks.at(row).unlock();      // unlock exclusive lock on row
-    row_locks_mutex.unlock_shared(); // release shared lock on row locks
-    tablet_logger.log("+OK Conditionally inserted value at R[" + row + "], C[" + col + "]", 20);
+    row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
+
+    tablet_logger.log("+OK Renamed column at R[" + row + "] from C[" + old_col + "] to C[" + new_col + "]", 20);
     std::vector<char> response_msg(ok.begin(), ok.end());
     return response_msg;
 }
