@@ -624,7 +624,7 @@ void BackendServer::coordinate_checkpoint()
         if (is_primary)
         {
             // Sleep for 30 seconds between each checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(10));
+            std::this_thread::sleep_for(std::chrono::seconds(60));
 
             // Begin checkpointing
             checkpoint_version++; // increment checkpoint version number
@@ -658,8 +658,6 @@ void BackendServer::coordinate_checkpoint()
             // Wait for ACKs from all live servers
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Waiting for ACKs from servers", 20);
             std::vector<int> dead_servers = wait_for_acks_from_servers(servers);
-
-            be_logger.log("Number of dead servers - " + std::to_string(dead_servers.size()), 20);
 
             // remove dead servers from map of servers
             for (int dead_server : dead_servers)
