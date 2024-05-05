@@ -480,8 +480,6 @@ void BackendServer::send_message_to_servers(std::vector<char> &msg, std::unorder
 {
     for (const auto &server : servers)
     {
-        be_logger.log("Writing message " + std::string(msg.begin(), msg.end()) + " to " + std::to_string(server.first) + " at fd " + std::to_string(server.second), LOGGER_DEBUG);
-
         // write message to server
         // retries are integrated into write, so if write fails, it's likely due to an issue with the server
         // if an issue occurred with the server, we'll catch it when trying to read from the fd
@@ -648,8 +646,7 @@ void BackendServer::coordinate_checkpoint()
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
         if (is_primary)
         {
-            // Sleep for 60 seconds between each checkpoint
-            // TODO changed this to 10 for testing
+            // Sleep for 30 seconds between each checkpoint
             std::this_thread::sleep_for(std::chrono::seconds(10));
 
             // Begin checkpointing
