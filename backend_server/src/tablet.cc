@@ -3,6 +3,8 @@
 
 #include <fstream>
 
+Logger tablet_logger("Tablet");
+
 // *********************************************
 // CONSTANTS
 // *********************************************
@@ -394,9 +396,6 @@ void Tablet::deserialize(const std::string &file_name)
     std::vector<char> tablet_end(1);
     file.read(tablet_end.data(), 1);
     range_end = std::string(tablet_end.data(), tablet_end.size());
-
-    // initialize logger for this tablet
-    tablet_logger = Logger("Tablet " + range_start + ":" + range_end);
 
     // set log file name for this tablet
     log_filename = range_start + "_" + range_end + "_log";
