@@ -27,7 +27,7 @@ void HttpServer::run(int port, std::string static_dir)
 
     // given that a load balancer is also an http server, we neeed to make sure that the load balancer is not PINGing itself!
     // check that HTTP port is not LOAD BALANCER's client_listen_port
-    if (port != 7500)
+    if (port != 7500 && port != 8080)
     {
         start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 7900
     }

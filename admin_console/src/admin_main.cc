@@ -28,10 +28,7 @@ Logger logger("Admin Console"); // setup logger
 
 using namespace std;
 // Dummy global variables for load balancer and coordinator
-std::string loadBalancerIP = "127.0.0.1";
-int loadBalancerPort = 8081;
-std::string coordinatorIP = "127.0.0.1";
-int coordinatorPort = 8082;
+int kvs_fd;
 
 // bool flags
 bool coord_init = false; // flag checks whether coord sent init message
@@ -95,6 +92,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 
     string msg = "";
     string cmd = "KILL";
+
     if (status == 0)
     {
         msg = "KILL\r\n";
@@ -150,13 +148,14 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         logger.log("Server does not exist - " + servername, LOGGER_ERROR);
     }
 
-    // @todo ask B + P abt redirection
     res.set_code(303); // OK
     res.set_header("Location", "/admin/dashboard");
 }
 
 void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 {
+    logger.log("In dashboard handler", LOGGER_DEBUG);
+    //@todo get user from cookies
     std::string user = "example"; // Extract user information from cookies if needed
 
     std::string page =
@@ -213,10 +212,10 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
                "<input type='hidden' />"
                "<button class='btn nav-link' type='submit'>Logout</button>"
                "</form>"
-               // "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-               // "<input type='hidden' />"
-               // "<button class='btn nav-link' type='submit'>Logout</button>"
-               // "</form>"
+               "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+               "<input type='hidden' />"
+               "<button class='btn nav-link' type='submit'>Logout</button>"
+               "</form>"
                "</div>"
                "</div>"
                "<div class='form-check form-switch form-check-reverse ms-auto'>"
@@ -339,6 +338,8 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     res.set_code(200);
     res.append_body_str(page);
     res.set_header("Content-Type", "text/html");
+
+    logger.log("Returned reponse for GET dashboard", LOGGER_DEBUG);
 }
 
 /*
@@ -424,8 +425,10 @@ void parse_lb_msg(string &msg)
     }
 
     // if msg not malformed, update global bool
-    lb_init = !lb_servers.empty();
-    iterateUnorderedMapOfStringToInt(lb_servers);
+    if (!lb_servers.empty()){
+        lb_init = true;
+    }
+    // iterateUnorderedMapOfStringToInt(lb_servers);
 }
 
 /*
@@ -465,6 +468,7 @@ void get_server_data(int sockfd)
                 receivedMessage = receivedMessage.substr(0, crlfPos);
                 // Erase the processed part of the message from the string
                 // receivedMessage.clear();
+                break;
             }
         }
     }
@@ -494,12 +498,13 @@ void get_server_data(int sockfd)
 Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
-{
+{   
     int server = 7500;
     logger.log("Redirecting client to server with port " + server, LOGGER_INFO);
     // Format the server address properly assuming HTTP protocol and same host
     std::string redirectUrl = "http://localhost:" + server;
     res.set_code(303);
+ 
     // Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
     res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
     res.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'›" + redirectUrl + "</a></body></html>");
@@ -551,9 +556,18 @@ int main()
         return 1;
     }
 
+    int i = 0;
+
     // Accept incoming connections and handle them in separate threads
-    while (true)
+    while (i < 1)
     {
+         // if we got messages from both coord and lb, exit loop
+        if (lb_init) // @todo add this once confirmed kvs && coord_init
+        {
+            cout << "lb init done" << endl;
+            break;
+        }
+
         int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
         if (temp_sock < 0)
         {
@@ -564,12 +578,8 @@ int main()
         // spin up thread
         std::thread serv_thread(get_server_data, temp_sock);
         serv_thread.detach();
-
-        // if we got messages from both coord and lb, exit loop
-        if (lb_init && coord_init)
-        {
-            break;
-        }
+        i++;
+    
     }
 
     // // Initialize frontend (FE) servers
@@ -629,6 +639,9 @@ int main()
         std::cerr << "Listen failed\n";
         return 1;
     }
+
+    kvs_fd = kvs_sock; // set to global var
+
 
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
