@@ -110,7 +110,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         }
 
         // write operation forwarded from a server
-        if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
+        if (command == "putv" || command == "cput" || command == "delr" || command == "delv" || command == "rnmr" || command == "rnmc")
         {
             execute_two_phase_commit(byte_stream);
         }
@@ -607,6 +607,14 @@ std::vector<char> KVSGroupServer::execute_write_operation(std::string &command, 
     {
         return delv(row, inputs);
     }
+    else if (command == "rnmr")
+    {
+        return rnmr(row, inputs);
+    }
+    else if (command == "rnmc")
+    {
+        return rnmc(row, inputs);
+    }
     kvs_group_server_logger.log("Unrecognized write command - should NOT occur", 40);
     std::vector<char> res;
     return res;
@@ -714,6 +722,48 @@ std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inpu
     // retrieve tablet and delete value from row and col combination
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
     std::vector<char> response_msg = tablet->delete_value(row, col);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::rnmr(std::string &row, std::vector<char> &inputs)
+{
+    // remainder of inputs is new row
+    std::string new_row(inputs.begin(), inputs.end());
+
+    // log command and args
+    kvs_group_server_logger.log("RNMR R1[" + row + "] R2[" + new_row + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->rename_row(row, new_row);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::rnmc(std::string &row, std::vector<char> &inputs)
+{
+    // find index of \b to extract old col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to RNMC(R, C1, C2) - column not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string old_col(inputs.begin(), col_end);
+    // clear inputs UP TO AND INCLUDING the last \b char
+    inputs.erase(inputs.begin(), col_end + 1);
+    // remainder of inputs is new col
+    std::string new_col(inputs.begin(), inputs.end());
+
+    // log command and args
+    kvs_group_server_logger.log("RNMC R[" + row + "] C1[" + old_col + "] C2[" + new_col + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->rename_column(row, old_col, new_col);
     return response_msg;
 }
 
