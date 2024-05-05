@@ -1,5 +1,6 @@
 #include <poll.h>
 #include <fstream>
+#include <cstdio>
 
 #include "../../utils/include/utils.h"
 #include "../include/kvs_group_server.h"
@@ -159,11 +160,33 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
         // file name of tablet - start_end_tablet_v# (# is operation_seq_num)
         std::string old_cp_file = BackendServer::disk_dir + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
         std::string new_cp_file = BackendServer::disk_dir + tablet->range_start + "_" + tablet->range_end + "_tablet_v" + std::to_string(version_num);
-        // write new checkpoint file
-        tablet->serialize(new_cp_file);
-        // delete old checkpoint file
-        std::remove(old_cp_file.c_str());
-        kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpointed tablet " + tablet->range_start + ":" + tablet->range_end, 20);
+        std::string log_filename = BackendServer::disk_dir + tablet->log_filename;
+
+        // if log file is empty, no need to serialize tablet. Update checkpoint file name and continue
+        std::ifstream log_file;
+        log_file.open(log_filename);
+        bool log_is_empty = log_file.peek() == std::ifstream::traits_type::eof();
+        log_file.close();
+        if (log_is_empty && BackendServer::last_checkpoint != 0)
+        {
+            kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] No updates since last checkpoint for " + tablet->range_start + ":" + tablet->range_end + ". Skipping", 20);
+            std::rename(old_cp_file.c_str(), new_cp_file.c_str());
+        }
+        // non-empty log file - updates were made since last checkpoint so tablet must be checkpointed
+        else
+        {
+            // write new checkpoint file
+            tablet->serialize(new_cp_file);
+            // delete old checkpoint file
+            std::remove(old_cp_file.c_str());
+            kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpointed tablet " + tablet->range_start + ":" + tablet->range_end, 20);
+
+            // clear tablet's log file
+            std::ofstream log_file;
+            log_file.open(log_filename, std::ofstream::trunc);
+            log_file.close();
+            kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Cleared " + log_filename, 20);
+        }
     }
 
     // update version number of last checkpoint on this server
