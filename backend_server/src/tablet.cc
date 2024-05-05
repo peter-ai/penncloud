@@ -30,13 +30,7 @@ std::vector<char> Tablet::get_all_rows()
     }
     // remove last added delimiter
     response_msg.pop_back();
-
     row_locks_mutex.unlock_shared(); // release shared lock on row_lock's mutex
-
-    // append +OK to response and send it back
-    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
-    response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
-
     return response_msg;
 }
 
