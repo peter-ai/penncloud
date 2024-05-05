@@ -81,6 +81,8 @@ void Client::read_from_network()
             break;
         }
     }
+    // set this thread's flag to false to indicate that thread should be joined
+    HttpServer::client_connections[pthread_self()] = false;
     close(client_fd);
 }
 
