@@ -86,8 +86,6 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    kvs_group_server_logger.log("Received command " + command, 20);
-
     // checkpointing commands
     if (command == "ckpt")
     {
