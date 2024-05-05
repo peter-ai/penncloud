@@ -499,16 +499,20 @@ std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<in
         {
             // check if server is dead
             secondary_ports_lock.lock();
-            bool is_dead = secondary_ports.count(server.first) == 0 && server.first != primary_port;
+            bool curr_server_is_dead = secondary_ports.count(server.first) == 0 && server.first != primary_port;
             secondary_ports_lock.unlock();
 
             // track server if it's dead and stop trying to read from it
-            if (is_dead)
+            if (curr_server_is_dead)
             {
                 dead_servers.push_back(server.first);
                 break;
             }
-            BeUtils::wait_for_events({server.second}, 250);
+            // read event is available on this server, move to waiting for ack on next server
+            if (BeUtils::wait_for_events({server.second}, 250) == 0)
+            {
+                break;
+            }
         }
     }
     return dead_servers;
