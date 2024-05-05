@@ -240,12 +240,21 @@ void Client::set_req_type()
     // match incoming request path to stored dynamic routes
     std::vector<std::string> req_path_tokens = Utils::split(req.path, "/");
 
+    // check routes in routing table
     for (RouteTableEntry &route : HttpServer::routing_table)
     {
         // methods must match for the request to match the route
         if (route.method != req.method)
         {
             continue;
+        }
+
+        // handle special wildcard route - this matches any route
+        if (route.path == "*")
+        {
+            req.dynamic_route = route.route;
+            req.is_static = false;
+            break;
         }
 
         // split path in routing table on "/"
