@@ -272,30 +272,32 @@ std::vector<char> Tablet::delete_value(std::string &row, std::string &col)
 /// @brief Rename row with name "old_row" to name "new_row"
 std::vector<char> Tablet::rename_row(std::string &old_row, std::string &new_row)
 {
-    // // add value at column
-    // row_level_data[col] = val;
+    row_locks_mutex.unlock_shared(); // unlock shared lock on row_locks first to modify row_locks
+    // acquire exclusive access on the row_locks map to create a mutex for the new row
+    row_locks_mutex.lock();
+    row_locks[new_row];
+    row_locks_mutex.unlock();
 
-    // row_locks.at(row).unlock();      // unlock exclusive lock on row
-    // row_locks_mutex.unlock_shared(); // unlock shared lock on row locks
+    row_locks_mutex.lock_shared(); // acquire shared lock on row_locks to read mutex from row_locks
+    row_locks.at(new_row).lock();  // acquire exclusive lock on data map to create new_row
 
-    // tablet_logger.log("+OK Inserted value at R[" + row + "], C[" + col + "]", 20);
-    // std::vector<char> response_msg(ok.begin(), ok.end());
-    // return response_msg;
+    // copy data from old row into new row
+    data[new_row] = data[old_row];
+    // delete old row
+    data.erase(old_row);
 
-    // // delete row
-    // data.erase(row);
+    row_locks.at(new_row).unlock();  // unlock exclusive lock on new_row
+    row_locks.at(old_row).unlock();  // unlock exclusive lock on old_row
+    row_locks_mutex.unlock_shared(); // release shared lock on row locks
 
-    // row_locks.at(row).unlock();      // unlock exclusive lock on row
-    // row_locks_mutex.unlock_shared(); // release shared lock on row locks
+    // acquire exclusive access to the row_locks map to delete the mutex for the old row
+    row_locks_mutex.lock();
+    row_locks.erase(old_row);
+    row_locks_mutex.unlock();
 
-    // // acquire exclusive access to the row_locks map to delete the mutex for the deleted row
-    // row_locks_mutex.lock();
-    // row_locks.erase(row);
-    // row_locks_mutex.unlock();
-
-    // tablet_logger.log("+OK Deleted R[" + row + "]", 20);
-    // std::vector<char> response_msg(ok.begin(), ok.end());
-    // return response_msg;
+    tablet_logger.log("+OK Renamed row R[" + old_row + "] to R[" + new_row + "]", 20);
+    std::vector<char> response_msg(ok.begin(), ok.end());
+    return response_msg;
 }
 
 /// @brief Rename column with name "old_col" to name "new_col" in row
