@@ -83,8 +83,6 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    kvs_group_server_logger.log("Received command " + command, 20);
-
     // checkpointing commands
     if (command == "ckpt")
     {
@@ -715,7 +713,7 @@ void KVSGroupServer::send_error_response(const std::string &err_msg)
 void KVSGroupServer::send_response(std::vector<char> &response_msg)
 {
     BeUtils::write_with_size(group_server_fd, response_msg);
-    kvs_group_server_logger.log("Response sent to client on port " + std::to_string(group_server_port), 20);
+    kvs_group_server_logger.log("Response sent to connection on port " + std::to_string(group_server_port), 20);
 }
 
 // *********************************************
