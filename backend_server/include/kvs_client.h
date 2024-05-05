@@ -29,6 +29,7 @@ public:
 
 private:
     void handle_command(std::vector<char> &client_stream);                     // read first 4 bytes from client stream and call corresponding command handler
+    std::vector<char> geta();                                                  // get all rows from all tablets on server
     std::vector<char> getr(std::vector<char> &inputs);                         // get row from tablet
     std::vector<char> getv(std::vector<char> &inputs);                         // get value from tablet
     std::vector<char> forward_operation_to_primary(std::vector<char> &inputs); // forward non-read operations received from client to primary
