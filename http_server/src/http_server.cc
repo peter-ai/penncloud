@@ -6,8 +6,6 @@
 
 const std::string HttpServer::version = "HTTP/1.1";
 const std::unordered_set<std::string> HttpServer::supported_methods = {"GET", "HEAD", "POST"};
-std::unordered_map<std::string, std::vector<std::string>> HttpServer::client_kvs_addresses;
-std::shared_timed_mutex HttpServer::kvs_mutex;
 
 // *********************************************
 // STATIC FIELD INITIALIZATION
@@ -18,6 +16,10 @@ int HttpServer::admin_port = -1;
 std::string HttpServer::static_dir = "";
 std::vector<RouteTableEntry> HttpServer::routing_table;
 std::atomic<bool> HttpServer::is_dead(false);
+
+std::unordered_map<pthread_t, std::atomic<bool>> HttpServer::client_connections;
+std::mutex HttpServer::client_connections_lock;
+
 std::shared_timed_mutex HttpServer::kvs_mutex;
 std::unordered_map<std::string, std::vector<std::string>> HttpServer::client_kvs_addresses;
 
@@ -49,15 +51,13 @@ void HttpServer::run(int port, std::string static_dir)
     // check that HTTP port is not LOAD BALANCER's client_listen_port
     // excludes load balancer and admin from receiving pings and opening connection with admin console
     if (port != 7500 && port != 8080)
-    // excludes load balancer and admin from receiving pings and opening connection with admin console
-    if (port != 7500 && port != 8080)
     {
         start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 7900
-    }
 
-    // dispatch thread to accept communication from admin
-    if (dispatch_admin_listener_thread() < 0)
-        return;
+        // dispatch thread to accept communication from admin if this is not a load balancer
+        if (dispatch_admin_listener_thread() < 0)
+            return;
+    }
 
     http_logger.log("HTTP server listening for connections on port " + std::to_string(HttpServer::port), 20);
     http_logger.log("Serving static files from " + HttpServer::static_dir + "/", 20);
@@ -202,11 +202,11 @@ void HttpServer::post(const std::string &path, const std::function<void(const Ht
 int HttpServer::dispatch_admin_listener_thread()
 {
     // Bind server to client connection port and store fd to accept client connections on socket
-    int admin_sock_fd = bind_socket(port);
+    int admin_sock_fd = bind_socket(admin_port);
     if (admin_sock_fd < 0)
     {
         http_logger.log("Failed to bind server to client port " + std::to_string(admin_port) + ". Exiting.", 40);
-        return;
+        return -1;
     }
 
     http_logger.log("HTTP server accepting messages from admin on port " + std::to_string(admin_port), 20);

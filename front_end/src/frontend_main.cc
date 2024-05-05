@@ -12,27 +12,23 @@
 
 using namespace std;
 
-atomic<bool> runServer(true);
-
-void contactLoadBalancer()
-{
-}
-
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
 	int opt;
-    int port;
+	int port;
 
-    while ((opt = getopt(argc, argv, "p:")) != -1) {
-        switch (opt) {
-            case 'p':
-                port = atoi(optarg); // Convert the port number from string to int
-                break;
-            default: // '?' is returned by getopt for unrecognized option
-                std::cerr << "Usage: " << argv[0] << " -p <port>\n";
-                return 1;
-        }
-    }
+	while ((opt = getopt(argc, argv, "p:")) != -1)
+	{
+		switch (opt)
+		{
+		case 'p':
+			port = atoi(optarg); // Convert the port number from string to int
+			break;
+		default: // '?' is returned by getopt for unrecognized option
+			std::cerr << "Usage: " << argv[0] << " -p <port>\n";
+			return 1;
+		}
+	}
 
 	/* Public GET API */
 	HttpServer::get("/home", home_page);
@@ -41,7 +37,6 @@ int main(int argc, char* argv[])
 	HttpServer::get("/409", error_409_page); // Conflict
 	HttpServer::get("/401", error_401_page); // Unauthorized
 	HttpServer::get("/400", error_400_page); // Bad API request
-	
 
 	/* Mail Routes */
 	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);		// send an email
