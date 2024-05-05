@@ -88,6 +88,10 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
     {
         res_msg = getv(client_stream);
     }
+    else if (command == "geta")
+    {
+        res_msg = geta();
+    }
     // all other commands are forwarded to the primary
     else
     {
@@ -104,6 +108,31 @@ void KVSClient::handle_command(std::vector<char> &client_stream)
 /**
  * READ-ONLY COMMAND HANDLERS
  */
+
+// @brief Get all rows from all tablets
+std::vector<char> KVSClient::geta()
+{
+    // log command
+    kvs_client_logger.log("GETA", 20);
+
+    // read all rows from all tablets
+    std::vector<char> response_msg;
+    for (const auto &tablet : BackendServer::server_tablets)
+    {
+        std::vector<char> rows = tablet->get_all_rows();
+        response_msg.insert(response_msg.end(), rows.begin(), rows.end());
+        response_msg.push_back('\b');
+    }
+    // remove last added delimiter
+    response_msg.pop_back();
+
+    // append +OK to response and send it back
+    std::string ok = "+OK";
+    response_msg.insert(response_msg.begin(), ok.begin(), ok.end());
+    response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
+
+    return response_msg;
+}
 
 // @brief Get row from tablet
 std::vector<char> KVSClient::getr(std::vector<char> &inputs)
