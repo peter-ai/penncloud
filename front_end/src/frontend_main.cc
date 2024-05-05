@@ -12,27 +12,23 @@
 
 using namespace std;
 
-atomic<bool> runServer(true);
-
-void contactLoadBalancer()
-{
-}
-
-int main(int argc, char* argv[])
+int main(int argc, char *argv[])
 {
 	int opt;
-    int port;
+	int port;
 
-    while ((opt = getopt(argc, argv, "p:")) != -1) {
-        switch (opt) {
-            case 'p':
-                port = atoi(optarg); // Convert the port number from string to int
-                break;
-            default: // '?' is returned by getopt for unrecognized option
-                std::cerr << "Usage: " << argv[0] << " -p <port>\n";
-                return 1;
-        }
-    }
+	while ((opt = getopt(argc, argv, "p:")) != -1)
+	{
+		switch (opt)
+		{
+		case 'p':
+			port = atoi(optarg); // Convert the port number from string to int
+			break;
+		default: // '?' is returned by getopt for unrecognized option
+			std::cerr << "Usage: " << argv[0] << " -p <port>\n";
+			return 1;
+		}
+	}
 
 	/* Public GET API */
 	HttpServer::get("/home", home_page);
@@ -41,7 +37,6 @@ int main(int argc, char* argv[])
 	HttpServer::get("/409", error_409_page); // Conflict
 	HttpServer::get("/401", error_401_page); // Unauthorized
 	HttpServer::get("/400", error_400_page); // Bad API request
-	
 
 	/* Mail Routes */
 	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);		// send an email
@@ -58,10 +53,10 @@ int main(int argc, char* argv[])
 	HttpServer::post("/api/update_password", update_password_handler); // update password
 
 	/* Drive Routes */
-	HttpServer::post("/api/drive/upload/*", upload_file); // upload file
+	HttpServer::post("/api/drive/upload/*", upload_file);		// upload file
 	HttpServer::post("/api/drive/delete/*", delete_filefolder); // delete a file
-	HttpServer::post("/api/drive/create/*", create_folder); // create a folder
-	HttpServer::get("/drive/*", open_filefolder);		  // open file/folder
+	HttpServer::post("/api/drive/create/*", create_folder);		// create a folder
+	HttpServer::get("/drive/*", open_filefolder);				// open file/folder
 
 	// run HTTPServer
 	HttpServer::run(port);
