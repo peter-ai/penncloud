@@ -4,6 +4,8 @@
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
 
+Logger kvs_client_logger("KVS Client");
+
 // @brief Read data from client and construct command to perform on KVS
 void KVSClient::read_from_client()
 {
