@@ -18,8 +18,22 @@ void contactLoadBalancer()
 {
 }
 
-int main()
+int main(int argc, char* argv[])
 {
+	int opt;
+    int port;
+
+    while ((opt = getopt(argc, argv, "p:")) != -1) {
+        switch (opt) {
+            case 'p':
+                port = atoi(optarg); // Convert the port number from string to int
+                break;
+            default: // '?' is returned by getopt for unrecognized option
+                std::cerr << "Usage: " << argv[0] << " -p <port>\n";
+                return 1;
+        }
+    }
+
 	/* Public GET API */
 	HttpServer::get("/home", home_page);
 	HttpServer::get("/account", update_password_page);
@@ -50,7 +64,7 @@ int main()
 	HttpServer::get("/drive/*", open_filefolder);		  // open file/folder
 
 	// run HTTPServer
-	HttpServer::run(8000);
+	HttpServer::run(port);
 
 	return 0;
 }
