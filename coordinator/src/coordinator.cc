@@ -383,7 +383,8 @@ int main(int argc, char *argv[])
                 struct client_args client;
                 client.addr = source;
                 client.fd = comm_fd;
-                client.request = request;
+
+                logger.log("Entering client handler logic", LOGGER_DEBUG);
 
                 // give thread relavent handler
                 if (pthread_create(&thid, NULL, client_thread, (void *)&client) != 0)
@@ -517,7 +518,8 @@ void *kvs_thread(void *arg)
                 // Received PING from KVS
                 if (command.compare("PING") == 0)
                 {
-                    logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
+                    // TODO this was commented out to view other messages coming to coordinator
+                    // logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
                     kvs->alive = true;
                 }
                 // Received RECO from KVS
@@ -637,8 +639,18 @@ void *client_thread(void *arg)
     struct client_args *client = (struct client_args *)arg;
 
     int sent = 0;
+
+    // receive incoming request
+    if ((rlen = recv(client->fd, &request[0], request.size() - rlen, 0)) == -1)
+    {
+        logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
+    }
+    request.resize(rlen);
+
+    logger.log("RECEIVED REQUEST - " + request, LOGGER_ERROR);
+
     if (VERBOSE)
-        logger.log("Received request from <" + client->addr + ">: " + client->request, LOGGER_INFO);
+        logger.log("Received request from <" + client->addr + ">: " + request, LOGGER_INFO);
 
     if ((client->request).length() > 0)
     {
