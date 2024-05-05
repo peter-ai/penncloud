@@ -32,7 +32,7 @@
  *      }
  *  2) kvs_clusters - unordered_map of vectors of kvs_args structs
  *      Data structure keeps track of, for each server group, at a given time
- *      who are the current kvs servers that are alive and actively 
+ *      who are the current kvs servers that are alive and actively
  *      available to service requests
  *      Example for 3 server groups with 2 backups per group
  *      {
@@ -191,7 +191,7 @@ int main(int argc, char *argv[])
             std::string server_ip = ip_addr + ":9" + std::to_string(groups) + std::to_string(servers) + "0";
             std::string admin_ip = ip_addr + ":12" + std::to_string(groups) + std::to_string(servers) + "0";
 
-            struct kvs_args kv;
+            kvs_args kv;
             kv.alive = false;                           // server is not alive yet
             kv.kvs_group = groups;                      // set the group number of this server
             kv.primary = (servers == 0 ? true : false); // if server is 0 then make it primary, otherwise secondary
@@ -221,6 +221,17 @@ int main(int argc, char *argv[])
 
     if (VERBOSE)
     {
+        logger.log("Clusters", LOGGER_DEBUG);
+        for (auto &k : kvs_clusters)
+        {
+            std::string msg = "G" + std::to_string(k.first);
+            for (size_t i = 0; i < k.second.size(); i++)
+            {
+                msg += " - Primary=" + std::to_string(k.second[i].primary) + ", Range=" + k.second[i].kv_range + ", Client=" + k.second[i].client_addr + ", Server=" + k.second[i].server_addr;
+            }
+            logger.log(msg, LOGGER_DEBUG);
+        }
+
         logger.log("Client Map", LOGGER_DEBUG);
         for (auto &k : client_map)
         {
@@ -238,14 +249,13 @@ int main(int argc, char *argv[])
     }
     logger.log("KVS server responsibilites set", LOGGER_INFO);
 
-    
     /* -------------------- SEND ADMIN MESSAGE -------------------- */
     // get details and open socket for comms
     int admin_port = 8080;
     int admin_sock = FeUtils::open_socket(ip_addr, admin_port);
 
     // construct message
-    std::string admin_msg = get_admin_message();    
+    std::string admin_msg = get_admin_message();
 
     // send message
     int sent = 0;
@@ -258,7 +268,7 @@ int main(int argc, char *argv[])
         if (VERBOSE)
             logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
     }
-    
+
     // close socket
     close(admin_sock);
 
@@ -274,6 +284,13 @@ int main(int argc, char *argv[])
     servaddr.sin_family = AF_INET;
     servaddr.sin_port = htons(port);
     inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    int opt = 1;
+    if ((setsockopt(dispatcher_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt))) < 0)
+    {
+        logger.log("Unable to reuse port to bind socket.", 40);
+        return -1;
+    }
 
     // bind socket to port
     if (bind(dispatcher_fd, (struct sockaddr *)&servaddr, sizeof(servaddr)) == -1)
@@ -311,24 +328,54 @@ int main(int argc, char *argv[])
         if (comm_fd != -1)
         {
             // extract source ip address and port (important - convert port from network order to host order)
-            std::string source = std::string(inet_ntoa(src.sin_addr)) + ":" + std::to_string(ntohs(src.sin_port));
-            intranet_mutex.lock_shared();
-            int present = kvs_intranet.count(source);
-            intranet_mutex.unlock_shared();
+            std::string source;
+            bool present;
+
+            std::string request;
+            request.resize(MAX_REQUEST);
+            int rlen = 0;
+            if ((rlen = recv(comm_fd, &request[0], request.size() - rlen, 0)) == -1)
+            {
+                // ERR
+            }
+            request.resize(rlen);
+
+            // Check for INIT from a KVS server (comes with source address in message)
+            if (request.substr(0, 4).compare("INIT") == 0)
+            {
+                present = true;
+                source = request.substr(5, request.size() - 7);
+            }
+            // Client messages - source ip can be extracted from sin_addr
+            else
+            {
+                present = false;
+                source = std::string(inet_ntoa(src.sin_addr)) + ":" + std::to_string(ntohs(src.sin_port));
+            }
+
+            // log message source
+            logger.log(source, LOGGER_DEBUG);
 
             // if connection is from a kvs
             if (present)
             {
                 // get kvs associated with this connection
                 intranet_mutex.lock_shared();
-                struct kvs_args kvs = kvs_intranet[source];
+                // retrieve reference to kvs from map, since we're updating its fd (and this should be retained in the map)
+                kvs_args &kvs = kvs_intranet.at(source);
                 intranet_mutex.unlock_shared();
+                // save fd for further communication
                 kvs.fd = comm_fd;
 
-                if (pthread_create(&thid, NULL, kvs_thread, (void *)&kvs) != 0)
+                // send init response to kvs
+                if (send_kvs_init(kvs, request))
                 {
-                    logger.log("Error, unable to create new thread.", LOGGER_CRITICAL);
-                    return 1;
+                    // create thread to service long-running connection with kvs
+                    if (pthread_create(&thid, NULL, kvs_thread, (void *)&kvs) != 0)
+                    {
+                        logger.log("Error, unable to create new thread.", LOGGER_CRITICAL);
+                        return 1;
+                    }
                 }
             }
             else
@@ -419,68 +466,63 @@ void *kvs_thread(void *arg)
     int timeout_msecs = 4000; // timeout 4000 milliseconds = 4 seconds
     int ret;
 
-    while ((ret = poll(fds.data(), fds.size(), timeout_msecs)) != -1)
+    while ((ret = poll(fds.data(), fds.size(), timeout_msecs)))
     {
         if (ret > 0) // socket is ready to be read
         {
             // if events triggered, do stuff
             if (fds[0].revents & POLLIN)
             {
-                // define string as buffer for requests
-                std::string request;
-                request.resize(MAX_REQUEST);
-                int rlen = 0;
-                int sent = 0;
-
-                // read until CRLF is encountered
-                while (request[rlen] != '\n' && request[rlen - 1] != '\r')
+                // read from fd
+                std::string command;
+                bool is_complete = false;
+                int bytes_recvd;
+                while (true)
                 {
-                    // read from socket connection
-                    rlen += recv(kvs->fd, &request[0], request.size() - rlen, 0);
+                    char buf[1024]; // size of buffer for CURRENT read
+                    bytes_recvd = recv(kvs->fd, buf, sizeof(buf), 0);
 
-                    // if an error occurs log it
-                    if (rlen == -1)
+                    // error while reading from source
+                    if (bytes_recvd < 0)
                     {
-                        logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
+                        logger.log("Error reading from source", 40);
+                        break;
+                    }
+                    // check condition where connection was preemptively closed by source
+                    else if (bytes_recvd == 0)
+                    {
+                        logger.log("Remote socket closed connection", 40);
+                        break;
                     }
 
-                    if (rlen == 0) // socket closed
+                    for (int i = 0; i < bytes_recvd; i++)
+                    {
+                        // check last index of coordinator's response for \r and curr index in buf for \n
+                        if (command.length() > 0 && command.back() == '\r' && buf[i] == '\n')
+                        {
+                            command.pop_back(); // delete \r in client message
+                            is_complete = true;
+                            break;
+                        }
+                        command.push_back(buf[i]);
+                    }
+
+                    if (is_complete)
                     {
                         break;
                     }
                 }
-                if (rlen == 0)
-                    break; // if rlen == 0, the socket was closed
 
-                // resize request and extract command
-                request.resize(rlen);
-                std::string command = request.substr(0, 4);
-
-                if (command.compare("INIT") == 0) // Scenario 1 - INIT
+                // Received PING from KVS
+                if (command.compare("PING") == 0)
                 {
-                    // construct message
-                    std::string response = (kvs->primary ? "P " : "S ") + get_kvs_message(*kvs);
-
-                    // send response to kvs
-                    if ((sent = send(kvs->fd, &response[0], response.size(), 0)) == -1)
-                    {
-                        logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_CRITICAL);
-                        if (errno == ECONNRESET)
-                            break; // connection has been closed so exit loop
-                    }
-                    else
-                    {
-                        if (VERBOSE)
-                            logger.log("Sent response to <" + kvs->server_addr + ">: " + response, LOGGER_INFO);
-                    }
-
-                    request.clear();
-                    response.clear();
-                }
-                else if (command.compare("PING") == 0) // Scenario 2 - PING
+                    logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
                     kvs->alive = true;
-                else // Scenario 3 - RECO
+                }
+                // Received RECO from KVS
+                else if (command.compare("RECO") == 0)
                 {
+                    logger.log("Received RECO from " + kvs->server_addr, LOGGER_INFO);
                     if (kvs->alive)
                         continue; // if kvs is already alive, do not process the below commands
 
@@ -503,14 +545,20 @@ void *kvs_thread(void *arg)
                     // broadcast updated server list and primary to all kvs in cluster
                     broadcast_to_cluster(kvs->kvs_group);
                 }
+                else
+                {
+                    logger.log("Unrecognized command from KVS server. This should NOT occur.", 50);
+                }
             }
         }
         else if (ret == -1) // failure occured
         {
             logger.log("Polling socket for KVS " + kvs->client_addr + "/" + kvs->server_addr + "failed. (" + strerror(errno) + ")", LOGGER_ERROR);
+            break;
         }
         else // call timed out and no fds are ready to be read from
         {
+            logger.log("KVS " + kvs->server_addr + " passed away", LOGGER_WARN);
             if (!kvs->alive)
                 continue; // if kvs is already dead, do not process the below commands
 
@@ -518,20 +566,33 @@ void *kvs_thread(void *arg)
             kvs->alive = false;
 
             // remove dead server from client map
+            std::vector<struct kvs_args>::iterator position;
             client_map_mutex.lock();
             for (auto &key : kvs->kv_range)
             {
-                std::vector<kvs_args>::iterator position = std::find(client_map[key].begin(), client_map[key].end(), kvs);
-                if (position != client_map[key].end())
-                    client_map[key].erase(position);
+                for (size_t i = 0; i < client_map[key].size(); i++)
+                {
+                    if (client_map[key][i].client_addr.compare(kvs->client_addr) == 0)
+                    {
+                        position = client_map[key].begin() + i;
+                        break;
+                    }
+                }
+                client_map[key].erase(position);
             }
             client_map_mutex.unlock();
 
             // remove dead server from cluster group
             cluster_mutex.lock();
-            std::vector<kvs_args>::iterator position = std::find(kvs_clusters[kvs->kvs_group].begin(), kvs_clusters[kvs->kvs_group].end(), kvs);
-            if (position != kvs_clusters[kvs->kvs_group].end())
-                kvs_clusters[kvs->kvs_group].erase(position);
+            for (size_t i = 0; i < kvs_clusters[kvs->kvs_group].size(); i++)
+            {
+                if (kvs_clusters[kvs->kvs_group][i].client_addr.compare(kvs->client_addr) == 0)
+                {
+                    position = kvs_clusters[kvs->kvs_group].begin() + i;
+                    break;
+                }
+            }
+            kvs_clusters[kvs->kvs_group].erase(position);
 
             // if current server was primary select a new primary
             if (kvs->primary)
@@ -643,7 +704,7 @@ size_t sample_index(size_t length)
 /// @brief constructs a specialized message for the given kvs
 /// @param kvs an address of a kvs_args struct
 /// @return a message to be sent back to the kvs
-std::string get_kvs_message(kvs_args &kvs)
+std::string get_kvs_message(struct kvs_args &kvs)
 {
     // construct message
     std::string response = std::string(1, kvs.kv_range[0]) + ":" + std::string(1, kvs.kv_range.back()) + " "; // add key value range to message
@@ -696,31 +757,31 @@ std::string get_admin_message()
     std::string message = "C ";
 
     cluster_mutex.lock_shared();
-    for (auto &cluster: kvs_clusters)
+    for (auto &cluster : kvs_clusters)
     {
         // add group number
         message += "SG" + std::to_string(cluster.first) + ": ";
-        
+
         // create list of servers for each cluster/group
         bool primary = false;
         std::string temp = "";
         for (size_t i = 0; i < cluster.second.size(); i++)
-        {   
+        {
             kvs_args kv = cluster.second[i];
 
             // add name
-            if (kv.primary) 
+            if (kv.primary)
             {
                 temp += "primary ";
                 primary = true;
-            }    
-            else 
+            }
+            else
             {
-                temp += "secondary" + (primary ? std::to_string(i) : std::to_string(i-1)) + " ";
+                temp += "secondary" + (primary ? std::to_string(i) : std::to_string(i - 1)) + " ";
             }
 
             // add port
-            temp += kv.server_addr.substr(kv.server_addr.find(':')+1) + ",";
+            temp += kv.server_addr.substr(kv.server_addr.find(':') + 1) + ",";
         }
         temp.pop_back();
 
@@ -728,7 +789,35 @@ std::string get_admin_message()
         message += temp + "\n";
     }
     cluster_mutex.unlock_shared();
-    
+
     message += "\r\n"; // add terminating characters
     return message;
-}  
+}
+
+/// @brief send init response to kvs
+bool send_kvs_init(struct kvs_args &kvs, std::string &request)
+{
+    bool successful = true;
+    int sent = 0;
+
+    // construct message
+    std::string response = (kvs.primary ? "P " : "S ") + get_kvs_message(kvs);
+
+    // send response to kvs
+    if ((sent = send(kvs.fd, &response[0], response.size(), 0)) == -1)
+    {
+        logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_CRITICAL);
+        if (errno == ECONNRESET)
+            successful = false; // connection has been closed so exit loop
+    }
+    else
+    {
+        if (VERBOSE)
+            logger.log("Sent response to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
+    }
+
+    request.clear();
+    response.clear();
+
+    return successful;
+}

@@ -60,10 +60,24 @@ uint32_t BackendServer::last_checkpoint = 0;
 // THREAD FN WRAPPER FOR SERVER CONNECTIONS
 // *********************************************
 
-void *connection_thread_fn(void *arg)
+// void *connection_thread_fn(void *arg)
+// {
+//     auto fn = *static_cast<std::function<void()> *>(arg);
+//     fn(); // Call member function
+//     return nullptr;
+// }
+
+void *client_thread_adapter(void *obj)
 {
-    auto fn = *static_cast<std::function<void()> *>(arg);
-    fn(); // Call member function
+    KVSClient *kvs_client = static_cast<KVSClient *>(obj);
+    kvs_client->read_from_client();
+    return nullptr;
+}
+
+void *group_server_thread_adapter(void *obj)
+{
+    KVSGroupServer *kvs_group_server = static_cast<KVSGroupServer *>(obj);
+    kvs_group_server->read_from_group_server();
     return nullptr;
 }
 
@@ -150,13 +164,18 @@ void BackendServer::accept_and_handle_clients()
         int client_port = ntohs(client_addr.sin_port);
         be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
-        // initialize KVSClient object
+        // // initialize KVSClient object
+        // KVSClient kvs_client(client_fd, client_port);
+        // // capture object using lambda and call actual thread function (function that accepts client connections)
+        // auto fn = std::function<void()>([&kvs_client]()
+        //                                 { kvs_client.read_from_client(); });
+        // pthread_t client_thread;
+        // pthread_create(&client_thread, nullptr, connection_thread_fn, &fn);
+
+        // initialize KVSGroupServer object
         KVSClient kvs_client(client_fd, client_port);
-        // capture object using lambda and call actual thread function (function that accepts client connections)
-        auto fn = std::function<void()>([&kvs_client]()
-                                        { kvs_client.read_from_client(); });
         pthread_t client_thread;
-        pthread_create(&client_thread, nullptr, connection_thread_fn, &fn);
+        pthread_create(&client_thread, nullptr, client_thread_adapter, &kvs_client);
 
         // add thread to map of client connections
         client_connections_lock.lock();
@@ -226,7 +245,8 @@ void BackendServer::handle_coord_comm(int coord_sock_fd)
 int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
 {
     // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string msg = "INIT";
+    std::string ip = "127.0.0.1:";
+    std::string msg = "INIT " + ip + std::to_string(BackendServer::group_port);
     if (BeUtils::write_with_crlf(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
@@ -280,11 +300,11 @@ int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
     range_end = range.at(1);
 
     // save primary and list of secondaries
-    primary_port = std::stoi(res_tokens.at(2));
+    primary_port = std::stoi(res_tokens.at(2).substr(ip.length()));
     std::string secondaries;
     for (size_t i = 3; i < res_tokens.size(); i++)
     {
-        secondary_ports.insert(std::stoi(res_tokens.at(i)));
+        secondary_ports.insert(std::stoi(res_tokens.at(i).substr(ip.length())));
         secondaries += res_tokens.at(i) + " ";
     }
 
@@ -409,13 +429,18 @@ void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
         int group_server_port = ntohs(group_server_addr.sin_port);
         be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
 
+        // // initialize KVSGroupServer object
+        // KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
+        // // capture object using lambda and call actual thread function (function that accepts group server connections)
+        // auto fn = std::function<void()>([&kvs_group_server]()
+        //                                 { kvs_group_server.read_from_group_server(); });
+        // pthread_t group_server_thread;
+        // pthread_create(&group_server_thread, nullptr, connection_thread_fn, &fn);
+
         // initialize KVSGroupServer object
         KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
-        // capture object using lambda and call actual thread function (function that accepts group server connections)
-        auto fn = std::function<void()>([&kvs_group_server]()
-                                        { kvs_group_server.read_from_group_server(); });
         pthread_t group_server_thread;
-        pthread_create(&group_server_thread, nullptr, connection_thread_fn, &fn);
+        pthread_create(&group_server_thread, nullptr, &group_server_thread_adapter, &kvs_group_server);
 
         // add thread to map of group server connections connections
         group_server_connections_lock.lock();
@@ -472,16 +497,20 @@ std::vector<int> BackendServer::wait_for_acks_from_servers(std::unordered_map<in
         {
             // check if server is dead
             secondary_ports_lock.lock();
-            bool is_dead = secondary_ports.count(server.first) == 0 && server.first != primary_port;
+            bool curr_server_is_dead = secondary_ports.count(server.first) == 0 && server.first != primary_port;
             secondary_ports_lock.unlock();
 
             // track server if it's dead and stop trying to read from it
-            if (is_dead)
+            if (curr_server_is_dead)
             {
                 dead_servers.push_back(server.first);
                 break;
             }
-            BeUtils::wait_for_events({server.second}, 250);
+            // read event is available on this server, move to waiting for ack on next server
+            if (BeUtils::wait_for_events({server.second}, 250) == 0)
+            {
+                break;
+            }
         }
     }
     return dead_servers;
@@ -614,8 +643,8 @@ void BackendServer::coordinate_checkpoint()
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
         if (is_primary)
         {
-            // Sleep for 60 seconds between each checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(60));
+            // Sleep for 30 seconds between each checkpoint
+            std::this_thread::sleep_for(std::chrono::seconds(10));
 
             // Begin checkpointing
             checkpoint_version++; // increment checkpoint version number
@@ -649,6 +678,9 @@ void BackendServer::coordinate_checkpoint()
             // Wait for ACKs from all live servers
             be_logger.log("CP[" + std::to_string(checkpoint_version) + "] Waiting for ACKs from servers", 20);
             std::vector<int> dead_servers = wait_for_acks_from_servers(servers);
+
+            be_logger.log("Number of dead servers - " + std::to_string(dead_servers.size()), 20);
+
             // remove dead servers from map of servers
             for (int dead_server : dead_servers)
             {

@@ -18,8 +18,8 @@ namespace BeUtils
     int open_connection(int port); // Open a connection with the specified port. Returns a fd if successful, -1 otherwise.
 
     // write methods
-    int write_with_crlf(int fd, std::string &msg);       // Write message to coordinator
-    int write_with_size(int fd, std::vector<char> &msg); // Write message prepended with size prefix to fd
+    int write_with_crlf(int fd, std::string msg);       // Write message to coordinator
+    int write_with_size(int fd, std::vector<char> msg); // Write message prepended with size prefix to fd
 
     // read methods
     int wait_for_events(const std::vector<int> &fds, int timeout_ms); // Waits for event to occur on all fds within specified timeout

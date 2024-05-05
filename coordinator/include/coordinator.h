@@ -12,6 +12,7 @@
  *  range assigned to each KVS server
  */
 
+#include <fcntl.h>
 #include <iostream>
 #include <unistd.h>
 #include <string>
@@ -41,17 +42,17 @@ extern int VERBOSE;                                // verbose flag
 
 /// @brief signal handler
 /// @param sig signal to handle
-void signal_handler(int sig);  
+void signal_handler(int sig);
 
 /// @brief work to be done by thread servicing a request from a KVS server
 /// @param arg a void pointer
 /// @return void
-void *kvs_thread(void *arg);   
+void *kvs_thread(void *arg);
 
 /// @brief work to be done by thread servicing a request from a front-end server
 /// @param arg a void pointer
 /// @return void
-void *client_thread(void *arg); 
+void *client_thread(void *arg);
 
 /// @brief randomly sample an index between [0, length)
 /// @param length the upper bound of the sampling range (exclusive)
@@ -59,14 +60,9 @@ void *client_thread(void *arg);
 size_t sample_index(size_t length);
 
 /// @brief constructs a specialized message for the given kvs
-/// @param kvs a pointer to a kvs_args struct
-/// @return a message to be sent back to the kvs
-std::string get_kvs_message(kvs_args *kvs);
-
-/// @brief constructs a specialized message for the given kvs
 /// @param kvs an address of a kvs_args struct
 /// @return a message to be sent back to the kvs
-std::string get_kvs_message(kvs_args &kvs);
+std::string get_kvs_message(struct kvs_args &kvs);
 
 /// @brief broadcasts a specialized message to each member of the cluster specified by group number
 /// @param group the cluster number of the calling kvs
@@ -75,6 +71,8 @@ void broadcast_to_cluster(int group);
 /// @brief constructs message to be sent to admin HTTP server
 /// @return a specialized message to admin
 std::string get_admin_message();
+
+bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 
 /// @brief client server connection
 struct client_args

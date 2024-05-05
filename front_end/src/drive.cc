@@ -34,6 +34,17 @@ string get_username(const string path)
     return Utils::split_on_first_delim(path, "/")[0];
 }
 
+// helper to check if a vecotr of chars contains a subseqeunce
+bool contains_subseq(const vector<char> &sequence, const vector<char> &subsequence)
+{
+    // convert both vectors to strings
+    string seq_str(sequence.begin(), sequence.end());
+    string subseq_str(subsequence.begin(), subsequence.end());
+
+    // using search to find the subsequence in the sequence
+    return search(seq_str.begin(), seq_str.end(), subseq_str.begin(), subseq_str.end()) != seq_str.end();
+}
+
 // checks if path ends in /, if yes folder. Otherwise of type file
 bool is_folder(const vector<char> &vec)
 {
@@ -135,18 +146,7 @@ vector<char> format_folder_contents(vector<vector<char>> &vec)
 
     return output;
 }
-
-// helper to check if a vecotr of chars contains a subseqeunce
-bool contains_subseq(const vector<char> &sequence, const vector<char> &subsequence)
-{
-    // convert both vectors to strings
-    string seq_str(sequence.begin(), sequence.end());
-    string subseq_str(subsequence.begin(), subsequence.end());
-
-    // using search to find the subsequence in the sequence
-    return search(seq_str.begin(), seq_str.end(), subseq_str.begin(), subseq_str.end()) != seq_str.end();
-}
-
+// 3431416482696731938431374517029964808742144996087957558348317691
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // @PETER ADDED
@@ -247,12 +247,13 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                        "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'/>"
                                        "</svg>"
                                        "</a>"
-                                       "<p class='text-break'>" 
-                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" + item + "' data-bs-path='" + childpath_str + "'>"
-                                       "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
-                                       "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
-                                       "</svg>"
-                                       "</a>" +
+                                       "<p class='text-break'>"
+                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" +
+                                item + "' data-bs-path='" + childpath_str + "'>"
+                                                                            "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                                                            "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                                                            "</svg>"
+                                                                            "</a>" +
                                 item +
                                 "</p>"
                                 "</div>";
@@ -268,11 +269,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                        "</svg>"
                                        "</a>"
                                        "<p class='text-break'>"
-                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" + item + "' data-bs-path='" + childpath_str + "'>"
-                                       "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
-                                       "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
-                                       "</svg>"
-                                       "</a>" +
+                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" +
+                                item + "' data-bs-path='" + childpath_str + "'>"
+                                                                            "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                                                            "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                                                            "</svg>"
+                                                                            "</a>" +
                                 item +
                                 "</p>"
                                 "</div>";
@@ -294,17 +296,17 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
                 if (row_count % 9 != (9 - 1))
                     folder_html += "</div>";
-                
 
                 // construct array of folders in cwd
-                if (row_count > 0) folders.pop_back();
+                if (row_count > 0)
+                    folders.pop_back();
                 folders.push_back(']');
-                
+
                 std::vector<std::string> path_elems = Utils::split(childpath_str, "/");
                 std::string drive = "";
-                for (row_count=path_elems.size()-1; row_count >= 0; row_count--) 
+                for (row_count = path_elems.size() - 1; row_count >= 0; row_count--)
                 {
-                    if (path_elems.size() - row_count == 1) 
+                    if (path_elems.size() - row_count == 1)
                     {
                         drive = "<a href='./'>" + path_elems[row_count] + "</a>/" + drive;
                     }
@@ -384,7 +386,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-pen' viewBox='0 0 16 16'>"
                     "<path d='m13.498.795.149-.149a1.207 1.207 0 1 1 1.707 1.708l-.149.148a1.5 1.5 0 0 1-.059 2.059L4.854 14.854a.5.5 0 0 1-.233.131l-4 1a.5.5 0 0 1-.606-.606l1-4a.5.5 0 0 1 .131-.232l9.642-9.642a.5.5 0 0 0-.642.056L6.854 4.854a.5.5 0 1 1-.708-.708L9.44.854A1.5 1.5 0 0 1 11.5.796a1.5 1.5 0 0 1 1.998-.001m-.644.766a.5.5 0 0 0-.707 0L1.95 11.756l-.764 3.057 3.057-.764L14.44 3.854a.5.5 0 0 0 0-.708z'/>"
                     "</svg><br/>"
-                    "Rename Item" 
+                    "Rename Item"
                     "</button>"
                     "</div>"
                     "<div class='col-1 text-center'>"
@@ -392,7 +394,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-arrows-move' viewBox='0 0 16 16'>"
                     "<path fill-rule='evenodd' d='M7.646.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 1.707V5.5a.5.5 0 0 1-1 0V1.707L6.354 2.854a.5.5 0 1 1-.708-.708zM8 10a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L7.5 14.293V10.5A.5.5 0 0 1 8 10M.146 8.354a.5.5 0 0 1 0-.708l2-2a.5.5 0 1 1 .708.708L1.707 7.5H5.5a.5.5 0 0 1 0 1H1.707l1.147 1.146a.5.5 0 0 1-.708.708zM10 8a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L14.293 8.5H10.5A.5.5 0 0 1 10 8'/>"
                     "</svg><br/>"
-                    "Move Item" 
+                    "Move Item"
                     "</button>"
                     "</div>"
                     "<div class='col-1 text-center'>"
@@ -400,7 +402,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-folder-fill' viewBox='0 0 16 16'>"
                     "<path d='M9.828 3h3.982a2 2 0 0 1 1.992 2.181l-.637 7A2 2 0 0 1 13.174 14H2.825a2 2 0 0 1-1.991-1.819l-.637-7a2 2 0 0 1 .342-1.31L.5 3a2 2 0 0 1 2-2h3.672a2 2 0 0 1 1.414.586l.828.828A2 2 0 0 0 9.828 3m-8.322.12q.322-.119.684-.12h5.396l-.707-.707A1 1 0 0 0 6.172 2H2.5a1 1 0 0 0-1 .981z'></path>"
                     "</svg><br/>"
-                    "Create Folder" 
+                    "Create Folder"
                     "</button>"
                     "</div>"
                     "<div class='col-4'>"
@@ -447,71 +449,73 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
                     "</div>"
                     "<div class='modal-body'>"
-                    "<form id='createFolderForm' method='POST' action='/api/drive/create/" + childpath_str +  "'>"
-                    "<div class='mb-3'>"
-                    "<label for='folder-name' class='col-form-label'>Folder name:</label>"
-                    "<input name='name' type='text' class='form-control' id='folder-name' minlength=1 maxlength=255 pattern='^[\\w\\-]+$' required placeholder='My_Folder-27' aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
-                    "<div id='folderHelp' class='form-text'>Names can contain letters, numbers, hyphens, and underscores</div>"
-                    "</div>"
-                    "</form>"
-                    "</div>"
-                    "<div class='modal-footer'>"
-                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
-                    "<button type='submit' class='btn btn-primary' onclick='var folders = " + folders + "; if ($(\"#createFolderForm\")[0].checkValidity()) {if (folders.includes($(\"#createFolderForm\")[0][0].value + \"/\")) { $(\"#createFolderForm\")[0][0].setCustomValidity(\"Folder already exists.\"); $(\"#createFolderForm\")[0].reportValidity(); } else {$(\"#createFolderForm\").submit();} } else {$(\"#createFolderForm\")[0][0].setCustomValidity(($(\"#createFolderForm\")[0][0].value.length !== 0 ? \"Some of the input characters are bad.\" : \"Please fill out this field.\")); $(\"#createFolderForm\")[0].reportValidity();}'>Create</button>"
-                    "</div>"
-                    "</div>"
-                    "</div>"
-                    "</div>"
+                    "<form id='createFolderForm' method='POST' action='/api/drive/create/" +
+                    childpath_str + "'>"
+                                    "<div class='mb-3'>"
+                                    "<label for='folder-name' class='col-form-label'>Folder name:</label>"
+                                    "<input name='name' type='text' class='form-control' id='folder-name' minlength=1 maxlength=255 pattern='^[\\w\\-]+$' required placeholder='My_Folder-27' aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
+                                    "<div id='folderHelp' class='form-text'>Names can contain letters, numbers, hyphens, and underscores</div>"
+                                    "</div>"
+                                    "</form>"
+                                    "</div>"
+                                    "<div class='modal-footer'>"
+                                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                                    "<button type='submit' class='btn btn-primary' onclick='var folders = " +
+                    folders + "; if ($(\"#createFolderForm\")[0].checkValidity()) {if (folders.includes($(\"#createFolderForm\")[0][0].value + \"/\")) { $(\"#createFolderForm\")[0][0].setCustomValidity(\"Folder already exists.\"); $(\"#createFolderForm\")[0].reportValidity(); } else {$(\"#createFolderForm\").submit();} } else {$(\"#createFolderForm\")[0][0].setCustomValidity(($(\"#createFolderForm\")[0][0].value.length !== 0 ? \"Some of the input characters are bad.\" : \"Please fill out this field.\")); $(\"#createFolderForm\")[0].reportValidity();}'>Create</button>"
+                              "</div>"
+                              "</div>"
+                              "</div>"
+                              "</div>"
 
-                    "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                    "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                    "crossorigin='anonymous'></script>"
-                    "<script>"
-                            "$('.delete').on('click', function() {"
-                            "    $('#deleteModal').modal('show');"
-                            "});"
+                              "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                              "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                              "crossorigin='anonymous'></script>"
+                              "<script>"
+                              "$('.delete').on('click', function() {"
+                              "    $('#deleteModal').modal('show');"
+                              "});"
 
-                            "$('#deleteModal').on('show.bs.modal', function(e) {"
-                                "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-                                "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-                                "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-                                "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                            "});"
-                    "</script>"
-                    "<script>"
-                    "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                    "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                    "$('#switchLabel').html('Light Mode');"
-                    "sessionStorage.setItem('data-bs-theme', 'light');"
-                    ""
-                    "}"
-                    "else {"
-                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                    "$('#switchLabel').html('Dark Mode');"
-                    "sessionStorage.setItem('data-bs-theme', 'dark');"
-                    "}"
-                    "});"
-                    "</script>"
-                    "<script>"
-                    "function setTheme() {"
-                    "var theme = sessionStorage.getItem('data-bs-theme');"
-                    "if (theme !== null) {"
-                    "if (theme === 'dark') {"
-                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                    "$('#switchLabel').html('Dark Mode');"
-                    "$('#flexSwitchCheckReverse').attr('checked', true);"
-                    "}"
-                    "else {"
-                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                    "$('#switchLabel').html('Light Mode');"
-                    "$('#flexSwitchCheckReverse').attr('checked', false);"
-                    "}"
-                    "}"
-                    "};"
-                    "</script>"
-                    "</body>"
-                    "</html>";
+                              "$('#deleteModal').on('show.bs.modal', function(e) {"
+                              "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                              "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                              "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                              "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                              "});"
+                              "</script>"
+                              "<script>"
+                              "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                              "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                              "$('#switchLabel').html('Light Mode');"
+                              "sessionStorage.setItem('data-bs-theme', 'light');"
+                              ""
+                              "}"
+                              "else {"
+                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                              "$('#switchLabel').html('Dark Mode');"
+                              "sessionStorage.setItem('data-bs-theme', 'dark');"
+                              "}"
+                              "});"
+                              "</script>"
+                              "<script>"
+                              "function setTheme() {"
+                              "var theme = sessionStorage.getItem('data-bs-theme');"
+                              "if (theme !== null) {"
+                              "if (theme === 'dark') {"
+                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                              "$('#switchLabel').html('Dark Mode');"
+                              "$('#flexSwitchCheckReverse').attr('checked', true);"
+                              "}"
+                              "else {"
+                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                              "$('#switchLabel').html('Light Mode');"
+                              "$('#flexSwitchCheckReverse').attr('checked', false);"
+                              "}"
+                              "}"
+                              "};"
+                              "</script>"
+                              "</body>"
+                              "</html>";
 
                 // @PETER ADDED - reset cookies of user
                 res.append_body_str(page);
@@ -817,11 +821,11 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
                 // contents = split_vector(folder_elements, {'\b'});
                 // formatted_content = format_folder_contents(contents);
                 // res.append_body_bytes(formatted_content.data(), formatted_content.size());
-                // res.set_code(200);  
-                
+                // res.set_code(200);
+
                 res.set_code(303);
                 res.set_header("Location", "/drive/" + std::string(row_name.begin(), row_name.end()));
-            
+
                 // set cookies on response
                 FeUtils::set_cookies(res, username, valid_session_id);
             }

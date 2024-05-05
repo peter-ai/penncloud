@@ -93,7 +93,9 @@ int BeUtils::open_connection(int port)
 // WRITE METHODS
 // *********************************************
 
-int BeUtils::write_with_crlf(int fd, std::string &msg)
+/// @brief Write message to fd, with crlf added to end of message
+// Note that we always write with a copy of the message, since we're modifying the message here
+int BeUtils::write_with_crlf(int fd, std::string msg)
 {
     // append delimiter to end of msg
     msg += "\r\n";
@@ -112,7 +114,8 @@ int BeUtils::write_with_crlf(int fd, std::string &msg)
 }
 
 /// @brief Write message to fd, with message size (4 bytes) prepended to start of message
-int BeUtils::write_with_size(int fd, std::vector<char> &msg)
+// Note that we always write with a copy of the message, since we're modifying the message here
+int BeUtils::write_with_size(int fd, std::vector<char> msg)
 {
     // Insert size of message at beginning of msg
     std::vector<uint8_t> size_prefix = host_num_to_network_vector(msg.size());
