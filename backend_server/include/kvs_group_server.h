@@ -11,13 +11,11 @@ class KVSGroupServer
 private:
     int group_server_fd;   // fd to communicate with group server
     int group_server_port; // Port that group server is sending data from
-    Logger kvs_group_server_logger;
 
     // methods
 public:
     // group server initialized with an associated file descriptor and group server's port
-    KVSGroupServer(int group_server_fd, int group_server_port) : group_server_fd(group_server_fd), group_server_port(group_server_port),
-                                                                 kvs_group_server_logger("KVS Group Server [" + std::to_string(group_server_port) + "]"){};
+    KVSGroupServer(int group_server_fd, int group_server_port) : group_server_fd(group_server_fd), group_server_port(group_server_port){};
     // disable default constructor - KVSGroupServer should only be created with an associated fd and port
     KVSGroupServer() = delete;
 
