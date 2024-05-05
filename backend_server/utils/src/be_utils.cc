@@ -200,8 +200,7 @@ int BeUtils::wait_for_events(const std::vector<int> &fds, int timeout_ms)
             // read event occurred on all fds, return 0
             if (all_fds_responded)
             {
-                // TODO figure out why this is looping
-                // be_utils_logger.log("Read event available on all fds", 20);
+                be_utils_logger.log("Read event available on all fds", 20);
                 return 0;
             }
 
