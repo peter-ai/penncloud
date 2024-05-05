@@ -393,7 +393,7 @@ void HttpServer::send_heartbeat(int lb_port, int server_port)
         return;
     }
 
-    http_logger.log("PING sent from FE server (PORT " + std::to_string(port) + ") to Load Balancer", 20);
+    // http_logger.log("PING sent from FE server (PORT " + std::to_string(port) + ") to Load Balancer", 20);
     // Expected message format: "PING<SP>PORT\r\n"
     std::string message = "PING " + std::to_string(server_port) + "\r\n";
     send(sock, message.c_str(), message.length(), 0);
