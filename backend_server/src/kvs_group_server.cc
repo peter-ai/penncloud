@@ -7,6 +7,8 @@
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
 
+Logger kvs_group_server_logger("KVS Group Server");
+
 // *********************************************
 // MAIN RUN METHODS
 // *********************************************
