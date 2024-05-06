@@ -655,18 +655,14 @@ void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
 
     // temp
 
-    row_data;
-    row_data.push_back("Row 1 Data");
-    row_data.push_back("Row 2 Data");
+    // writing to port 12000++ to get rows
+    // open socket to
+    int server_fd = FeUtils::open_socket("127.0.0.1", kvs_servers[servername]);
 
-    // // writing to port 12000++ to get rows
-    // // open socket to
-    // int server_fd = FeUtils::open_socket("127.0.0.1", kvs_servers[servername]);
+    vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+    row_data = FeUtils::parse_all_rows(row_vector_raw);
 
-    // vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
-    // row_data = FeUtils::parse_all_rows(row_vector_raw);
-
-    // close(server_fd);
+    close(server_fd);
 
     res.set_code(303); // OK
     res.set_header("Location", "/admin/dashboard");
@@ -696,84 +692,84 @@ int main()
     logger.log("Admin console init", LOGGER_INFO);
     /* Create sockets on defined ports 8000 and 8001 */
 
-    // // Create socket for port 8080
-    // int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
-    // if (listen_sock == -1)
-    // {
-    //     std::cerr << "Socket creation failed\n";
-    //     return 1;
-    // }
-
-    // // Set socket option to enable address reuse
-    // int enable = 1;
-    // if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    // {
-    //     std::cerr << "Setsockopt failed for port 8080\n";
-    //     return 1;
-    // }
-
-    // string ip_addr = "127.0.0.1";
-    // int listen_port = 8080;
-    // struct sockaddr_in servaddr;
-    // socklen_t servaddr_size = sizeof(servaddr);
-    // bzero(&servaddr, sizeof(servaddr));
-    // servaddr.sin_family = AF_INET;
-    // servaddr.sin_port = htons(listen_port);
-    // inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // // bind socket to port
-    // if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
-    // {
-    //     std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
-    //     logger.log(msg, LOGGER_CRITICAL);
-    //     return 1;
-    // }
-
-    // // Listen for incoming connections
-    // if (listen(listen_sock, 3) < 0)
-    // {
-    //     std::cerr << "Listen failed\n";
-    //     return 1;
-    // }
-
-    // // Accept incoming connections and handle them in separate threads
-    // while (server_loops < 1)
-    // {
-    //     // if we got messages from both coord and lb, exit loop
-    //     if (lb_init) // @todo add this once confirmed kvs && coord_init
-    //     {
-    //         cout << "lb init done" << endl;
-    //         break;
-    //     }
-
-    //     int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
-    //     if (temp_sock < 0)
-    //     {
-    //         std::cerr << "Accept failed for port 8080\n";
-    //         return 1;
-    //     }
-
-    //     get_server_data(temp_sock);
-    //     server_loops++;
-    // }
-
-    // Initialize frontend (FE) servers
-    for (int i = 1; i <= 4; ++i)
+    // Create socket for port 8080
+    int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
+    if (listen_sock == -1)
     {
-        string fe_key = "FE" + to_string(i);
-        int port_number = 8000 + i - 1; // Increment port number for each server
-        lb_servers[fe_key] = port_number;
-        server_status[fe_key] = 1; // Set status to 1 for each FE server
+        std::cerr << "Socket creation failed\n";
+        return 1;
     }
 
-    // Initialize Key-Value Store (KVS) servers
-    for (int i = 1; i <= 2; ++i)
-    { // Assuming two KVS servers
-        string kvs_key = "KVS" + to_string(i);
-        int port_number = 9000 + i - 1; // Increment port number for each server
-        kvs_servers[kvs_key] = port_number;
-        server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    // Set socket option to enable address reuse
+    int enable = 1;
+    if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    {
+        std::cerr << "Setsockopt failed for port 8080\n";
+        return 1;
     }
+
+    string ip_addr = "127.0.0.1";
+    int listen_port = 8080;
+    struct sockaddr_in servaddr;
+    socklen_t servaddr_size = sizeof(servaddr);
+    bzero(&servaddr, sizeof(servaddr));
+    servaddr.sin_family = AF_INET;
+    servaddr.sin_port = htons(listen_port);
+    inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // bind socket to port
+    if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
+    {
+        std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
+        logger.log(msg, LOGGER_CRITICAL);
+        return 1;
+    }
+
+    // Listen for incoming connections
+    if (listen(listen_sock, 3) < 0)
+    {
+        std::cerr << "Listen failed\n";
+        return 1;
+    }
+
+    // Accept incoming connections and handle them in separate threads
+    while (server_loops < 1)
+    {
+        // if we got messages from both coord and lb, exit loop
+        if (lb_init) // @todo add this once confirmed kvs && coord_init
+        {
+            cout << "lb init done" << endl;
+            break;
+        }
+
+        int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
+        if (temp_sock < 0)
+        {
+            std::cerr << "Accept failed for port 8080\n";
+            return 1;
+        }
+
+        get_server_data(temp_sock);
+        server_loops++;
+    }
+
+    // // Initialize frontend (FE) servers
+    // for (int i = 1; i <= 4; ++i)
+    // {
+    //     string fe_key = "FE" + to_string(i);
+    //     int port_number = 8000 + i - 1; // Increment port number for each server
+    //     lb_servers[fe_key] = port_number;
+    //     server_status[fe_key] = 1; // Set status to 1 for each FE server
+    // }
+
+    // // Initialize Key-Value Store (KVS) servers
+    // for (int i = 1; i <= 2; ++i)
+    // { // Assuming two KVS servers
+    //     string kvs_key = "KVS" + to_string(i);
+    //     int port_number = 9000 + i - 1; // Increment port number for each server
+    //     kvs_servers[kvs_key] = port_number;
+    //     server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    // }
 
     logger.log("Admin console ready.", LOGGER_INFO);
 
