@@ -121,51 +121,54 @@ void BackendServer::accept_and_handle_clients()
     }
 
     be_logger.log("Backend server accepting clients on port " + std::to_string(client_port), 20);
-    // accept client connections as long as the server is alive
-    while (!is_dead)
+    while (true)
     {
-        // join threads for clients that have been serviced
-        auto it = client_connections.begin();
-        for (; it != client_connections.end();)
+        // accept client connections as long as the server is alive
+        if (!is_dead)
         {
-            // false indicates thread should be joined
-            if (it->second == false)
+            // join threads for clients that have been serviced
+            auto it = client_connections.begin();
+            for (; it != client_connections.end();)
             {
-                pthread_join(it->first, NULL);
-                client_connections_lock.lock();
-                it = client_connections.erase(it); // erases current value in map and re-points iterator
-                client_connections_lock.unlock();
+                // false indicates thread should be joined
+                if (it->second == false)
+                {
+                    pthread_join(it->first, NULL);
+                    client_connections_lock.lock();
+                    it = client_connections.erase(it); // erases current value in map and re-points iterator
+                    client_connections_lock.unlock();
+                }
+                else
+                {
+                    it++;
+                }
             }
-            else
+
+            // accept client connection, which returns a fd to communicate directly with the client
+            int client_fd;
+            struct sockaddr_in client_addr;
+            socklen_t client_addr_size = sizeof(client_addr);
+            if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
             {
-                it++;
+                be_logger.log("Unable to accept incoming connection from client. Skipping", 30);
+                // error with incoming connection should NOT break the server loop
+                continue;
             }
+
+            // extract port from client connection and initialize KVS_Client object
+            int client_port = ntohs(client_addr.sin_port);
+            be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
+
+            // initialize KVSGroupServer object
+            KVSClient kvs_client(client_fd, client_port);
+            pthread_t client_thread;
+            pthread_create(&client_thread, nullptr, client_thread_adapter, &kvs_client);
+
+            // add thread to map of client connections
+            client_connections_lock.lock();
+            client_connections[client_thread] = true;
+            client_connections_lock.unlock();
         }
-
-        // accept client connection, which returns a fd to communicate directly with the client
-        int client_fd;
-        struct sockaddr_in client_addr;
-        socklen_t client_addr_size = sizeof(client_addr);
-        if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
-        {
-            be_logger.log("Unable to accept incoming connection from client. Skipping", 30);
-            // error with incoming connection should NOT break the server loop
-            continue;
-        }
-
-        // extract port from client connection and initialize KVS_Client object
-        int client_port = ntohs(client_addr.sin_port);
-        be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
-
-        // initialize KVSGroupServer object
-        KVSClient kvs_client(client_fd, client_port);
-        pthread_t client_thread;
-        pthread_create(&client_thread, nullptr, client_thread_adapter, &kvs_client);
-
-        // add thread to map of client connections
-        client_connections_lock.lock();
-        client_connections[client_thread] = true;
-        client_connections_lock.unlock();
     }
 }
 
@@ -212,13 +215,16 @@ void BackendServer::handle_coord_comm(int coord_sock_fd)
     be_logger.log("Sending heartbeats to coordinator", 20);
     // Sleep for 1 seconds before sending first heartbeat
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    // send heartbeats as long as the server is alive
-    while (!is_dead)
+    while (true)
     {
-        std::string ping = "PING";
-        BeUtils::write_with_crlf(coord_sock_fd, ping);
-        // Sleep for 1 seconds before sending subsequent heartbeat
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        // send heartbeats as long as the server is alive
+        if (!is_dead)
+        {
+            std::string ping = "PING";
+            BeUtils::write_with_crlf(coord_sock_fd, ping);
+            // Sleep for 1 seconds before sending subsequent heartbeat
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
     }
 }
 
@@ -378,51 +384,54 @@ int BackendServer::dispatch_group_comm_thread()
 /// @brief server loop to accept and handle connections from servers in replica group
 void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
 {
-    // accept group connections as long as the server is alive
-    while (!is_dead)
+    while (true)
     {
-        // join threads for group server connections that have been serviced
-        auto it = group_server_connections.begin();
-        for (; it != group_server_connections.end();)
+        // accept group connections as long as the server is alive
+        if (!is_dead)
         {
-            // false indicates thread should be joined
-            if (it->second == false)
+            // join threads for group server connections that have been serviced
+            auto it = group_server_connections.begin();
+            for (; it != group_server_connections.end();)
             {
-                pthread_join(it->first, NULL);
-                group_server_connections_lock.lock();
-                it = group_server_connections.erase(it); // erases current value in map and re-points iterator
-                group_server_connections_lock.unlock();
+                // false indicates thread should be joined
+                if (it->second == false)
+                {
+                    pthread_join(it->first, NULL);
+                    group_server_connections_lock.lock();
+                    it = group_server_connections.erase(it); // erases current value in map and re-points iterator
+                    group_server_connections_lock.unlock();
+                }
+                else
+                {
+                    it++;
+                }
             }
-            else
+
+            // accept connection from server in group, which returns a fd to communicate directly with the server
+            int group_server_fd;
+            struct sockaddr_in group_server_addr;
+            socklen_t group_server_addr_size = sizeof(group_server_addr);
+            if ((group_server_fd = accept(group_comm_sock_fd, (sockaddr *)&group_server_addr, &group_server_addr_size)) < 0)
             {
-                it++;
+                be_logger.log("Unable to accept incoming connection from group server. Skipping", 30);
+                // error with incoming connection should NOT break the server loop
+                continue;
             }
+
+            // extract port from group server connection and initialize KVSGroupServer object
+            int group_server_port = ntohs(group_server_addr.sin_port);
+            be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
+
+            // initialize KVSGroupServer object
+            KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
+            pthread_t group_server_thread;
+            pthread_create(&group_server_thread, nullptr, &group_server_thread_adapter, &kvs_group_server);
+
+            // add thread to map of group server connections connections
+            group_server_connections_lock.lock();
+            group_server_connections[group_server_thread] = true;
+            group_server_connections_lock.unlock();
         }
-
-        // accept connection from server in group, which returns a fd to communicate directly with the server
-        int group_server_fd;
-        struct sockaddr_in group_server_addr;
-        socklen_t group_server_addr_size = sizeof(group_server_addr);
-        if ((group_server_fd = accept(group_comm_sock_fd, (sockaddr *)&group_server_addr, &group_server_addr_size)) < 0)
-        {
-            be_logger.log("Unable to accept incoming connection from group server. Skipping", 30);
-            // error with incoming connection should NOT break the server loop
-            continue;
-        }
-
-        // extract port from group server connection and initialize KVSGroupServer object
-        int group_server_port = ntohs(group_server_addr.sin_port);
-        be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
-
-        // initialize KVSGroupServer object
-        KVSGroupServer kvs_group_server(group_server_fd, group_server_port);
-        pthread_t group_server_thread;
-        pthread_create(&group_server_thread, nullptr, &group_server_thread_adapter, &kvs_group_server);
-
-        // add thread to map of group server connections connections
-        group_server_connections_lock.lock();
-        group_server_connections[group_server_thread] = true;
-        group_server_connections_lock.unlock();
     }
 }
 
@@ -614,12 +623,13 @@ void BackendServer::dispatch_checkpointing_thread()
 /// @brief initialize and detach thread to checkpoint server tablets
 void BackendServer::coordinate_checkpoint()
 {
-    // initiate checkpoint as long as the server is alive
-    while (!is_dead)
+    while (true)
     {
+        // initiate checkpoint as long as the server is alive and it's a primary
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
-        if (is_primary)
+        if (!is_dead && is_primary)
         {
+
             // Sleep for 30 seconds between each checkpoint
             std::this_thread::sleep_for(std::chrono::seconds(60));
 
