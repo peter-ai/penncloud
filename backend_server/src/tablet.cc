@@ -301,8 +301,7 @@ std::vector<char> Tablet::rename_column(std::string &row, std::string &old_col, 
 void Tablet::serialize(const std::string &file_name)
 {
     // open file in binary mode for writing
-    std::ofstream file;
-    file.open(file_name, std::ofstream::out | std::ofstream::binary);
+    std::ofstream file(file_name, std::ofstream::out | std::ofstream::binary | std::ofstream::app);
 
     // verify file was opened
     if (!file.is_open())

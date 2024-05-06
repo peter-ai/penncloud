@@ -189,8 +189,7 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
             kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpointed tablet " + tablet->range_start + ":" + tablet->range_end, 20);
 
             // clear tablet's log file
-            std::ofstream log_file;
-            log_file.open(log_filename, std::ofstream::trunc);
+            std::ofstream log_file(log_filename, std::ofstream::trunc);
             log_file.close();
             kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Cleared " + log_filename, 20);
         }
@@ -399,7 +398,7 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // write END to log
     write_to_log(operation_log_filename, operation_seq_num, "ENDT");
 
-    send_error_response("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries");
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries", 20);
     clean_operation_state(secondary_servers);
     send_response(response_msg);
 }
@@ -569,7 +568,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
 
         // construct vote
         vote_response = {'S', 'E', 'C', 'N', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
     }
     // successfully acquired row lock
     else
@@ -584,7 +583,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
 
         // construct vote
         vote_response = {'S', 'E', 'C', 'Y', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
     }
 
     // convert seq number to vector and append to vote
@@ -885,7 +884,7 @@ std::vector<char> KVSGroupServer::rnmc(std::string &row, std::vector<char> &inpu
 // CLIENT RESPONSE
 // *********************************************
 
-/// @brief constructs an error response and internally calls send_response()
+/// @brief constructs an error response and internally calls send_response() - should only be used for client communication
 void KVSGroupServer::send_error_response(const std::string &err_msg)
 {
     // add "-ER " to front of error message
@@ -929,8 +928,7 @@ int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_s
 int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::vector<char> &message)
 {
     // open log file in binary mode for writing
-    std::ofstream log_file;
-    log_file.open(BackendServer::disk_dir + log_filename, std::ofstream::out | std::ofstream::binary);
+    std::ofstream log_file(BackendServer::disk_dir + log_filename, std::ofstream::out | std::ofstream::app | std::ofstream::binary);
 
     // verify log file was opened
     if (!log_file.is_open())
