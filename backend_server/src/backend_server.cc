@@ -15,6 +15,7 @@ Logger be_logger = Logger("Backend server");
 // *********************************************
 
 const int BackendServer::coord_port = 4999;
+const std::string BackendServer::IP = "127.0.0.1:";
 
 // *********************************************
 // STATIC FIELD INITIALIZATION
@@ -36,8 +37,10 @@ std::mutex BackendServer::secondary_ports_lock;
 
 // internal server fields
 std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
+std::vector<std::string> BackendServer::tablet_ranges;
 std::string BackendServer::disk_dir;
 std::atomic<bool> BackendServer::is_dead(false);
+int BackendServer::coord_sock_fd = -1;
 
 // active connection fields (clients)
 std::unordered_map<pthread_t, std::atomic<bool>> BackendServer::client_connections;
@@ -180,7 +183,7 @@ void BackendServer::accept_and_handle_clients()
 int BackendServer::dispatch_coord_comm_thread()
 {
     // open long-running connection with coordinator
-    int coord_sock_fd = BeUtils::open_connection(coord_port);
+    coord_sock_fd = BeUtils::open_connection(coord_port);
     if (coord_sock_fd < 0)
     {
         be_logger.log("Failed to open connection with coordinator. Exiting", 40);
@@ -204,13 +207,13 @@ int BackendServer::dispatch_coord_comm_thread()
     }
 
     // create and detach thread for subsequent communication with coordinator
-    std::thread coord_comm_thread(handle_coord_comm, coord_sock_fd);
+    std::thread coord_comm_thread(handle_coord_comm);
     coord_comm_thread.detach();
     return 0;
 }
 
 /// @brief sends heartbeat to coordinator at frequency of 1 second. Poll coordinator in between heartbeats.
-void BackendServer::handle_coord_comm(int coord_sock_fd)
+void BackendServer::handle_coord_comm()
 {
     be_logger.log("Sending heartbeats to coordinator", 20);
     // Sleep for 1 seconds before sending first heartbeat
@@ -236,8 +239,7 @@ void BackendServer::handle_coord_comm(int coord_sock_fd)
 int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
 {
     // send initialization message to coordinator to inform coordinator that this server is starting up
-    std::string ip = "127.0.0.1:";
-    std::string msg = "INIT " + ip + std::to_string(BackendServer::group_port);
+    std::string msg = "INIT " + IP + std::to_string(BackendServer::group_port);
     if (BeUtils::write_with_crlf(coord_sock_fd, msg) < 0)
     {
         be_logger.log("Failure while sending INIT message to coordinator", 40);
@@ -291,12 +293,13 @@ int BackendServer::initialize_state_from_coordinator(int coord_sock_fd)
     range_end = range.at(1);
 
     // save primary and list of secondaries
-    primary_port = std::stoi(res_tokens.at(2).substr(ip.length()));
+    primary_port = std::stoi(res_tokens.at(2).substr(IP.length()));
     std::string secondaries;
     for (size_t i = 3; i < res_tokens.size(); i++)
     {
-        secondary_ports.insert(std::stoi(res_tokens.at(i).substr(ip.length())));
-        secondaries += res_tokens.at(i) + " ";
+        std::string secondary_port = res_tokens.at(i).substr(IP.length());
+        secondary_ports.insert(std::stoi(secondary_port));
+        secondaries += secondary_port + " ";
     }
 
     // log information about server
@@ -337,6 +340,7 @@ int BackendServer::initialize_tablets()
         // initialize tablet and add to server tablets
         char tablet_start = curr_char;
         char tablet_end = curr_char + curr_tablet_size - 1;
+        tablet_ranges.push_back(std::string(1, tablet_start) + "_" + std::string(1, tablet_end));
         server_tablets.push_back(std::make_shared<Tablet>(std::string(1, tablet_start), std::string(1, tablet_end)));
         curr_char += curr_tablet_size;
     }
@@ -592,18 +596,99 @@ void BackendServer::admin_kill()
 }
 
 /// @brief restarts server after pseudo kill from admin
-// TODO implement this function
 void BackendServer::admin_live()
 {
-    // send RECO to coordinator
-    // wait for message from coordinator about server state
+    // send RECO to coordinator and wait for message about who the primary is
+    be_logger.log("Server in recovery - contacting coordinator for primary", 50);
+    std::string msg = "RECO";
+    BeUtils::write_with_crlf(coord_sock_fd, msg);
+    BeUtils::ReadResult coord_response = BeUtils::read_with_crlf(coord_sock_fd);
 
-    // send message to primary asking for its latest version number
-    // if version number is the same, ask primary for log and perform operations. When you're done, turn off recovery mode
-    // if version number is different, ask primary for its serialized tablets + its logs
+    // extract primary from coord_response
+    std::string contact_primary(coord_response.byte_stream.begin(), coord_response.byte_stream.end());
+    int contact_primary_port = std::stoi(contact_primary.substr(IP.length()));
+    be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 50);
 
-    // set flag to indicate server is now alive
-    // do this LAST
+    // construct message to primary - RECO<SP>CP#<SP>SEQ#
+    std::vector<char> recovery_msg = {'R', 'E', 'C', 'O', ' '};
+    std::vector<uint8_t> last_cp_num = BeUtils::host_num_to_network_vector(BackendServer::last_checkpoint);
+    std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
+
+    // BEFORE contacting the primary, clear all of your logs. This is to ensure that primary can send you requests, and it'll log to your log file
+    // You will use these logs to catch up AFTER you've completed the primary's logs
+    for (std::string &tablet_range : tablet_ranges)
+    {
+        std::string log_filename = tablet_range + "_log";
+        std::ofstream log_file;
+        log_file.open(log_filename, std::ofstream::trunc);
+        log_file.close();
+        be_logger.log("Cleared " + log_filename + " in preparation for primary logs", 20);
+    }
+
+    // open connection with primary server and write recovery message to server
+    int contact_primary_fd = BeUtils::open_connection(contact_primary_port);
+    BeUtils::write_with_size(contact_primary_fd, recovery_msg);
+    // read recovery response from primary
+    BeUtils::ReadResult primary_recovery_response = BeUtils::read_with_size(contact_primary_fd);
+
+    // Primary will send back a stream of data
+    // The first letter will indicate if checkpoints were included (C or N)
+    // if first letter is a C, then you know that you received a checkpoint for the number of tablets you have on this server
+    bool cp_included = primary_recovery_response.byte_stream.front() == 'C' ? true : false;
+    primary_recovery_response.byte_stream.erase(primary_recovery_response.byte_stream.begin());
+
+    std::vector<char> &stream = primary_recovery_response.byte_stream;
+
+    // loop through the number of tablets. For each one, you can expect the following:
+    // Log - First 4 bytes are a number, and the next x bytes are the number of corresponding bytes
+    // If first letter was NOT a C, then in each case, all you have to do is deserialize your checkpoint file for this tablet, and then read the logs
+    for (std::string &tablet_range : tablet_ranges)
+    {
+        // initialize a tablet using the default constructor
+        Tablet tablet;
+
+        // If the checkpoint was included, then these first 4 bytes are a number, and the next x bytes are the number of corresponding bytes
+        if (cp_included)
+        {
+            // read 4 characters to get the size of the checkpoint file
+            std::vector<char> cp_file_size_vec(stream.begin(), stream.begin() + 4);
+            uint32_t cp_file_size = BeUtils::network_vector_to_host_num(cp_file_size_vec);
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // extract the checkpoint data and remove it from the stream
+            std::vector<char> checkpoint_data(stream.begin(), stream.begin() + cp_file_size);
+            stream.erase(stream.begin(), stream.begin() + cp_file_size);
+
+            // initialize tablet from stream
+            tablet.deserialize_from_stream(checkpoint_data);
+        }
+        // otherwise, deserialize from your checkpoint file
+        else
+        {
+            // initialize tablet from checkpoint file
+            tablet.deserialize_from_file(BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(last_checkpoint));
+        }
+
+        // Extract the log next and replay it
+        // read 4 characters to get the size of the log
+        std::vector<char> log_file_size_vec(stream.begin(), stream.begin() + 4);
+        uint32_t log_file_size = BeUtils::network_vector_to_host_num(log_file_size_vec);
+        stream.erase(stream.begin(), stream.begin() + 4);
+
+        // extract the log data and remove it from the stream
+        std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
+        stream.erase(stream.begin(), stream.begin() + log_file_size);
+
+        // replay the log to update the tablet
+        tablet.replay_log(log_data);
+
+        server_tablets.push_back(std::make_shared<Tablet>(tablet));
+    }
+
+    // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
+
+    // set flag to false to indicate server is now alive
+    be_logger.log("Recovery complete - resuming normal operation", 50);
     is_dead = false;
 }
 
