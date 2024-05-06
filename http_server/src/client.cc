@@ -102,6 +102,8 @@ void Client::parse_req(std::string &client_stream)
 
     // check if http message has a body
     std::vector<std::string> content_length_vals = req.get_header("content-length");
+    // TODO make sure this isn't messing other stuff up
+    remaining_body_len = 0; // default remaining body length in case one wasn't provided
     if (content_length_vals.size() != 0)
     {
         // multiple content length values are stored
@@ -402,20 +404,17 @@ void Client::construct_response()
         }
         res.set_header("Content-Type", content_type);
 
-        // write body if NOT a head request
-        if (req.method != "HEAD")
-        {
-            // open file in binary form and write bytes to body
-            std::ifstream resource(req.static_resource_path, std::ios::binary);
+        // write body
+        // open file in binary form and write bytes to body
+        std::ifstream resource(req.static_resource_path, std::ios::binary);
 
-            std::vector<char> buffer(1024);
-            while (resource.read(buffer.data(), 1024))
-            {
-                res.append_body_bytes(buffer.data(), resource.gcount());
-            }
+        std::vector<char> buffer(1024);
+        while (resource.read(buffer.data(), 1024))
+        {
             res.append_body_bytes(buffer.data(), resource.gcount());
-            resource.close();
         }
+        res.append_body_bytes(buffer.data(), resource.gcount());
+        resource.close();
     }
     // dynamic response
     else
@@ -432,6 +431,12 @@ void Client::send_response()
     // add standard headers to maintain consistent in responses
     res.set_header("Server", "5050-Web-Server/1.0");                   // server identity
     res.set_header("Content-Length", std::to_string(res.body.size())); // content-length
+
+    // clear body if it's a head request
+    if (req.method == "HEAD")
+    {
+        res.body.clear();
+    }
 
     // log request metadata (reconstruct request line from parsed parameters to ensure correct parsing)
     std::string log_str = req.method + " " + req.path + " " + std::to_string(res.code) + " - " + std::to_string(res.body.size());
