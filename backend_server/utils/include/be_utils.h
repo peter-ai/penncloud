@@ -29,6 +29,9 @@ namespace BeUtils
     // host number <-> network vector conversion
     std::vector<uint8_t> host_num_to_network_vector(uint32_t num);
     uint32_t network_vector_to_host_num(std::vector<char> &num_vec);
+
+    // file reading
+    std::vector<char> read_from_file_into_vec(std::string &filename);
 }
 
 #endif

@@ -2,16 +2,18 @@
 
 using namespace std;
 
-struct EmailData
+// Relay
+string extractDomain(const string &email)
 {
-	string UIDL;
-	string time;
-	string to;
-	string from;
-	string subject;
-	string body;
-	string oldBody;
-};
+	size_t at_pos = email.find('@');
+	string domain = email.substr(at_pos + 1);
+	return domain;
+}
+
+bool isLocalDomain(const string &domain)
+{
+	return domain == "penncloud.com" || domain == "localhost";
+}
 
 std::string parseEmailField(const std::string &emailContents, const std::string &field, size_t limit)
 {
@@ -282,7 +284,7 @@ bool startsWith(const std::vector<char> &vec, const std::string &prefix)
 // from: sender@example.com\n
 // subject: Your Subject Here\n
 // body: Hello, this is the body of the email.\n
-// forward: UIDL of message that we are forwarding
+// oldBody: ____
 
 void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
@@ -293,28 +295,15 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
+	bool all_forwards_sent = true;
 
-	// get the email we are supposed
-	string rowKey = parseMailboxPathToRowKey(request.path);
-	string colKey = request.get_qparam("uidl");
-	vector<char> row(rowKey.begin(), rowKey.end());
-	vector<char> col(colKey.begin(), colKey.end());
-
-	// Fetch the email from KVS
-	vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
-
-	if (startsWith(kvsResponse, "+OK "))
+	EmailData emailToForward = parseEmailFromMailForm(request);
+	vector<string> recipientsEmails = parseRecipients(emailToForward.to);
+	for (string recipientEmail : recipientsEmails)
 	{
-		const string prefix = "+OK ";
-
-		// Erase the prefix "+OK " from the vector
-		kvsResponse.erase(kvsResponse.begin(), kvsResponse.begin() + prefix.size());
-		EmailData storedEmail = parseEmail(kvsResponse);
-		// CASE 1: forwarding an email that has not been forwarded yet
-
-		EmailData emailToForward = parseEmailFromMailForm(request);
-		vector<string> recipientsEmails = parseRecipients(emailToForward.to);
-		for (string recipientEmail : recipientsEmails)
+		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		// handle local client
+		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
 			vector<char> col(colKey.begin(), colKey.end());
@@ -323,25 +312,38 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 			vector<char> value = charifyEmailContent(emailToForward);
 			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+
 			{
 				response.set_code(501); // Internal Server Error
 				response.append_body_str("-ER Failed to forward email.");
-				break;
+				all_forwards_sent = false;
+				continue; // if one recipient fails, try to forward email to remaining recipients
 			}
 		}
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email forwarded successfully.");
-	}
-	// else couldn't find first email
-	else
-	{
-		response.append_body_str("-ER Error processing request.");
-		response.set_code(400); // Bad request
+		else
+		{
+			// handle external client
+			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+			if (!SMTPClient::sendEmail(recipientDomain, emailToForward))
+			{
+				response.set_code(502); // Bad Gateway
+				response.append_body_str("-ER Failed to reply to email externally.");
+				all_forwards_sent = false;
+				continue;
+			}
+		}
+		// check if all emails were sent
+		if (all_forwards_sent)
+		{
+			response.set_code(200); // Success
+			response.append_body_str("+OK Email sent successfully.");
+		}
 	}
 	response.set_header("Content-Type", "text/html");
 	close(socket_fd);
 }
 
+// responds to an email
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
@@ -351,27 +353,16 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("-ER Failed to open socket.");
 		return;
 	}
-	// get row and col key as strings
-	string rowKey = parseMailboxPathToRowKey(request.path);
-	string colKey = request.get_qparam("uidl");
+	bool all_responses_sent = true;
 
-	// prepare char vectors as arguments to kvs util
-	vector<char> row(rowKey.begin(), rowKey.end());
-	vector<char> col(colKey.begin(), colKey.end());
-
-	// kvs response
-	vector<char> kvsGetResponse = FeUtils::kv_get(socket_fd, row, col);
-
-	if (startsWith(kvsGetResponse, "+OK "))
+	EmailData emailResponse = parseEmailFromMailForm(request);
+	vector<string> recipientsEmails = parseRecipients(emailResponse.to);
+	for (string recipientEmail : recipientsEmails)
 	{
-		const string prefix = "+OK ";
+		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
 
-		// Erase the prefix "+OK " from the vector
-		kvsGetResponse.erase(kvsGetResponse.begin(), kvsGetResponse.begin() + prefix.size());
-		EmailData storedEmail = parseEmail(kvsGetResponse);
-		EmailData emailResponse = parseEmailFromMailForm(request);
-		vector<string> recipientsEmails = parseRecipients(emailResponse.to);
-		for (string recipientEmail : recipientsEmails)
+		// handle local client
+		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
 			vector<char> col(colKey.begin(), colKey.end());
@@ -382,18 +373,29 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
 			{
 				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to forward email.");
-				break;
+				response.append_body_str("-ER Failed to reply to email internally.");
+				all_responses_sent = false;
+				continue; // if one recipient fails, try to send response to remaining recipients
 			}
 		}
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email forwarded successfully.");
-	}
-	// else couldn't find first email
-	else
-	{
-		response.append_body_str("-ER Error processing request.");
-		response.set_code(400); // Bad request
+		else
+		{
+			// handle external client
+			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+			if (!SMTPClient::sendEmail(recipientDomain, emailResponse))
+			{
+				response.set_code(502); // Bad Gateway
+				response.append_body_str("-ER Failed to reply to email externally.");
+				all_responses_sent = false;
+				continue;
+			}
+		}
+		// check if all emails were sent
+		if (all_responses_sent)
+		{
+			response.set_code(200); // Success
+			response.append_body_str("+OK Email sent successfully.");
+		}
 	}
 	response.set_header("Content-Type", "text/html");
 	close(socket_fd);
@@ -442,29 +444,54 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.append_body_str("Failed to open socket.");
 		return;
 	}
-	EmailData email = parseEmailFromMailForm(request);
 
-	// recipients
-	vector<string> recipientsEmails = parseRecipients(email.to);
+	const EmailData email = parseEmailFromMailForm(request);	 // email data
+	vector<string> recipientsEmails = parseRecipients(email.to); // recipients
+	bool all_emails_sent = true;
 
 	for (string recipientEmail : recipientsEmails)
 	{
-		string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
-		string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-		vector<char> value = charifyEmailContent(email);
-		vector<char> row(rowKey.begin(), rowKey.end());
-		vector<char> col(colKey.begin(), colKey.end());
-		vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
 
-		if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+		// handle local client
+		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
-			response.set_code(501); // Internal Server Error
-			response.append_body_str("-ER Failed to send email.");
-			break;
+			string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
+			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+			vector<char> value = charifyEmailContent(email);
+			vector<char> row(rowKey.begin(), rowKey.end());
+			vector<char> col(colKey.begin(), colKey.end());
+			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+
+			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+			{
+				response.set_code(501); // Internal Server Error
+				response.append_body_str("-ER Failed to send email locally.");
+				all_emails_sent = false;
+				continue;
+			}
+		}
+		else
+		{
+			// handle external client
+			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+			if (!SMTPClient::sendEmail(recipientDomain, email))
+			{
+				response.set_code(502); // Bad Gateway
+				response.append_body_str("-ER Failed to send email externally.");
+				all_emails_sent = false;
+				continue;
+			}
 		}
 	}
-	response.set_code(200); // Success
-	response.append_body_str("+OK Email sent successfully.");
+
+	// check if all emails were sent
+	if (all_emails_sent)
+	{
+		response.set_code(200); // Success
+		response.append_body_str("+OK Email sent successfully.");
+	}
+
 	response.set_header("Content-Type", "text/html");
 	close(socket_fd);
 }

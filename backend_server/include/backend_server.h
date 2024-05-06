@@ -21,6 +21,7 @@ class BackendServer
 public:
     // constants
     static const int coord_port; // coordinator's port
+    static const std::string IP; // IP address
 
     // fields (provided at startup to run server)
     static int client_port; // port server accepts client connections on - provided at startup
@@ -38,8 +39,12 @@ public:
 
     // internal server fields
     static std::vector<std::shared_ptr<Tablet>> server_tablets; // static tablets on server (vector of shared ptrs is needed because shared_timed_mutexes are NOT copyable)
+    static std::vector<std::string> tablet_ranges;              // start and end range of each tablet managed by server
     static std::string disk_dir;                                // node-local storage directory (emulates disk for a server)
     static std::atomic<bool> is_dead;                           // tracks if the server is currently dead (from an admin kill command)
+    static std::atomic<bool> is_recovering;                     // tracks if the server is currently recovering (after an admin live command)
+    static int coord_sock_fd;                                   // fd to contact coordinator on
+    static std::unordered_set<int> ports_in_recovery;           // list of servers currently in recovery - tracked by primary since these servers will still need to receive write requests
 
     // active connection fields (clients)
     static std::unordered_map<pthread_t, std::atomic<bool>> client_connections;
@@ -81,8 +86,8 @@ private:
     static void accept_and_handle_group_comm(int group_comm_sock_fd); // server loop to accept and handle connections from servers in its replica group
 
     // Coordinator communication methods
-    static int dispatch_coord_comm_thread();          // dispatch thread to send heartbeat to coordinator port
-    static void handle_coord_comm(int coord_sock_fd); // sends heartbeat to coordinator
+    static int dispatch_coord_comm_thread(); // dispatch thread to send heartbeat to coordinator port
+    static void handle_coord_comm();         // sends heartbeat to coordinator
 
     // Admin communication
     static int dispatch_admin_listener_thread();                 // dispatch thread to read from admin

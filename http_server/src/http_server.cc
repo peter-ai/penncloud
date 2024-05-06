@@ -50,7 +50,7 @@ void HttpServer::run(int port, std::string static_dir)
     // given that a load balancer is also an http server, we neeed to make sure that the load balancer is not PINGing itself!
     // check that HTTP port is not LOAD BALANCER's client_listen_port
     // excludes load balancer and admin from receiving pings and opening connection with admin console
-    if (port != 7500 && port != 8082)
+    if (port != 7500 && port != 8080)
     {
         start_heartbeat_thread(4000, HttpServer::port); // send heartbeat to LOAD BALANCER thread that listens on port 7900
 
@@ -123,52 +123,54 @@ void HttpServer::accept_and_handle_clients()
     }
 
     http_logger.log("HTTP server accepting clients on port " + std::to_string(port), 20);
-
-    // accept client connections as long as the server is alive
-    while (!is_dead)
+    while (true)
     {
-        // join threads for clients that have been serviced
-        auto it = client_connections.begin();
-        for (; it != client_connections.end();)
+        // accept client connections as long as the server is alive
+        if (!is_dead)
         {
-            // false indicates thread should be joined
-            if (it->second == false)
+            // join threads for clients that have been serviced
+            auto it = client_connections.begin();
+            for (; it != client_connections.end();)
             {
-                pthread_join(it->first, NULL);
-                client_connections_lock.lock();
-                it = client_connections.erase(it); // erases current value in map and re-points iterator
-                client_connections_lock.unlock();
+                // false indicates thread should be joined
+                if (it->second == false)
+                {
+                    pthread_join(it->first, NULL);
+                    client_connections_lock.lock();
+                    it = client_connections.erase(it); // erases current value in map and re-points iterator
+                    client_connections_lock.unlock();
+                }
+                else
+                {
+                    it++;
+                }
             }
-            else
+
+            // accept client connection, which returns a fd to communicate directly with the client
+            int client_fd;
+            struct sockaddr_in client_addr;
+            socklen_t client_addr_size = sizeof(client_addr);
+            if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
             {
-                it++;
+                http_logger.log("Unable to accept incoming connection from client. Skipping", 30);
+                // error with incoming connection should NOT break the server loop
+                continue;
             }
+
+            // extract port from client connection and initialize Client object
+            int client_port = ntohs(client_addr.sin_port);
+            http_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
+
+            // initialize Client object
+            Client client(client_fd);
+            pthread_t client_thread;
+            pthread_create(&client_thread, nullptr, client_thread_adapter, &client);
+
+            // add thread to map of client connections
+            client_connections_lock.lock();
+            client_connections[client_thread] = true;
+            client_connections_lock.unlock();
         }
-
-        // accept client connection, which returns a fd to communicate directly with the client
-        int client_fd;
-        struct sockaddr_in client_addr;
-        socklen_t client_addr_size = sizeof(client_addr);
-        if ((client_fd = accept(client_comm_sock_fd, (sockaddr *)&client_addr, &client_addr_size)) < 0)
-        {
-            http_logger.log("Unable to accept incoming connection from client. Skipping", 30);
-            // error with incoming connection should NOT break the server loop
-            continue;
-        }
-
-        // extract port from client connection and initialize Client object
-        int client_port = ntohs(client_addr.sin_port);
-        http_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
-
-        // initialize Client object
-        Client client(client_fd);
-        pthread_t client_thread;
-        pthread_create(&client_thread, nullptr, client_thread_adapter, &client);
-
-        // add thread to map of client connections
-        client_connections_lock.lock();
-        client_connections[client_thread] = true;
-        client_connections_lock.unlock();
     }
 }
 
@@ -405,9 +407,11 @@ void HttpServer::start_heartbeat_thread(int lb_port, int server_port)
     {
         std::thread([=]()
                     {
-        while (!is_dead) {
-            send_heartbeat(lb_port, server_port);
-            std::this_thread::sleep_for(std::chrono::seconds(10));  // send a heartbeat every 10 seconds
+        while (true) {
+            if (!is_dead) {
+                send_heartbeat(lb_port, server_port);
+                std::this_thread::sleep_for(std::chrono::seconds(1));  // send a heartbeat every 10 seconds
+            }
         } })
             .detach();
     }

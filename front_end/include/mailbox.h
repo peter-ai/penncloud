@@ -22,9 +22,13 @@
 #include <openssl/md5.h>
 #include <iomanip>
 
+
+#include "email_data.h"
+
 #include "../../http_server/include/http_server.h"
 #include "../utils/include/fe_utils.h"
 
+#include "smtp_client.h" // relay
 
 /**
  * Definitions and utility functions for handling email operations over HTTP.

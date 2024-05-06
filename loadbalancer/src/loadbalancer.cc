@@ -3,7 +3,7 @@
  *
  *  The  LB sits on top of an HTTP server is placed between the clients and the other HTTPS/frontend servers and acts as the first point of contact for all incoming network traffic from the clients.
  *  Frontend servers send a message to the load balancer upon startup (or periodically) that includes their port number. This message serves as a registration or heartbeat, indicating they are active and available.
- * 
+ *
  * The LB:
  * 1. Accepts the initial HTTP request on PORT 5000 from the client
  * 2. Receives heartbeats from FrontEnd servers on PORT 4000
@@ -20,10 +20,9 @@ namespace LoadBalancer
     using namespace std;
 
     std::unordered_map<int, ServerData> servers;
-    std::list<int> activeServers;
+    std::vector<int> activeServers;
     std::unordered_map<int, std::mutex> serverMutexes;
     std::mutex server_mutex;
-    std::list<int>::iterator current_server = activeServers.end();
     int client_listen_port;
     int server_listen_port;
 
@@ -86,29 +85,31 @@ namespace LoadBalancer
     {
         while (true)
         {
-            std::this_thread::sleep_for(std::chrono::seconds(10)); // Periodic check every 10 seconds.
-            auto now = std::chrono::steady_clock::now();           // Get the current time.
-            std::list<int> activeServersVec;                       // maintain a vector of active servers
+            std::this_thread::sleep_for(std::chrono::milliseconds(500)); // Periodic check every half second (double the ping frequency).
+            auto now = std::chrono::steady_clock::now();                 // Mark the current time.
+            std::vector<int> activeServersVec;                           // maintain a vector of active servers
 
             for (auto &server : servers)
             {
-                std::lock_guard<std::mutex> lock(serverMutexes[server.first]); // Lock each server individually.
+                serverMutexes.at(server.first).lock(); // Lock server for reading
                 auto &data = server.second;
                 auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - data.lastHeartbeat);
-                if (duration.count() > 10)
+                if (duration.count() > 5)
                 {
-                    data.isActive = false; // Mark server as down if no heartbeat in last 10 seconds.
+                    data.isActive = false; // Mark server as down if no heartbeat in last 5 seconds.
                 }
                 else
                 {
                     data.isActive = true;                     // Server is up.
                     activeServersVec.push_back(server.first); // Add server ID to the active list.
                 }
+                serverMutexes.at(server.first).unlock(); // unlock server
             }
-            std::lock_guard<std::mutex> globalLock(server_mutex);
 
             // update vector of active servers with most recent active servers
+            server_mutex.lock(); // Lock active servers to replace it with updated list
             activeServers = activeServersVec;
+            server_mutex.unlock();
         }
     }
 
@@ -145,10 +146,10 @@ namespace LoadBalancer
                 {
                     std::string port_str = msg.substr(5, msg.size() - 7);
                     int server_port = std::stoi(port_str);
-                    std::lock_guard<std::mutex> lock(serverMutexes[server_port]); // Lock server mutex
-                    auto now = std::chrono::steady_clock::now();
-                    servers[server_port].lastHeartbeat = now; // Update last heartbeat time and mark as active
-                    servers[server_port].isActive = true;
+                    serverMutexes.at(server_port).lock();                                     // Lock server mutex
+                    servers.at(server_port).lastHeartbeat = std::chrono::steady_clock::now(); // Update last heartbeat time and mark as active
+                    servers.at(server_port).isActive = true;                                  // mark server as active in case it was previously dead
+                    serverMutexes.at(server_port).unlock();                                   // Unlock server mutex
                     loadbalancer_logger.log("PING received from FE server (PORT " + port_str + ")", 20);
                 }
             }
@@ -158,30 +159,39 @@ namespace LoadBalancer
 
     std::string select_server()
     {
-        std::lock_guard<std::mutex> lock(server_mutex); // Lock for thread safety
+        server_mutex.lock(); // Lock active servers for thread safety
 
         // Check if no active servers exist
         if (activeServers.empty())
         {
-            current_server = activeServers.end();
+            server_mutex.unlock();
             return "No active server available";
         }
 
-        // Ensure the iterator is valid
-        if (current_server == activeServers.end())
-        {
-            current_server = activeServers.begin(); // Reset to start if at the end
-        }
+        // Generate a random index
+        std::mt19937 generator(std::random_device{}());
+        std::uniform_int_distribution<> dis(0, activeServers.size() - 1);
+        int randomIndex = dis(generator);
 
-        // Select the current server
-        int server_port = *current_server; // Dereference iterator to get current server port
+        // Retrieve the server associated with the random index
+        int server_port = activeServers.at(randomIndex);
+        server_mutex.unlock(); // unlock active servers
 
-        // Move to the next server for the next call
-        ++current_server;
-        if (current_server == activeServers.end())
-        {
-            current_server = activeServers.begin(); // Wrap around if at the end
-        }
+        // // Ensure the iterator is valid
+        // if (current_server == activeServers.end())
+        // {
+        //     current_server = activeServers.begin(); // Reset to start if at the end
+        // }
+
+        // // Select the current server
+        // int server_port = *current_server; // Dereference iterator to get current server port
+
+        // // Move to the next server for the next call
+        // ++current_server;
+        // if (current_server == activeServers.end())
+        // {
+        //     current_server = activeServers.begin(); // Wrap around if at the end
+        // }
 
         // Return the port number of the current server as a string
         return std::to_string(server_port);
@@ -240,14 +250,14 @@ namespace LoadBalancer
         // Expected message format: "PING<SP>NAME<SP>PORT,<SP>NAME<SP>PORT, ...,\r\n"
         std::string message = "L ";
         int count = 1;
-        for(auto& server : servers) {
+        for (auto &server : servers)
+        {
             message += "FE_Server" + to_string(count) + " " + to_string(server.first) + ", ";
             count++;
         }
         message += "\r\n";
         send(sock, message.c_str(), message.length(), 0);
         loadbalancer_logger.log("List of FE servers sent to Admin Console", 20);
-        loadbalancer_logger.log("Num of FE servers sent " + to_string(count -1 ), 20);
         close(sock);
     }
 }

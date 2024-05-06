@@ -61,6 +61,16 @@ namespace FeUtils
     // takes in the vector of all rows coming from the server and separates into a vecotr of strings
     std::vector<std::string> parse_all_rows(std::vector<char> &tablet);
 
+
+    // pass a fd and row to perform DELETEROW(r)
+    std::vector<char> kv_del_row(int fd, std::vector<char> row);
+
+    // pass a fd, old rowname and new row name to perform RENAME(r1, r2)
+    std::vector<char> kv_rename_row(int fd, std::vector<char> oldrow, std::vector<char> newrow);
+
+    // pass a fd, row, old col name and new col name to perform RENAME(r, c1, c2)
+    std::vector<char> kv_rename_col(int fd, std::vector<char> row, std::vector<char> oldcol, std::vector<char> newcol);
+
     // checks if a char vector starts with +OK
     bool kv_success(const std::vector<char> &vec);
 

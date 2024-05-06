@@ -9,4 +9,4 @@ cd ..
 cd loadbalancer  # This line is commented out or removed
 make clean
 make
-./loadbalancer_main 2
+lldb -- ./loadbalancer_main 3 #change # to the specified number of frontend servers that will be ran

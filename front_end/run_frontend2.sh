@@ -10,4 +10,4 @@ cd ..
 cd front_end
 make clean
 make
-./frontend_main -p 8002
+./frontend_main -p 8002 #p argument specifies port number of frontend server

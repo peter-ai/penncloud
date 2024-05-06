@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <fstream>
 
 #include "../include/be_utils.h"
 #include "../../utils/include/utils.h"
@@ -349,4 +350,28 @@ uint32_t BeUtils::network_vector_to_host_num(std::vector<char> &num_vec)
     std::memcpy(&num, num_vec.data(), sizeof(uint32_t));
     // convert number received from network order to host order
     return ntohl(num);
+}
+
+// *********************************************
+// READ FROM FILE INTO VECTOR
+// *********************************************
+
+std::vector<char> BeUtils::read_from_file_into_vec(std::string &filename)
+{
+    // open file for reading
+    std::ifstream file(filename, std::ios::binary);
+
+    // get file's size
+    file.seekg(0, std::ios::end);
+    std::streampos file_size = file.tellg();
+    file.seekg(0, std::ios::beg);
+
+    // Read the file into a vector
+    std::vector<char> file_data(file_size);
+    file.read(file_data.data(), file_size);
+
+    // Close the file
+    file.close();
+
+    return file_data;
 }
