@@ -41,7 +41,7 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
     }
 
     // logging message
-    fe_utils_logger.log("Message Sent to KVS ("+ std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
+    fe_utils_logger.log("Message Sent to KVS (" + std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
 
     return total_bytes_sent;
 }

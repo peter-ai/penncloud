@@ -383,8 +383,7 @@ int main(int argc, char *argv[])
                 struct client_args client;
                 client.addr = source;
                 client.fd = comm_fd;
-
-                logger.log("Entering client handler logic", LOGGER_DEBUG);
+                client.request = request;
 
                 // give thread relavent handler
                 if (pthread_create(&thid, NULL, client_thread, (void *)&client) != 0)
@@ -638,31 +637,17 @@ void *client_thread(void *arg)
     // extract the client struct
     struct client_args *client = (struct client_args *)arg;
 
-    // define string as buffer for requests
-    std::string request;
-    request.resize(MAX_REQUEST);
-    int rlen = 0;
     int sent = 0;
-
-    // receive incoming request
-    if ((rlen = recv(client->fd, &request[0], request.size() - rlen, 0)) == -1)
-    {
-        logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
-    }
-    request.resize(rlen);
-
-    logger.log("RECEIVED REQUEST - " + request, LOGGER_ERROR);
-
     if (VERBOSE)
-        logger.log("Received request from <" + client->addr + ">: " + request, LOGGER_INFO);
+        logger.log("Received request from <" + client->addr + ">: " + client->request, LOGGER_INFO);
 
-    if (rlen != -1)
+    if ((client->request).length() > 0)
     {
         // assign appropriate kvs for given request by randomly sampling vector
-        char key = request[0];
+        char key = client->request[0];
         client_map_mutex.lock_shared();
         // std::string kvs_server = (client_map.count(key) ? client_map[key][sample_index(client_map[key].size())].client_addr : "-ERR First character non-alphabetical"); // TODO: UNCOMMENT THIS AND TEST
-        std::string kvs_server = (client_map.count(request[0]) ? client_map[request[0]][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
+        std::string kvs_server = (client_map.count(key) ? client_map[key][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
         client_map_mutex.unlock_shared();
         logger.log("KVS choice for " + std::string(1, key) + " is " + kvs_server, LOGGER_INFO);
 
