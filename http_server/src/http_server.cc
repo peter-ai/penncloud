@@ -407,7 +407,7 @@ void HttpServer::start_heartbeat_thread(int lb_port, int server_port)
                     {
         while (!is_dead) {
             send_heartbeat(lb_port, server_port);
-            std::this_thread::sleep_for(std::chrono::seconds(10));  // send a heartbeat every 10 seconds
+            std::this_thread::sleep_for(std::chrono::seconds(1));  // send a heartbeat every second
         } })
             .detach();
     }
