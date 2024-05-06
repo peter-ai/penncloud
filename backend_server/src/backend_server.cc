@@ -623,8 +623,9 @@ void BackendServer::coordinate_checkpoint()
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
         if (is_primary)
         {
-            // Sleep for 30 seconds between each checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(60));
+            // Sleep for 60 seconds between each checkpoint
+            // TODO current checkpointing duration is 10 minutes to prevent logs from refreshing
+            std::this_thread::sleep_for(std::chrono::seconds(600));
 
             // Begin checkpointing
             checkpoint_version++; // increment checkpoint version number
