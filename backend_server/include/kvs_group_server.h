@@ -11,13 +11,11 @@ class KVSGroupServer
 private:
     int group_server_fd;   // fd to communicate with group server
     int group_server_port; // Port that group server is sending data from
-    Logger kvs_group_server_logger;
 
     // methods
 public:
     // group server initialized with an associated file descriptor and group server's port
-    KVSGroupServer(int group_server_fd, int group_server_port) : group_server_fd(group_server_fd), group_server_port(group_server_port),
-                                                                 kvs_group_server_logger("KVS Group Server [" + std::to_string(group_server_port) + "]"){};
+    KVSGroupServer(int group_server_fd, int group_server_port) : group_server_fd(group_server_fd), group_server_port(group_server_port){};
     // disable default constructor - KVSGroupServer should only be created with an associated fd and port
     KVSGroupServer() = delete;
 
@@ -30,6 +28,9 @@ private:
     // checkpointing methods
     void checkpoint(std::vector<char> &inputs); // handle checkpoint operation initiated by primary
     void done(std::vector<char> &inputs);       // handle done message after checkpointing is complete
+
+    // recovery methods
+    void assist_with_recovery(std::vector<char> &inputs); // help server with recovery by sending checkpoint + logs
 
     // 2PC primary coordination methods
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
@@ -50,6 +51,8 @@ private:
     std::vector<char> cput(std::string &row, std::vector<char> &inputs);
     std::vector<char> delr(std::string &row, std::vector<char> &inputs);
     std::vector<char> delv(std::string &row, std::vector<char> &inputs);
+    std::vector<char> rnmr(std::string &row, std::vector<char> &inputs);
+    std::vector<char> rnmc(std::string &row, std::vector<char> &inputs);
 
     // Client response methods
     void send_error_response(const std::string &msg);    // constructs an error response and internally calls send_response()

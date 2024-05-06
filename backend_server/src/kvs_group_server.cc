@@ -7,6 +7,8 @@
 #include "../utils/include/be_utils.h"
 #include "../include/backend_server.h"
 
+Logger kvs_group_server_logger("KVS Group Server");
+
 // *********************************************
 // MAIN RUN METHODS
 // *********************************************
@@ -84,7 +86,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    // checkpointing commands
+    // checkpointing and recovery commands
     if (command == "ckpt")
     {
         checkpoint(byte_stream);
@@ -93,6 +95,11 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     else if (command == "done")
     {
         done(byte_stream);
+        return;
+    }
+    else if (command == "reco")
+    {
+        assist_with_recovery(byte_stream);
         return;
     }
 
@@ -110,7 +117,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         }
 
         // write operation forwarded from a server
-        if (command == "putv" || command == "cput" || command == "delr" || command == "delv")
+        if (command == "putv" || command == "cput" || command == "delr" || command == "delv" || command == "rnmr" || command == "rnmc")
         {
             execute_two_phase_commit(byte_stream);
         }
@@ -182,8 +189,7 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
             kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpointed tablet " + tablet->range_start + ":" + tablet->range_end, 20);
 
             // clear tablet's log file
-            std::ofstream log_file;
-            log_file.open(log_filename, std::ofstream::trunc);
+            std::ofstream log_file(log_filename, std::ofstream::trunc);
             log_file.close();
             kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Cleared " + log_filename, 20);
         }
@@ -211,6 +217,86 @@ void KVSGroupServer::done(std::vector<char> &inputs)
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
     kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpoint complete - server received DONE", 20);
+}
+
+// *********************************************
+// RECOVERY HELP
+// *********************************************
+
+void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
+{
+    kvs_group_server_logger.log("Primary server assisting with recovery", 20);
+
+    // erase RECO command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+    // extract checkpoint version number and erase from inputs
+    uint32_t sent_checkpoint_version = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+    // extract sequence number and erase from inputs
+    uint32_t sent_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    // check if the requesting server requires your checkpoint files
+    std::vector<char> response;
+    bool checkpoint_required;
+    // last check
+    if (BackendServer::last_checkpoint != sent_checkpoint_version)
+    {
+        response.push_back('C');
+        checkpoint_required = true;
+    }
+    else
+    {
+        response.push_back('N');
+        checkpoint_required = false;
+    }
+
+    // iterate tablet range and add checkpoint file (if necessary) and log file
+    for (std::string tablet_range : BackendServer::tablet_ranges)
+    {
+        // read entire log file into a vector and append to response
+        std::string log_filename = BackendServer::disk_dir + tablet_range + "_log";
+        std::vector<char> log_file_data = BeUtils::read_from_file_into_vec(log_filename);
+
+        // read entire checkpoint file into a vector and append to response
+        if (checkpoint_required)
+        {
+            std::string cp_filename = BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
+            std::vector<char> cp_file_data = BeUtils::read_from_file_into_vec(cp_filename);
+
+            // append the size of the checkpoint file to the front of the vector
+            std::vector<uint8_t> cp_file_size_vec = BeUtils::host_num_to_network_vector(cp_file_data.size());
+            cp_file_data.insert(cp_file_data.begin(), cp_file_size_vec.begin(), cp_file_size_vec.end());
+
+            // append the cp_file_data vector to the end of response
+            response.insert(response.end(), cp_file_data.begin(), cp_file_data.end());
+
+            // append the size of the log file file to the front of the vector
+            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+            // append the log_file_data vector to the end of response
+            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+        }
+        // use sequence number to determine which portion of the log file the server needs
+        else
+        {
+            // sequence number indicates that the server has an END log for that operation
+            // they should receive any operations AFTER this sequence number
+
+            // TODO go through the log and provide LOGS WITH SEQ NUM STRICTLY GREATER THAN SEQ NUM SENT BY SERVER
+
+            // // append the size of the checkpoint file to the front of the vector
+            // std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+            // log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+            // // append the log_file_data vector to the end of response
+            // response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+        }
+    }
+
+    // send response back to server
+    send_response(response);
 }
 
 // *********************************************
@@ -247,6 +333,13 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 
     // open connection with secondary servers
     std::unordered_map<int, int> secondary_servers = BackendServer::open_connection_with_secondary_servers();
+    // open connection with servers in recovery and add them to the map
+    for (int port : BackendServer::ports_in_recovery)
+    {
+        int recovery_server_fd = BeUtils::open_connection(port);
+        secondary_servers[port] = recovery_server_fd;
+    }
+
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
     // write BEGIN to log
@@ -305,7 +398,7 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     // write END to log
     write_to_log(operation_log_filename, operation_seq_num, "ENDT");
 
-    send_error_response("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries");
+    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received ACKS from secondaries", 20);
     clean_operation_state(secondary_servers);
     send_response(response_msg);
 }
@@ -464,7 +557,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // acquire an exclusive lock on the row
     std::vector<char> vote_response;
     // failed to acquire exclusive row lock
-    if (tablet->acquire_exclusive_row_lock(command, row) < 0)
+    if (!BackendServer::is_recovering && tablet->acquire_exclusive_row_lock(command, row) < 0)
     {
         // write ABORT to log - requires sequence number, command, row to abort transaction
         std::vector<char> abort_log = {'A', 'B', 'R', 'T'};
@@ -475,7 +568,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
 
         // construct vote
         vote_response = {'S', 'E', 'C', 'N', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
     }
     // successfully acquired row lock
     else
@@ -490,7 +583,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
 
         // construct vote
         vote_response = {'S', 'E', 'C', 'Y', ' '};
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECN", 20);
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary voted SECY", 20);
     }
 
     // convert seq number to vector and append to vote
@@ -531,15 +624,26 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
     std::string operation_log_filename = BackendServer::retrieve_data_tablet(row)->log_filename;
     write_to_log(operation_log_filename, operation_seq_num, commit_log);
 
-    // execute write operation
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary for " + command + " on R[" + row + "]", 20);
-    execute_write_operation(command, row, inputs);
+
+    // execute write operation if server is not in recovery mode
+    if (!BackendServer::is_recovering)
+    {
+        // execute write operation
+        execute_write_operation(command, row, inputs);
+    }
 
     // write END to log
     write_to_log(operation_log_filename, operation_seq_num, "ENDT");
 
+    // update sequence number on this server now that END log has been written
+    BackendServer::seq_num_lock.lock();
+    BackendServer::seq_num = operation_seq_num;
+    BackendServer::seq_num_lock.unlock();
+
+    // send back ack
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
-    // convert seq number to vector and append to prepare_msg
+    // convert seq number to vector and append to ack
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
     send_response(ack_response);
@@ -570,11 +674,20 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     abort_log.insert(abort_log.end(), row.begin(), row.end());                         // add row to log
     write_to_log(tablet->log_filename, operation_seq_num, abort_log);
 
-    // release exclusive lock on row
-    tablet->release_exclusive_row_lock(row);
+    // release exclusive lock on row if server is not in recovery mode
+    if (!BackendServer::is_recovering)
+    {
+        // release exclusive lock on row
+        tablet->release_exclusive_row_lock(row);
+    }
 
     // write END to log
     write_to_log(tablet->log_filename, operation_seq_num, "ENDT");
+
+    // update sequence number on this server now that END log has been written
+    BackendServer::seq_num_lock.lock();
+    BackendServer::seq_num = operation_seq_num;
+    BackendServer::seq_num_lock.unlock();
 
     // send ACK back to primary
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
@@ -606,6 +719,14 @@ std::vector<char> KVSGroupServer::execute_write_operation(std::string &command, 
     else if (command == "delv")
     {
         return delv(row, inputs);
+    }
+    else if (command == "rnmr")
+    {
+        return rnmr(row, inputs);
+    }
+    else if (command == "rnmc")
+    {
+        return rnmc(row, inputs);
     }
     kvs_group_server_logger.log("Unrecognized write command - should NOT occur", 40);
     std::vector<char> res;
@@ -695,18 +816,20 @@ std::vector<char> KVSGroupServer::delr(std::string &row, std::vector<char> &inpu
 
 std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inputs)
 {
-    // find index of \b to extract col from inputs
-    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (col_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - column not found";
-        kvs_group_server_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        return res_bytes;
-    }
-    std::string col(inputs.begin(), col_end);
+    // // find index of \b to extract col from inputs
+    // auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // // \b not found in index
+    // if (col_end == inputs.end())
+    // {
+    //     // log and send error message
+    //     std::string err_msg = "-ER Malformed arguments to DELV(R,C) - column not found";
+    //     kvs_group_server_logger.log(err_msg, 40);
+    //     std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+    //     return res_bytes;
+    // }
+    // std::string col(inputs.begin(), col_end);
+    // remainder of inputs is col
+    std::string col(inputs.begin(), inputs.end());
 
     // log command and args
     kvs_group_server_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
@@ -717,11 +840,53 @@ std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inpu
     return response_msg;
 }
 
+std::vector<char> KVSGroupServer::rnmr(std::string &row, std::vector<char> &inputs)
+{
+    // remainder of inputs is new row
+    std::string new_row(inputs.begin(), inputs.end());
+
+    // log command and args
+    kvs_group_server_logger.log("RNMR R1[" + row + "] R2[" + new_row + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->rename_row(row, new_row);
+    return response_msg;
+}
+
+std::vector<char> KVSGroupServer::rnmc(std::string &row, std::vector<char> &inputs)
+{
+    // find index of \b to extract old col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to RNMC(R, C1, C2) - column not found";
+        kvs_group_server_logger.log(err_msg, 40);
+        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+        return res_bytes;
+    }
+    std::string old_col(inputs.begin(), col_end);
+    // clear inputs UP TO AND INCLUDING the last \b char
+    inputs.erase(inputs.begin(), col_end + 1);
+    // remainder of inputs is new col
+    std::string new_col(inputs.begin(), inputs.end());
+
+    // log command and args
+    kvs_group_server_logger.log("RNMC R[" + row + "] C1[" + old_col + "] C2[" + new_col + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
+    std::vector<char> response_msg = tablet->rename_column(row, old_col, new_col);
+    return response_msg;
+}
+
 // *********************************************
 // CLIENT RESPONSE
 // *********************************************
 
-/// @brief constructs an error response and internally calls send_response()
+/// @brief constructs an error response and internally calls send_response() - should only be used for client communication
 void KVSGroupServer::send_error_response(const std::string &err_msg)
 {
     // add "-ER " to front of error message
@@ -765,8 +930,7 @@ int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_s
 int KVSGroupServer::write_to_log(std::string &log_filename, uint32_t operation_seq_num, const std::vector<char> &message)
 {
     // open log file in binary mode for writing
-    std::ofstream log_file;
-    log_file.open(BackendServer::disk_dir + log_filename, std::ofstream::out | std::ofstream::binary);
+    std::ofstream log_file(BackendServer::disk_dir + log_filename, std::ofstream::out | std::ofstream::app | std::ofstream::binary);
 
     // verify log file was opened
     if (!log_file.is_open())
