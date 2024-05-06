@@ -77,8 +77,9 @@ bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 /// @brief client server connection
 struct client_args
 {
-    std::string addr; // address of
-    int fd;           // file descriptor for coordinator-http communication
+    std::string addr;    // address of client
+    int fd;              // file descriptor for coordinator-http communication
+    std::string request; // data read from client socket
 };
 
 /// @brief kvs server connection
