@@ -491,8 +491,7 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
     while (!stream.empty())
     {
         // read 4 characters to get the size of the row key
-        std::vector<char> row_name_size_vec(stream.begin(), stream.begin() + 4);
-        uint32_t row_name_size = BeUtils::network_vector_to_host_num(row_name_size_vec);
+        uint32_t row_name_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
 
         // extract the row name
@@ -508,16 +507,14 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
         auto &row_level_column_map = data.at(row_name);
 
         // read 4 characters to get the size of all data for this row
-        std::vector<char> row_data_size_vec(stream.begin(), stream.begin() + 4);
-        uint32_t row_data_size = BeUtils::network_vector_to_host_num(row_data_size_vec);
+        uint32_t row_data_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
 
         uint32_t row_data_processed = 0;
         while (row_data_processed < row_data_size)
         {
             // read 4 characters to get the size of the col key
-            std::vector<char> col_name_size_vec(stream.begin(), stream.begin() + 4);
-            uint32_t col_name_size = BeUtils::network_vector_to_host_num(col_name_size_vec);
+            uint32_t col_name_size = BeUtils::network_vector_to_host_num(stream);
             stream.erase(stream.begin(), stream.begin() + 4);
             row_data_processed += 4;
 
@@ -528,8 +525,7 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
             row_data_processed += col_name_size;
 
             // read 4 characters to get the size of the col data
-            std::vector<char> col_data_size_vec(stream.begin(), stream.begin() + 4);
-            uint32_t col_data_size = BeUtils::network_vector_to_host_num(col_data_size_vec);
+            uint32_t col_data_size = BeUtils::network_vector_to_host_num(stream);
             stream.erase(stream.begin(), stream.begin() + 4);
             row_data_processed += 4;
 

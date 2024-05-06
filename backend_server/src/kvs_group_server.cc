@@ -86,7 +86,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    // checkpointing commands
+    // checkpointing and recovery commands
     if (command == "ckpt")
     {
         checkpoint(byte_stream);
@@ -95,6 +95,11 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     else if (command == "done")
     {
         done(byte_stream);
+        return;
+    }
+    else if (command == "reco")
+    {
+        assist_with_recovery(byte_stream);
         return;
     }
 
@@ -213,6 +218,73 @@ void KVSGroupServer::done(std::vector<char> &inputs)
     inputs.erase(inputs.begin(), inputs.begin() + 4);
 
     kvs_group_server_logger.log("CP[" + std::to_string(version_num) + "] Checkpoint complete - server received DONE", 20);
+}
+
+// *********************************************
+// RECOVERY HELP
+// *********************************************
+
+void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
+{
+    kvs_group_server_logger.log("Primary server assisting with recovery", 20);
+
+    // erase RECO command from beginning of inputs
+    inputs.erase(inputs.begin(), inputs.begin() + 5);
+
+    // extract checkpoint version number and erase from inputs
+    uint32_t sent_checkpoint_version = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    // extract sequence number and erase from inputs
+    uint32_t sent_seq_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
+
+    // check if the requesting server requires your checkpoint files
+    std::vector<char> response;
+    bool checkpoint_required;
+    // last check
+    if (BackendServer::last_checkpoint != sent_checkpoint_version)
+    {
+        response.push_back('C');
+        checkpoint_required = true;
+    }
+    else
+    {
+        response.push_back('N');
+        checkpoint_required = false;
+    }
+
+    // iterate tablet range and add checkpoint file (if necessary) and log file
+    for (std::string tablet_range : BackendServer::tablet_ranges)
+    {
+        // read entire checkpoint file into a vector and append to response
+        if (checkpoint_required)
+        {
+            std::string cp_filename = BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
+            std::vector<char> cp_file_data = BeUtils::read_from_file_into_vec(cp_filename);
+
+            // append the size of the checkpoint file to the front of the vector
+            std::vector<uint8_t> cp_file_size_vec = BeUtils::host_num_to_network_vector(cp_file_data.size());
+            cp_file_data.insert(cp_file_data.begin(), cp_file_size_vec.begin(), cp_file_size_vec.end());
+
+            // append the cp_file_data vector to the end of response
+            response.insert(response.end(), cp_file_data.begin(), cp_file_data.end());
+        }
+
+        // read entire log file into a vector and append to response
+        std::string log_filename = BackendServer::disk_dir + tablet_range + "_log";
+        std::vector<char> log_file_data = BeUtils::read_from_file_into_vec(log_filename);
+
+        // append the size of the checkpoint file to the front of the vector
+        std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+        log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+        // append the log_file_data vector to the end of response
+        response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+    }
+
+    // send response back to server
+    send_response(response);
 }
 
 // *********************************************

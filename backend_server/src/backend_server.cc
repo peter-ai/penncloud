@@ -609,10 +609,12 @@ void BackendServer::admin_live()
     int contact_primary_port = std::stoi(contact_primary.substr(IP.length()));
     be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 50);
 
-    // construct message to primary - RECO<SP>CP#<SP>SEQ#
+    // construct message to primary - RECO<SP>CP# SEQ# (no space between CP# and SEQ#)
     std::vector<char> recovery_msg = {'R', 'E', 'C', 'O', ' '};
     std::vector<uint8_t> last_cp_num = BeUtils::host_num_to_network_vector(BackendServer::last_checkpoint);
+    recovery_msg.insert(recovery_msg.begin(), last_cp_num.begin(), last_cp_num.end());
     std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
+    recovery_msg.insert(recovery_msg.begin(), last_seq_num.begin(), last_seq_num.end());
 
     // BEFORE contacting the primary, clear all of your logs. This is to ensure that primary can send you requests, and it'll log to your log file
     // You will use these logs to catch up AFTER you've completed the primary's logs
@@ -651,8 +653,7 @@ void BackendServer::admin_live()
         if (cp_included)
         {
             // read 4 characters to get the size of the checkpoint file
-            std::vector<char> cp_file_size_vec(stream.begin(), stream.begin() + 4);
-            uint32_t cp_file_size = BeUtils::network_vector_to_host_num(cp_file_size_vec);
+            uint32_t cp_file_size = BeUtils::network_vector_to_host_num(stream);
             stream.erase(stream.begin(), stream.begin() + 4);
 
             // extract the checkpoint data and remove it from the stream
@@ -671,8 +672,7 @@ void BackendServer::admin_live()
 
         // Extract the log next and replay it
         // read 4 characters to get the size of the log
-        std::vector<char> log_file_size_vec(stream.begin(), stream.begin() + 4);
-        uint32_t log_file_size = BeUtils::network_vector_to_host_num(log_file_size_vec);
+        uint32_t log_file_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
 
         // extract the log data and remove it from the stream
