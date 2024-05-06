@@ -660,8 +660,9 @@ void BackendServer::admin_live()
     // If first letter was NOT a C, then in each case, all you have to do is deserialize your checkpoint file for this tablet, and then read the logs
     for (std::string &tablet_range : tablet_ranges)
     {
-        // initialize a tablet using the default constructor
-        Tablet tablet;
+        // initialize a tablet using the default constructor and add it to the vector of live tablets
+        server_tablets.push_back(std::make_shared<Tablet>());
+        std::shared_ptr<Tablet> tablet = server_tablets.back();
 
         // If the checkpoint was included, then these first 4 bytes are a number, and the next x bytes are the number of corresponding bytes
         if (cp_included)
@@ -675,7 +676,7 @@ void BackendServer::admin_live()
             stream.erase(stream.begin(), stream.begin() + cp_file_size);
 
             // initialize tablet from stream
-            tablet.deserialize_from_stream(checkpoint_data);
+            tablet->deserialize_from_stream(checkpoint_data);
 
             be_logger.log("Built " + tablet_range + " tablet from primary checkpoint data", 20);
         }
@@ -683,13 +684,13 @@ void BackendServer::admin_live()
         else
         {
             // initialize tablet from checkpoint file
-            tablet.deserialize_from_file(BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(last_checkpoint));
+            tablet->deserialize_from_file(BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(last_checkpoint));
 
             be_logger.log("Built " + tablet_range + " tablet from local checkpoint data", 20);
 
-            // replay your downloaded logs
+            // ! replay your downloaded logs
             be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
-            tablet.replay_log(downloaded_logs.at(tablet_range));
+            // tablet.replay_log(downloaded_logs.at(tablet_range));
         }
 
         // Extract the log next and replay it
@@ -701,14 +702,12 @@ void BackendServer::admin_live()
         std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
-        // replay the log to update the tablet
+        // ! replay the log to update the tablet
         be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
-        tablet.replay_log(log_data);
+        // tablet.replay_log(log_data);
 
         // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
         be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
-
-        server_tablets.push_back(std::make_shared<Tablet>(tablet));
     }
 
     // set flag to false to indicate server is now alive
