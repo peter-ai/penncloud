@@ -58,6 +58,7 @@ public:
             {405, "Method Not Allowed"},
             {409, "Conflict"}, // request conflict with current state of resource (e.g., signing up as a user that already exists)
             {501, "Not Implemented"},
+            {502, "Bad Gateway"}, // for email relay
             {503, "Service Unavailable"},
             {505, "HTTP Version Not Supported"}};
         reason = response_codes.at(res_code);

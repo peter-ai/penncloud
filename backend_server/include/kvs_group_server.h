@@ -29,6 +29,9 @@ private:
     void checkpoint(std::vector<char> &inputs); // handle checkpoint operation initiated by primary
     void done(std::vector<char> &inputs);       // handle done message after checkpointing is complete
 
+    // recovery methods
+    void assist_with_recovery(std::vector<char> &inputs); // help server with recovery by sending checkpoint + logs
+
     // 2PC primary coordination methods
     void execute_two_phase_commit(std::vector<char> &inputs); // coordinates 2PC for client that requested a write operation
     int construct_and_send_prepare(uint32_t operation_seq_num, std::string &command, std::string &row, std::unordered_map<int, int> &secondary_servers);

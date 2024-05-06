@@ -364,7 +364,7 @@ void Tablet::serialize(const std::string &file_name)
     file.close();
 }
 
-void Tablet::deserialize(const std::string &file_name)
+void Tablet::deserialize_from_file(const std::string &file_name)
 {
     // [start_range][end_range][size of row key][row][size of chars representing map for rows col+val][size of col key][col][size of val][value]
     // 1. Basically, to deserialize, you would read the start range first, then the end range
@@ -456,7 +456,7 @@ void Tablet::deserialize(const std::string &file_name)
             // extract the col name
             std::vector<char> col_data(col_data_size);
             file.read(col_data.data(), col_data_size);
-            row_data_processed += col_name_size;
+            row_data_processed += col_data_size;
 
             // add col_name and col_data to data map
             row_level_column_map[col_name] = col_data;
@@ -464,6 +464,79 @@ void Tablet::deserialize(const std::string &file_name)
     }
 
     file.close();
+}
+
+void Tablet::deserialize_from_stream(std::vector<char> &stream)
+{
+    // [start_range][end_range][size of row key][row][size of chars representing map for rows col+val][size of col key][col][size of val][value]
+    // 1. Basically, to deserialize, you would read the start range first, then the end range
+    // 2. Then, read 4 characters to get the size of the row key. Then read that many characters to get the row.
+    // 3. Then, read 4 characters to get the size of the inner map. Read that many characters from the map.
+    // 4. Now you know to process in column/value in alternating fashion until you exhaust the bytes. Even an empty value will have a size value dedicated to it (would just store 0)
+    // 5. Once you're done with an inner map, go back to step 2 and repeat.
+
+    // for each row you construct, make sure you add an entry in row_locks for it so it has an associated mutex.
+
+    // read start and end range from file (each should be 1 character)
+    range_start = std::string(stream.begin(), stream.begin() + 1);
+    stream.erase(stream.begin());
+    range_end = std::string(stream.begin(), stream.begin() + 1);
+    stream.erase(stream.begin());
+
+    // set log file name for this tablet
+    log_filename = range_start + "_" + range_end + "_log";
+
+    // read until the stream is empty
+    while (!stream.empty())
+    {
+        // read 4 characters to get the size of the row key
+        uint32_t row_name_size = BeUtils::network_vector_to_host_num(stream);
+        stream.erase(stream.begin(), stream.begin() + 4);
+
+        // extract the row name
+        std::vector<char> row_name_vec(stream.begin(), stream.begin() + row_name_size);
+        std::string row_name(row_name_vec.begin(), row_name_vec.end());
+        stream.erase(stream.begin(), stream.begin() + row_name_size);
+
+        // create mutex for row in row_locks
+        row_locks[row_name];
+        // create row in data map
+        data[row_name];
+        // get reference to row
+        auto &row_level_column_map = data.at(row_name);
+
+        // read 4 characters to get the size of all data for this row
+        uint32_t row_data_size = BeUtils::network_vector_to_host_num(stream);
+        stream.erase(stream.begin(), stream.begin() + 4);
+
+        uint32_t row_data_processed = 0;
+        while (row_data_processed < row_data_size)
+        {
+            // read 4 characters to get the size of the col key
+            uint32_t col_name_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+            row_data_processed += 4;
+
+            // extract the col name
+            std::vector<char> col_name_vec(stream.begin(), stream.begin() + col_name_size);
+            std::string col_name(col_name_vec.begin(), col_name_vec.end());
+            stream.erase(stream.begin(), stream.begin() + col_name_size);
+            row_data_processed += col_name_size;
+
+            // read 4 characters to get the size of the col data
+            uint32_t col_data_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+            row_data_processed += 4;
+
+            // extract the col data
+            std::vector<char> col_data(stream.begin(), stream.begin() + col_data_size);
+            stream.erase(stream.begin(), stream.begin() + col_data_size);
+            row_data_processed += col_data_size;
+
+            // add col_name and col_data to data map
+            row_level_column_map[col_name] = col_data;
+        }
+    }
 }
 
 // *********************************************

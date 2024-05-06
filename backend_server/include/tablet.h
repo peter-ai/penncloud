@@ -96,8 +96,9 @@ public:
      * SERIALIZATION METHODS
      */
 
-    void serialize(const std::string &file_name);   // serialize tablet into a file called file_name
-    void deserialize(const std::string &file_name); // deserialize file_name into this tablet object
+    void serialize(const std::string &file_name);             // serialize tablet into a file called file_name
+    void deserialize_from_file(const std::string &file_name); // deserialize file_name into this tablet object
+    void deserialize_from_stream(std::vector<char> &stream);  // deserialize file_name into this tablet object
 
 private:
     std::vector<char> construct_msg(const std::string &msg, bool error); // construct success/error msg to send back to client
