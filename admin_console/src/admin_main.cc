@@ -40,6 +40,11 @@ unordered_map<string, int> kvs_servers;                // maps backend server na
 unordered_map<string, vector<string>> kvs_servergroup; // server groups to names of all servers within
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
+// tablet data
+vector<string> row_data;    // all rows for the selected tablet
+vector<string> col_data;    // all columns for the selected row within a tablet
+vector<char> row_col_value; // the given value for the character
+
 int server_loops = 0;
 
 void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
@@ -62,6 +67,26 @@ void iterateMapOfStringToVectorOfString(const std::unordered_map<std::string, st
     }
 }
 
+// Function to convert vector to JSON array string manually
+std::string vectorToJson(const std::vector<std::string> &vec)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+        if (i > 0)
+        {
+            ss << ",";
+        }
+        ss << "\"" << vec[i] << "\"";
+    }
+    ss << "]";
+    return ss.str();
+}
+
+/*
+Handler that deals with toggling servers on and off
+*/
 void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 {
     // Extract form parameters (status and component id) from the HTTP request body
@@ -273,26 +298,28 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 
     // Paginated Table
     page += "<div class='mt-4'><h2>Tablets in Memory</h2>";
-    page += "<a href= '#' id='loadData'>Load Data</a>"
-            "<table class=' table table-bordered mt - 3' id='dataTable' style='display : none;'"
-            ">"
-            " <thead>"
+    page += "<div class='btn-group'>";
+    // Generating dynamic buttons from keys of kvs_server map
+    for (auto server : kvs_servers)
+    {
+        page += "<button type='button' class='btn btn-primary table-server-button' data-server='" + server.first + "'>" + server.first + "</button>";
+    }
+    page += "</div>";
+    page += "<table class='table table-bordered mt-3' id='dataTable'>"
+            //"< thead >"
             "<tr>"
-            " <th>Name</th>"
-            "<th>Details</th>"
-            " </tr>"
-            "</thead>"
-            " <tbody>"
-            // <!-- Rows will be added here dynamically -->
-            "</tbody>"
-            " </table>"
-            "<nav aria-label='Page navigation'>"
-            "<ul class='pagination'>"
-            // <!-- Pagination links will be added here dynamically -->
-            "</ul>"
-            " </nav>"
-            "</div>"
-            "</div>"
+            "<th> Name</ th>"
+            "<th> Details</ th>"
+            " </ tr>"
+            " </ thead>"
+            "<tbody id = 'dataBody'>"
+            "<!--Initially, the skeleton is loaded here-->"
+            "<tr><td colspan = '2'> Loading... </ td> </ tr>"
+            "</ tbody>"
+            "</ table>"
+            //"< / div >"
+
+            // scripts start here
             "</div>"
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>"
             "<script>"
@@ -359,58 +386,76 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             " });"
             "});"
             "</script>";
+
+    // Convert row_data to a JSON array string
+    std::string json_string = vectorToJson(row_data);
+    cout << "row data size = " << row_data.size() << endl;
+
     page += "<script>"
-            " $('#loadData').click(function(e) {"
-            "e.preventDefault();"
-            "$('#dataTable').show();" // Show the table
-            "loadData(1);"            // Load first page of data
+            "$(document).ready(function() {"
+            "$('.table-server-button').click(function() {"
+            "var serverName = $(this).data('server');"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (serverName !== selectedServer) {"
+            "submitServerForm(serverName);"
+            "}"
+            "});"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (selectedServer) {"
+            "submitServerForm(selectedServer);"
+            "}"
             "});"
 
-            "function loadData(page) {"
-            "$.ajax({"
-            "url: 'your-data-source', // URL to fetch data"
-            "method: 'GET',"
-            "dataType: 'json',"
-            "success: function(data) {"
-            "renderTable(data.rows);"
-            "setupPagination(data.totalPages, page);"
-            "}"
+            "function submitServerForm(serverName) {"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (serverName !== selectedServer) {"
+            "var form = $('<form>', {"
+            "'action': '/admin/table/getrows',"
+            "'method': 'POST'"
             "});"
+            "$('<input>').attr({"
+            "'type': 'hidden',"
+            "'name': 'server',"
+            "'value': serverName"
+            "}).appendTo(form);"
+            "form.appendTo('body').submit();"
+            "sessionStorage.setItem('selectedServer', serverName);" // Store selected server in sessionStorage
             "}"
+            "}"
+            "</script>";
 
-            "function renderTable(rows) {"
-            "const tbody = $('#dataTable tbody');"
-            "tbody.empty();" // Clear previous rows
-            "rows.forEach((row, index) => {"
-            "const tr = $('<tr>').append("
-            "$('<td>').text(row.name).addClass('expandable'),"
-            " $('<td>').text(row.details).hide()"
-            ").appendTo(tbody);"
+    page += "<script>"
+            "var row_data = " +
+            json_string + ";"
+                          "<script>"
+                          "$(document).ready(function() {"
+                          "$('#loadData').click(function(e) {"
+                          "e.preventDefault();"
+                          "fetchAndRenderData();" // Function to fetch data and render the table
+                          "});"
 
-            "tr.find('.expandable').click(function() {"
-            "$(this).siblings().toggle(); " // Toggle visibility of details
-            "});"
-            "});"
-            " }"
+                          "function fetchAndRenderData() {"
+                          // Simulating data fetching by waiting for a moment before rendering
+                          "setTimeout(() => {"
+                          "var row_data = <?= json_encode($row_data) ?>;" // Assume $yourDataFromCpp is your C++ data array converted to JSON
+                          "renderTable(row_data);"
+                          "}, 1000);" // Delay to simulate fetching
+                          "}"
 
-            "function setupPagination(totalPages, currentPage) {"
-            "const pagination = $('.pagination');"
-            "pagination.empty(); // Clear previous links"
-            "for (let i = 1; i <= totalPages; i++) {"
-            "const li = $('<li>').addClass('page-item').append("
-            "$('<a>').addClass('page-link').text(i).attr('href', '#')"
-            ");"
-            "if (i === currentPage) {"
-            " li.addClass('active');"
-            "}"
-            "li.click(function(e) {"
-            " e.preventDefault();"
-            "loadData(i);"
-            "}).appendTo(pagination);"
-            "}"
-            "}"
-            "});"
-            "</script> ";
+                          "function renderTable(row_data) {"
+                          "const tbody = $('#dataBody');"
+                          "tbody.empty();" // Clear previous rows or skeleton
+
+                          "if (!row_data.length) {"
+                          "$('<tr>').append($('<td>').attr('colspan', '2').text('No data available')).appendTo(tbody);"
+                          "} else {"
+                          "row_data.forEach((row) => {"
+                          "$('<tr>').append($('<td>').text(row.name), $('<td>').text(row.details)).appendTo(tbody);"
+                          " });"
+                          "}"
+                          "}"
+                          "});"
+                          "</script>";
 
     page += "</body>"
             "</html>";
@@ -578,6 +623,56 @@ void get_server_data(int sockfd)
 }
 
 /*
+Handler to get the rows for a given kvs server
+*/
+void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Extract form parameters (status and component id) from the HTTP request body
+    std::string requestBody = req.body_as_string();
+    std::unordered_map<std::string, std::string> formParams;
+
+    // Parse the request body to extract form parameters
+    size_t pos = 0;
+    while ((pos = requestBody.find('&')) != std::string::npos)
+    {
+        std::string token = requestBody.substr(0, pos);
+        size_t equalPos = token.find('=');
+        std::string key = token.substr(0, equalPos);
+        std::string value = token.substr(equalPos + 1);
+        formParams[key] = value;
+        requestBody.erase(0, pos + 1);
+    }
+    // Handle the last parameter
+    size_t equalPos = requestBody.find('=');
+    std::string key = requestBody.substr(0, equalPos);
+    std::string value = requestBody.substr(equalPos + 1);
+    formParams[key] = value;
+
+    // Extract server name from form parameters
+    std::string servername = formParams["server"];
+
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+
+    // temp
+
+    row_data;
+    row_data.push_back("Row 1 Data");
+    row_data.push_back("Row 2 Data");
+
+    // // writing to port 12000++ to get rows
+    // // open socket to
+    // int server_fd = FeUtils::open_socket("127.0.0.1", kvs_servers[servername]);
+
+    // vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+    // row_data = FeUtils::parse_all_rows(row_vector_raw);
+
+    // close(server_fd);
+
+    res.set_code(303); // OK
+    res.set_header("Location", "/admin/dashboard");
+}
+
+/*
 Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
@@ -725,6 +820,9 @@ int main()
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
     HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
+    HttpServer::post("/admin/table/getrows", table_select_kvs_handler);    // handles table requests for a specific kvs server
+    // HttpServer::post("/admin/table/rowvalues", table_select_row_handler);  // handles table requests to get the row values for a kvs
+    // HttpServer::post("/admin/table/colvalues", table_select_col_handler);  // handles table requests to get value for given column
 
     // @todo add redirect to LB
     HttpServer::get("*", redirect_handler);

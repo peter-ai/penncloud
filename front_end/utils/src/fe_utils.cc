@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <iostream>
+#include <algorithm>
 
 Logger fe_utils_logger("FE Utils");
 
@@ -41,7 +42,7 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
     }
 
     // logging message
-    fe_utils_logger.log("Message Sent to KVS ("+ std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
+    fe_utils_logger.log("Message Sent to KVS (" + std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
 
     return total_bytes_sent;
 }
@@ -410,4 +411,94 @@ std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, cons
     {
         return "";
     }
+}
+
+// Function for KV GET(row, col). Returns value as vector<char> to user
+std::vector<char> FeUtils::kvs_get_allrows(int fd)
+{
+    // string to send  COMMAND + \b + row + \b + col....
+    std::string cmd = "GETA";
+    std::vector<char> fn_string(cmd.begin(), cmd.end());
+    std::vector<char> response = {};
+
+    // send message to kvs and check for error
+    if (writeto_kvs(fn_string, fd) == 0)
+    {
+        // potentially logger
+
+        response = {'-', 'E', 'R'};
+        return response;
+    }
+
+    // wait to recv response from kvs
+    response = readfrom_kvs(fd);
+
+    // return value
+    return response;
+}
+
+// Function to split a vector<char> based on a vector<char> delimiter
+std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const std::vector<char> &delimiter)
+{
+    std::vector<std::vector<char>> result;
+    size_t start = 0;
+    size_t end = data.size();
+
+    if (data.size() == 0)
+    {
+        return {{}};
+    }
+
+    while (start < end)
+    {
+        // Find the next occurrence of delimiter starting from 'start'
+        auto pos = search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
+
+        if (pos == data.end())
+        {
+            // No delimiter found, copy the rest of the vector
+            result.emplace_back(data.begin() + start, data.end());
+            break;
+        }
+        else
+        {
+            // Delimiter found, copy up to the delimiter and move 'start' past the delimiter
+            result.emplace_back(data.begin() + start, pos);
+            start = distance(data.begin(), pos) + delimiter.size();
+        }
+    }
+
+    return result;
+}
+
+// takes in the vector of all rows coming from the server and separates into a vecotr of strings
+std::vector<std::string> parse_all_rows(std::vector<char> &tablet)
+{
+    std::vector<std::string> rows;
+    if (tablet.at(0) == '+' && tablet.at(1) == 'O' && tablet.at(2) == 'K')
+    {
+
+        // strip +OK<sp>
+        tablet.erase(tablet.begin(), tablet.begin() + 4);
+
+        // if tablet is now empty, i.e. no rows, reutrn
+        if (tablet.empty())
+        {
+            return rows;
+        }
+
+        // otherwise loop thru and aggregate until we get each row spearated by \b
+        std::vector<std::vector<char>> split_rows = split_vector(tablet, {'\b'});
+
+        for (auto vec : split_rows)
+        {
+            if (!vec.empty())
+            {
+                std::string rowname(vec.begin(), vec.end());
+                rows.push_back(rowname);
+            }
+        }
+    }
+
+    return rows;
 }
