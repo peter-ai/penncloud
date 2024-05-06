@@ -441,8 +441,7 @@ int main(int argc, char *argv[])
                 struct client_args client;
                 client.addr = source;
                 client.fd = comm_fd;
-
-                logger.log("Entering client handler logic", LOGGER_DEBUG);
+                client.request = request;
 
                 // give thread relavent handler
                 if (pthread_create(&thid, NULL, client_thread, (void *)&client) != 0)
@@ -722,18 +721,8 @@ void *client_thread(void *arg)
     struct client_args *client = (struct client_args *)arg;
 
     int sent = 0;
-
-    // receive incoming request
-    if ((rlen = recv(client->fd, &request[0], request.size() - rlen, 0)) == -1)
-    {
-        logger.log("Failed to received data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
-    }
-    request.resize(rlen);
-
-    logger.log("RECEIVED REQUEST - " + request, LOGGER_ERROR);
-
     if (VERBOSE)
-        logger.log("Received request from <" + client->addr + ">: " + request, LOGGER_INFO);
+        logger.log("Received request from <" + client->addr + ">: " + client->request, LOGGER_INFO);
 
     if ((client->request).length() > 0)
     {
