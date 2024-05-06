@@ -291,6 +291,8 @@ std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<cha
     insert_arg(fn_string, col);
     std::vector<char> response = {};
 
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+
     // send message to kvs and check for error
     if (writeto_kvs(fn_string, fd) == 0)
     {
@@ -411,3 +413,99 @@ std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, cons
         return "";
     }
 }
+
+
+// pass a fd and row to perform DELETEROW(r)
+std::vector<char> FeUtils::kv_del_row(int fd, std::vector<char> row)
+{
+    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    std::string cmd = "DELR";
+    std::vector<char> fn_string(cmd.begin(), cmd.end());
+    insert_arg(fn_string, row);
+    fn_string.push_back('\b');
+    std::vector<char> response = {};
+
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+
+    // send message to kvs and check for error
+    if (writeto_kvs(fn_string, fd) == 0)
+    {
+        // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
+        response = {'-', 'E', 'R'};
+        return response;
+    }
+
+    // wait to recv response from kvs
+    response = readfrom_kvs(fd);
+
+    // return value
+    return response;
+}
+
+
+// pass a fd and row to perform DELETEROW(r)
+std::vector<char> FeUtils::kv_rename_row(int fd, std::vector<char> oldrow, std::vector<char> newrow)
+{
+    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    std::string cmd = "RNMR";
+    std::vector<char> fn_string(cmd.begin(), cmd.end());
+
+    fe_utils_logger.log("RNMR", LOGGER_DEBUG);
+    fe_utils_logger.log("old row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("new row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
+
+    insert_arg(fn_string, oldrow);
+    insert_arg(fn_string, newrow);
+    // fn_string.push_back('\b');
+    std::vector<char> response = {};
+
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+
+    // send message to kvs and check for error
+    if (writeto_kvs(fn_string, fd) == 0)
+    {
+        // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
+        response = {'-', 'E', 'R'};
+        return response;
+    }
+
+    // wait to recv response from kvs
+    response = readfrom_kvs(fd);
+
+    // return value
+    return response;
+}
+
+
+// pass a fd and row to perform DELETEROW(r)
+std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vector<char> oldcol, std::vector<char> newcol)
+{
+    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    std::string cmd = "RNMC";
+    std::vector<char> fn_string(cmd.begin(), cmd.end());
+    insert_arg(fn_string, row);
+    insert_arg(fn_string, oldcol);
+    insert_arg(fn_string, newcol);
+    fn_string.push_back('\b');
+    std::vector<char> response = {};
+
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+
+    // send message to kvs and check for error
+    if (writeto_kvs(fn_string, fd) == 0)
+    {
+        // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
+        response = {'-', 'E', 'R'};
+        return response;
+    }
+
+    // wait to recv response from kvs
+    response = readfrom_kvs(fd);
+
+    // return value
+    return response;
+}
+
