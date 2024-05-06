@@ -55,6 +55,12 @@ namespace FeUtils
     // pass a fd and row, col to perform DELETE(r,c)
     std::vector<char> kv_del(int fd, std::vector<char> row, std::vector<char> col);
 
+    // gets all rows from a given server
+    std::vector<char> kvs_get_allrows(int fd);  
+
+    // takes in the vector of all rows coming from the server and separates into a vecotr of strings
+    std::vector<std::string> parse_all_rows(std::vector<char> &tablet);
+
 
     // pass a fd and row to perform DELETEROW(r)
     std::vector<char> kv_del_row(int fd, std::vector<char> row);

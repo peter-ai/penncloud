@@ -28,10 +28,7 @@ Logger logger("Admin Console"); // setup logger
 
 using namespace std;
 // Dummy global variables for load balancer and coordinator
-std::string loadBalancerIP = "127.0.0.1";
-int loadBalancerPort = 8081;
-std::string coordinatorIP = "127.0.0.1";
-int coordinatorPort = 8082;
+int kvs_fd;
 
 // bool flags
 bool coord_init = false; // flag checks whether coord sent init message
@@ -43,6 +40,12 @@ unordered_map<string, int> kvs_servers;                // maps backend server na
 unordered_map<string, vector<string>> kvs_servergroup; // server groups to names of all servers within
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
+// tablet data
+vector<string> row_data;    // all rows for the selected tablet
+vector<string> col_data;    // all columns for the selected row within a tablet
+vector<char> row_col_value; // the given value for the character
+
+int server_loops = 0;
 
 void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
 {
@@ -64,6 +67,26 @@ void iterateMapOfStringToVectorOfString(const std::unordered_map<std::string, st
     }
 }
 
+// Function to convert vector to JSON array string manually
+std::string vectorToJson(const std::vector<std::string> &vec)
+{
+    std::stringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < vec.size(); ++i)
+    {
+        if (i > 0)
+        {
+            ss << ",";
+        }
+        ss << "\"" << vec[i] << "\"";
+    }
+    ss << "]";
+    return ss.str();
+}
+
+/*
+Handler that deals with toggling servers on and off
+*/
 void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 {
     // Extract form parameters (status and component id) from the HTTP request body
@@ -96,6 +119,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 
     string msg = "";
     string cmd = "KILL";
+
     if (status == 0)
     {
         msg = "KILL\r\n";
@@ -124,6 +148,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
             logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
         }
         server_status[servername] = status;
+        logger.log("Server status of " + servername + " is now  " + to_string(server_status[servername]), LOGGER_INFO);
         // close(fd)
     }
     else if (lb_servers.find(servername) != lb_servers.end())
@@ -144,6 +169,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
             logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
         }
         server_status[servername] = status;
+        logger.log("Server status of " + servername + "is now=" + to_string(server_status[servername]), LOGGER_INFO);
         // close(fd)
     }
     else
@@ -151,13 +177,14 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         logger.log("Server does not exist - " + servername, LOGGER_ERROR);
     }
 
-    // @todo ask B + P abt redirection
     res.set_code(303); // OK
     res.set_header("Location", "/admin/dashboard");
 }
 
 void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 {
+    logger.log("In dashboard handler", LOGGER_DEBUG);
+    //@todo get user from cookies -- Ask B, P, M
     std::string user = "example"; // Extract user information from cookies if needed
 
     std::string page =
@@ -214,10 +241,6 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
                "<input type='hidden' />"
                "<button class='btn nav-link' type='submit'>Logout</button>"
                "</form>"
-               // "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-               // "<input type='hidden' />"
-               // "<button class='btn nav-link' type='submit'>Logout</button>"
-               // "</form>"
                "</div>"
                "</div>"
                "<div class='form-check form-switch form-check-reverse ms-auto'>"
@@ -241,52 +264,62 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 
         page += "<div class='form-check form-switch'>";
         page += "<label class='form-check-label' for='" + server.first + "'>" + server.first + "</label>";
-        page += "<input type='checkbox' class='form-check-input toggle-switch fe-server-switch' id='" + server.first + "' checked='" + to_string(status) + "'>";
+        page += "<input type='checkbox' class='form-check-input toggle-switch server-switch' id='" + server.first + "'";
+        if (status == 1)
+        {
+            page += " checked"; // Only add 'checked' attribute if status is 1
+        }
+        page += ">"; // Close the input tag
         page += "<label class='form-check-label' for='" + server.first + "'></label>";
         page += "</div>";
-        page += "</label>";
     }
     page += "</div>";
 
     // Key-Value Store Components
     page += "<div class='col'>";
     page += "<h2>Key-Value Store Components</h2>";
-    for (int i = 1; i <= 3; ++i)
+    for (const auto &server : kvs_servers)
     {
+        int status = server_status[server.first]; // Retrieve status from server_status using server key
+
         page += "<div class='form-check form-switch'>";
-        page += "<label class='form-check-label' for='kvs" + std::to_string(i) + "'>KVS" + std::to_string(i) + "</label>";
-        page += "<label class='switch'>";
-        page += "<input type='checkbox' id='kvs" + std::to_string(i) + "'>";
-        page += "<span class='slider round'></span>";
-        page += "</label>";
+        page += "<label class='form-check-label' for='" + server.first + "'>" + server.first + "</label>";
+        page += "<input type='checkbox' class='form-check-input toggle-switch server-switch' id='" + server.first + "'";
+        if (status == 1)
+        {
+            page += " checked"; // Only add 'checked' attribute if status is 1
+        }
+        page += ">"; // Close the input tag
+        page += "<label class='form-check-label' for='" + server.first + "'></label>";
         page += "</div>";
     }
     page += "</div>";
     page += "</div>";
 
     // Paginated Table
-    page += "<div class='mt-4'><h2>Table</h2>";
-    page += "<table class='table table-bordered'>";
-    page += "<thead><tr><th>ID</th><th>Name</th><th>Value</th></tr></thead>";
-    page += "<tbody>";
-    for (int i = 1; i <= 10; ++i)
+    page += "<div class='mt-4'><h2>Tablets in Memory</h2>";
+    page += "<div class='btn-group'>";
+    // Generating dynamic buttons from keys of kvs_server map
+    for (auto server : kvs_servers)
     {
-        page += "<tr><td>" + std::to_string(i) + "</td><td>Component</td><td>Value</td></tr>";
+        page += "<button type='button' class='btn btn-primary table-server-button' data-server='" + server.first + "'>" + server.first + "</button>";
     }
-    page += "</tbody>";
-    page += "</table>";
-
-    // Pagination
-    page += "<nav><ul class='pagination justify-content-center'>";
-    page += "<li class='page-item'><a class='page-link' href='#'>Previous</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>1</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>2</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>3</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>Next</a></li>";
-    page += "</ul></nav>";
     page += "</div>";
-    page += "</div>"
-            "</div>"
+    page += "<table class='table table-bordered mt-3' id='dataTable'>"
+            //"< thead >"
+            "<tr>"
+            "<th> Name</ th>"
+            "<th> Details</ th>"
+            " </ tr>"
+            " </ thead>"
+            "<tbody id = 'dataBody'>"
+            "<!--Initially, the skeleton is loaded here-->"
+            "<tr><td colspan = '2'> Loading... </ td> </ tr>"
+            "</ tbody>"
+            "</ table>"
+            //"< / div >"
+
+            // scripts start here
             "</div>"
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>"
             "<script>"
@@ -323,16 +356,106 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             "</script>";
     page += "<script>"
             "$(document).ready(function() {"
-            "    $('.fe-server-switch').change(function() {"
-            "        var serverName = $(this).attr('id');"
-            "        var isChecked = $(this).prop('checked');"
-            "        var toggleState = isChecked ? 1 : 0 ;"
-            "        $.post('/admin/component/toggle', { serverName: serverName, toggleState: toggleState }, function(data, status) {"
-            "            console.log('Toggle status for ' + serverName + ': ' + data);"
-            "        });"
-            "    });"
+            "$('.server-switch').change(function() {"
+            // Create a form element
+            " var form = $('<form>', {"
+            "    'action': '/admin/component/toggle',"
+            "  'method': 'POST'"
+            "   });"
+
+            // Get server name and toggle state
+            "  var serverName = $(this).attr('id');"
+            "  var isChecked = $(this).prop('checked');"
+            " var toggleState = isChecked ? 1 : 0;"
+
+            // Add parameters to the form as hidden inputs
+            "$('<input>').attr({"
+            "type: 'hidden',"
+            "name: 'status',"
+            " value: toggleState"
+            "}).appendTo(form);"
+
+            " $('<input>').attr({"
+            "type: 'hidden',"
+            "  name: 'component_id',"
+            " value: serverName"
+            "}).appendTo(form);"
+
+            // Append the form to the body and submit it
+            "form.appendTo('body').submit();"
+            " });"
             "});"
             "</script>";
+
+    // Convert row_data to a JSON array string
+    std::string json_string = vectorToJson(row_data);
+    cout << "row data size = " << row_data.size() << endl;
+
+    page += "<script>"
+            "$(document).ready(function() {"
+            "$('.table-server-button').click(function() {"
+            "var serverName = $(this).data('server');"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (serverName !== selectedServer) {"
+            "submitServerForm(serverName);"
+            "}"
+            "});"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (selectedServer) {"
+            "submitServerForm(selectedServer);"
+            "}"
+            "});"
+
+            "function submitServerForm(serverName) {"
+            "var selectedServer = sessionStorage.getItem('selectedServer');"
+            "if (serverName !== selectedServer) {"
+            "var form = $('<form>', {"
+            "'action': '/admin/table/getrows',"
+            "'method': 'POST'"
+            "});"
+            "$('<input>').attr({"
+            "'type': 'hidden',"
+            "'name': 'server',"
+            "'value': serverName"
+            "}).appendTo(form);"
+            "form.appendTo('body').submit();"
+            "sessionStorage.setItem('selectedServer', serverName);" // Store selected server in sessionStorage
+            "}"
+            "}"
+            "</script>";
+
+    page += "<script>"
+            "var row_data = " +
+            json_string + ";"
+                          "<script>"
+                          "$(document).ready(function() {"
+                          "$('#loadData').click(function(e) {"
+                          "e.preventDefault();"
+                          "fetchAndRenderData();" // Function to fetch data and render the table
+                          "});"
+
+                          "function fetchAndRenderData() {"
+                          // Simulating data fetching by waiting for a moment before rendering
+                          "setTimeout(() => {"
+                          "var row_data = <?= json_encode($row_data) ?>;" // Assume $yourDataFromCpp is your C++ data array converted to JSON
+                          "renderTable(row_data);"
+                          "}, 1000);" // Delay to simulate fetching
+                          "}"
+
+                          "function renderTable(row_data) {"
+                          "const tbody = $('#dataBody');"
+                          "tbody.empty();" // Clear previous rows or skeleton
+
+                          "if (!row_data.length) {"
+                          "$('<tr>').append($('<td>').attr('colspan', '2').text('No data available')).appendTo(tbody);"
+                          "} else {"
+                          "row_data.forEach((row) => {"
+                          "$('<tr>').append($('<td>').text(row.name), $('<td>').text(row.details)).appendTo(tbody);"
+                          " });"
+                          "}"
+                          "}"
+                          "});"
+                          "</script>";
 
     page += "</body>"
             "</html>";
@@ -340,6 +463,10 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     res.set_code(200);
     res.append_body_str(page);
     res.set_header("Content-Type", "text/html");
+
+    iterateUnorderedMapOfStringToInt(server_status);
+
+    logger.log("Returned reponse for GET dashboard", LOGGER_DEBUG);
 }
 
 /*
@@ -365,10 +492,14 @@ void parse_coord_msg(string &msg)
         for (const auto &fe_str : fe_serv_strs)
         {
             string trimmed = Utils::l_trim(fe_str);
+            if (trimmed.empty())
+            {
+                continue;
+            }
             vector<string> fe_vec = Utils::split(trimmed, " ");
             // put name and port into map
-            string server_name = fe_vec[0];
-            int port = atoi(fe_vec[1].c_str());
+            string server_name = sg_name + '_' + fe_vec[0];
+            int port = atoi(fe_vec[1].c_str()) + 3000; // need to map to 12000s for ports.
             kvs_servers[server_name] = port;
             // update status
             server_status[server_name] = 1; // 1 for active 0 for killed in status
@@ -389,25 +520,43 @@ void parse_lb_msg(string &msg)
 {
     // msg is of format name<sp>port, name<sp>port,
 
+    logger.log("In parse lb message", LOGGER_DEBUG);
+    logger.log("Message=" + msg, LOGGER_DEBUG);
+
+    msg = Utils::trim(msg);
+
     // split string by commas
     vector<string> fe_serv_strs = Utils::split(msg, ",");
+
+    // int i = 0;
+    // for (const auto &fe_str : fe_serv_strs){
+    //     cout << i << " " + fe_str << endl;
+    //     ++i;
+    // }
 
     // iterate thru vector, and split again by whitespace
     for (const auto &fe_str : fe_serv_strs)
     {
         string trimmed = Utils::l_trim(fe_str);
+        if (trimmed.empty())
+        {
+            continue;
+        }
         vector<string> fe_vec = Utils::split(trimmed, " ");
         // put name and port into map
         string name = fe_vec[0];
-        int port = atoi(fe_vec[1].c_str());
+        int port = atoi(fe_vec[1].c_str()) + 3000;
         lb_servers[name] = port;
         // update status
         server_status[name] = 1; // 1 for active 0 for killed in status
     }
 
     // if msg not malformed, update global bool
-    lb_init = !lb_servers.empty();
-    iterateUnorderedMapOfStringToInt(lb_servers);
+    if (!lb_servers.empty())
+    {
+        lb_init = true;
+    }
+    // iterateUnorderedMapOfStringToInt(lb_servers);
 }
 
 /*
@@ -444,14 +593,15 @@ void get_server_data(int sockfd)
             if (crlfPos != string::npos)
             {
                 // Found CRLF, process the message up to this point
-                string messageUpToCRLF = receivedMessage.substr(0, crlfPos);
-                cout << "Received message: " << messageUpToCRLF << endl;
-
+                receivedMessage = receivedMessage.substr(0, crlfPos);
                 // Erase the processed part of the message from the string
-                receivedMessage.clear();
+                // receivedMessage.clear();
+                break;
             }
         }
     }
+
+    logger.log(receivedMessage, LOGGER_DEBUG);
 
     if (receivedMessage[0] == 'C') // if message from coordinator
     {
@@ -469,22 +619,71 @@ void get_server_data(int sockfd)
     }
 
     // Close the socket
-    close(sockfd);
+    // close(sockfd);
+}
+
+/*
+Handler to get the rows for a given kvs server
+*/
+void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Extract form parameters (status and component id) from the HTTP request body
+    std::string requestBody = req.body_as_string();
+    std::unordered_map<std::string, std::string> formParams;
+
+    // Parse the request body to extract form parameters
+    size_t pos = 0;
+    while ((pos = requestBody.find('&')) != std::string::npos)
+    {
+        std::string token = requestBody.substr(0, pos);
+        size_t equalPos = token.find('=');
+        std::string key = token.substr(0, equalPos);
+        std::string value = token.substr(equalPos + 1);
+        formParams[key] = value;
+        requestBody.erase(0, pos + 1);
+    }
+    // Handle the last parameter
+    size_t equalPos = requestBody.find('=');
+    std::string key = requestBody.substr(0, equalPos);
+    std::string value = requestBody.substr(equalPos + 1);
+    formParams[key] = value;
+
+    // Extract server name from form parameters
+    std::string servername = formParams["server"];
+
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+
+    // temp
+
+    // writing to port 12000++ to get rows
+    // open socket to
+    int server_fd = FeUtils::open_socket("127.0.0.1", kvs_servers[servername]);
+
+    vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+    row_data = FeUtils::parse_all_rows(row_vector_raw);
+
+    close(server_fd);
+
+    res.set_code(303); // OK
+    res.set_header("Location", "/admin/dashboard");
 }
 
 /*
 Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
-{   
+{
+    cout << "in redirect" << endl;
     int server = 7500;
-    logger.log("Redirecting client to server with port " + server, LOGGER_INFO);
+    logger.log("abc", LOGGER_DEBUG);
     // Format the server address properly assuming HTTP protocol and same host
-    std::string redirectUrl = "http://localhost:" + server;
-    res.set_code(303);
-    //Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
+    std::string redirectUrl = "http://localhost:" + to_string(server);
+    cout << "redirect Url is :" << redirectUrl << endl;
+
+    // Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
     res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
     res.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'›" + redirectUrl + "</a></body></html>");
+    res.set_code(303);
 }
 
 int main()
@@ -533,10 +732,16 @@ int main()
         return 1;
     }
 
-
     // Accept incoming connections and handle them in separate threads
-    while (true)
+    while (server_loops < 1)
     {
+        // if we got messages from both coord and lb, exit loop
+        if (lb_init) // @todo add this once confirmed kvs && coord_init
+        {
+            cout << "lb init done" << endl;
+            break;
+        }
+
         int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
         if (temp_sock < 0)
         {
@@ -544,15 +749,8 @@ int main()
             return 1;
         }
 
-        // spin up thread
-        std::thread serv_thread(get_server_data, temp_sock);
-        serv_thread.detach();
-
-        // if we got messages from both coord and lb, exit loop
-        if (lb_init && coord_init)
-        {
-            break;
-        }
+        get_server_data(temp_sock);
+        server_loops++;
     }
 
     // // Initialize frontend (FE) servers
@@ -575,54 +773,58 @@ int main()
 
     logger.log("Admin console ready.", LOGGER_INFO);
 
+    // // Create socket for port 8081
+    // int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
+    // if (kvs_sock == -1)
+    // {
+    //     std::cerr << "Socket creation failed\n";
+    //     return 1;
+    // }
 
-     // Create socket for port 8081
-    int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (kvs_sock == -1)
-    {
-        std::cerr << "Socket creation failed\n";
-        return 1;
-    }
+    // // Set socket option to enable address reuse
+    // if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    // {
+    //     std::cerr << "Setsockopt failed for port 8081\n";
+    //     return 1;
+    // }
 
-    // Set socket option to enable address reuse
-    if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    {
-        std::cerr << "Setsockopt failed for port 8081\n";
-        return 1;
-    }
+    // int kvs_port = 8081;
+    // struct sockaddr_in kvs_sock_addr;
+    // socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
+    // bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
+    // kvs_sock_addr.sin_family = AF_INET;
+    // kvs_sock_addr.sin_port = htons(kvs_port);
+    // inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
 
-    int kvs_port = 8081;
-    struct sockaddr_in kvs_sock_addr;
-    socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
-    bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
-    kvs_sock_addr.sin_family = AF_INET;
-    kvs_sock_addr.sin_port = htons(kvs_port);
-    inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+    // // bind socket to port
+    // if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
+    // {
+    //     std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
+    //     logger.log(msg, LOGGER_CRITICAL);
+    //     return 1;
+    // }
 
-    // bind socket to port
-    if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
-    {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
-        logger.log(msg, LOGGER_CRITICAL);
-        return 1;
-    }
+    // // Listen for incoming connections
+    // if (listen(kvs_sock, 3) < 0)
+    // {
+    //     std::cerr << "Listen failed\n";
+    //     return 1;
+    // }
 
-    // Listen for incoming connections
-    if (listen(kvs_sock, 3) < 0)
-    {
-        std::cerr << "Listen failed\n";
-        return 1;
-    }
+    // kvs_fd = kvs_sock; // set to global var
 
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
     HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
+    HttpServer::post("/admin/table/getrows", table_select_kvs_handler);    // handles table requests for a specific kvs server
+    // HttpServer::post("/admin/table/rowvalues", table_select_row_handler);  // handles table requests to get the row values for a kvs
+    // HttpServer::post("/admin/table/colvalues", table_select_col_handler);  // handles table requests to get value for given column
 
     // @todo add redirect to LB
     HttpServer::get("*", redirect_handler);
 
     // Run Admin HTTP server
-    HttpServer::run(8080); // Assuming port 8080 for Admin Console
+    HttpServer::run(8082); // Assuming port 8080 for Admin Console
 
     return 0;
 }
