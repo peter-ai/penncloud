@@ -40,7 +40,9 @@ std::vector<std::shared_ptr<Tablet>> BackendServer::server_tablets;
 std::vector<std::string> BackendServer::tablet_ranges;
 std::string BackendServer::disk_dir;
 std::atomic<bool> BackendServer::is_dead(false);
+std::atomic<bool> BackendServer::is_recovering(false);
 int BackendServer::coord_sock_fd = -1;
+std::unordered_set<int> BackendServer::ports_in_recovery;
 
 // active connection fields (clients)
 std::unordered_map<pthread_t, std::atomic<bool>> BackendServer::client_connections;
@@ -390,8 +392,8 @@ void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
 {
     while (true)
     {
-        // accept group connections as long as the server is alive
-        if (!is_dead)
+        // accept group connections as long as the server is alive OR if it's in recovery
+        if (!is_dead || is_recovering)
         {
             // join threads for group server connections that have been serviced
             auto it = group_server_connections.begin();
@@ -616,18 +618,30 @@ void BackendServer::admin_live()
     std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
     recovery_msg.insert(recovery_msg.begin(), last_seq_num.begin(), last_seq_num.end());
 
-    // BEFORE contacting the primary, clear all of your logs. This is to ensure that primary can send you requests, and it'll log to your log file
-    // You will use these logs to catch up AFTER you've completed the primary's logs
+    // Download and clear your logs. This is to ensure that primary can send you requests, and it'll log to your log file
+    // The downloaded logs are used if your checkpoint version is the same as the primary's
+    // Any logs in this file after clearing are for updates that occurred while in recovery
+    std::unordered_map<std::string, std::vector<char>> downloaded_logs;
     for (std::string &tablet_range : tablet_ranges)
     {
         std::string log_filename = tablet_range + "_log";
+
+        // download logs
+        downloaded_logs[tablet_range] = BeUtils::read_from_file_into_vec(log_filename);
+        be_logger.log("Downloaded " + log_filename + " logs", 20);
+
+        // clear logs
         std::ofstream log_file;
         log_file.open(log_filename, std::ofstream::trunc);
         log_file.close();
-        be_logger.log("Cleared " + log_filename + " in preparation for primary logs", 20);
+        be_logger.log("Cleared " + log_filename + " in preparation for logs during recovery", 20);
     }
 
+    // Place yourself in recovery mode - allows you to accept group connections, but NOT client connections
+    is_recovering = true;
+
     // open connection with primary server and write recovery message to server
+    // sending this recovery message means primary will add this server to their list of recovering servers - this server will now be part of the 2PC protocol for updates
     int contact_primary_fd = BeUtils::open_connection(contact_primary_port);
     BeUtils::write_with_size(contact_primary_fd, recovery_msg);
     // read recovery response from primary
@@ -662,12 +676,20 @@ void BackendServer::admin_live()
 
             // initialize tablet from stream
             tablet.deserialize_from_stream(checkpoint_data);
+
+            be_logger.log("Built " + tablet_range + " tablet from primary checkpoint data", 20);
         }
         // otherwise, deserialize from your checkpoint file
         else
         {
             // initialize tablet from checkpoint file
             tablet.deserialize_from_file(BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(last_checkpoint));
+
+            be_logger.log("Built " + tablet_range + " tablet from local checkpoint data", 20);
+
+            // replay your downloaded logs
+            be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
+            tablet.replay_log(downloaded_logs.at(tablet_range));
         }
 
         // Extract the log next and replay it
@@ -680,14 +702,17 @@ void BackendServer::admin_live()
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
         // replay the log to update the tablet
+        be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
         tablet.replay_log(log_data);
+
+        // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
+        be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
 
         server_tablets.push_back(std::make_shared<Tablet>(tablet));
     }
 
-    // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
-
     // set flag to false to indicate server is now alive
+    is_recovering = false;
     be_logger.log("Recovery complete - resuming normal operation", 50);
     is_dead = false;
 }

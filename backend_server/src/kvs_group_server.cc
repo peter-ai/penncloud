@@ -230,11 +230,9 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
     // erase RECO command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
-
     // extract checkpoint version number and erase from inputs
     uint32_t sent_checkpoint_version = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
-
     // extract sequence number and erase from inputs
     uint32_t sent_seq_num = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
@@ -257,6 +255,10 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
     // iterate tablet range and add checkpoint file (if necessary) and log file
     for (std::string tablet_range : BackendServer::tablet_ranges)
     {
+        // read entire log file into a vector and append to response
+        std::string log_filename = BackendServer::disk_dir + tablet_range + "_log";
+        std::vector<char> log_file_data = BeUtils::read_from_file_into_vec(log_filename);
+
         // read entire checkpoint file into a vector and append to response
         if (checkpoint_required)
         {
@@ -269,18 +271,29 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
             // append the cp_file_data vector to the end of response
             response.insert(response.end(), cp_file_data.begin(), cp_file_data.end());
+
+            // append the size of the log file file to the front of the vector
+            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+            // append the log_file_data vector to the end of response
+            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
+        // use sequence number to determine which portion of the log file the server needs
+        else
+        {
+            // sequence number indicates that the server has an END log for that operation
+            // they should receive any operations AFTER this sequence number
 
-        // read entire log file into a vector and append to response
-        std::string log_filename = BackendServer::disk_dir + tablet_range + "_log";
-        std::vector<char> log_file_data = BeUtils::read_from_file_into_vec(log_filename);
+            // TODO go through the log and provide LOGS WITH SEQ NUM STRICTLY GREATER THAN SEQ NUM SENT BY SERVER
 
-        // append the size of the checkpoint file to the front of the vector
-        std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-        log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+            // // append the size of the checkpoint file to the front of the vector
+            // std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+            // log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
 
-        // append the log_file_data vector to the end of response
-        response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+            // // append the log_file_data vector to the end of response
+            // response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+        }
     }
 
     // send response back to server
@@ -321,6 +334,13 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
 
     // open connection with secondary servers
     std::unordered_map<int, int> secondary_servers = BackendServer::open_connection_with_secondary_servers();
+    // open connection with servers in recovery and add them to the map
+    for (int port : BackendServer::ports_in_recovery)
+    {
+        int recovery_server_fd = BeUtils::open_connection(port);
+        secondary_servers[port] = recovery_server_fd;
+    }
+
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
     // write BEGIN to log
@@ -538,7 +558,7 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     // acquire an exclusive lock on the row
     std::vector<char> vote_response;
     // failed to acquire exclusive row lock
-    if (tablet->acquire_exclusive_row_lock(command, row) < 0)
+    if (!BackendServer::is_recovering && tablet->acquire_exclusive_row_lock(command, row) < 0)
     {
         // write ABORT to log - requires sequence number, command, row to abort transaction
         std::vector<char> abort_log = {'A', 'B', 'R', 'T'};
@@ -605,15 +625,26 @@ void KVSGroupServer::commit(std::vector<char> &inputs)
     std::string operation_log_filename = BackendServer::retrieve_data_tablet(row)->log_filename;
     write_to_log(operation_log_filename, operation_seq_num, commit_log);
 
-    // execute write operation
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received CMMT from primary for " + command + " on R[" + row + "]", 20);
-    execute_write_operation(command, row, inputs);
+
+    // execute write operation if server is not in recovery mode
+    if (!BackendServer::is_recovering)
+    {
+        // execute write operation
+        execute_write_operation(command, row, inputs);
+    }
 
     // write END to log
     write_to_log(operation_log_filename, operation_seq_num, "ENDT");
 
+    // update sequence number on this server now that END log has been written
+    BackendServer::seq_num_lock.lock();
+    BackendServer::seq_num = operation_seq_num;
+    BackendServer::seq_num_lock.unlock();
+
+    // send back ack
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
-    // convert seq number to vector and append to prepare_msg
+    // convert seq number to vector and append to ack
     std::vector<uint8_t> seq_num_vec = BeUtils::host_num_to_network_vector(operation_seq_num);
     ack_response.insert(ack_response.end(), seq_num_vec.begin(), seq_num_vec.end());
     send_response(ack_response);
@@ -644,11 +675,20 @@ void KVSGroupServer::abort(std::vector<char> &inputs)
     abort_log.insert(abort_log.end(), row.begin(), row.end());                         // add row to log
     write_to_log(tablet->log_filename, operation_seq_num, abort_log);
 
-    // release exclusive lock on row
-    tablet->release_exclusive_row_lock(row);
+    // release exclusive lock on row if server is not in recovery mode
+    if (!BackendServer::is_recovering)
+    {
+        // release exclusive lock on row
+        tablet->release_exclusive_row_lock(row);
+    }
 
     // write END to log
     write_to_log(tablet->log_filename, operation_seq_num, "ENDT");
+
+    // update sequence number on this server now that END log has been written
+    BackendServer::seq_num_lock.lock();
+    BackendServer::seq_num = operation_seq_num;
+    BackendServer::seq_num_lock.unlock();
 
     // send ACK back to primary
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
