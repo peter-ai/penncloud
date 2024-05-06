@@ -40,6 +40,8 @@ unordered_map<string, int> kvs_servers;                // maps backend server na
 unordered_map<string, vector<string>> kvs_servergroup; // server groups to names of all servers within
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
+int server_loops = 0;
+
 void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
 {
     for (const auto &pair : myMap)
@@ -121,6 +123,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
             logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
         }
         server_status[servername] = status;
+        logger.log("Server status of " + servername + " is now  " + to_string(server_status[servername]), LOGGER_INFO);
         // close(fd)
     }
     else if (lb_servers.find(servername) != lb_servers.end())
@@ -141,6 +144,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
             logger.log(cmd + " command sent to " + servername + " at port " + to_string(port), LOGGER_INFO);
         }
         server_status[servername] = status;
+        logger.log("Server status of " + servername + "is now=" + to_string(server_status[servername]), LOGGER_INFO);
         // close(fd)
     }
     else
@@ -155,7 +159,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 {
     logger.log("In dashboard handler", LOGGER_DEBUG);
-    //@todo get user from cookies
+    //@todo get user from cookies -- Ask B, P, M
     std::string user = "example"; // Extract user information from cookies if needed
 
     std::string page =
@@ -212,10 +216,6 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
                "<input type='hidden' />"
                "<button class='btn nav-link' type='submit'>Logout</button>"
                "</form>"
-               "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-               "<input type='hidden' />"
-               "<button class='btn nav-link' type='submit'>Logout</button>"
-               "</form>"
                "</div>"
                "</div>"
                "<div class='form-check form-switch form-check-reverse ms-auto'>"
@@ -239,51 +239,59 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 
         page += "<div class='form-check form-switch'>";
         page += "<label class='form-check-label' for='" + server.first + "'>" + server.first + "</label>";
-        page += "<input type='checkbox' class='form-check-input toggle-switch fe-server-switch' id='" + server.first + "' checked='" + to_string(status) + "'>";
+        page += "<input type='checkbox' class='form-check-input toggle-switch server-switch' id='" + server.first + "'";
+        if (status == 1)
+        {
+            page += " checked"; // Only add 'checked' attribute if status is 1
+        }
+        page += ">"; // Close the input tag
         page += "<label class='form-check-label' for='" + server.first + "'></label>";
         page += "</div>";
-        page += "</label>";
     }
     page += "</div>";
 
     // Key-Value Store Components
     page += "<div class='col'>";
     page += "<h2>Key-Value Store Components</h2>";
-    for (int i = 1; i <= 3; ++i)
+    for (const auto &server : kvs_servers)
     {
+        int status = server_status[server.first]; // Retrieve status from server_status using server key
+
         page += "<div class='form-check form-switch'>";
-        page += "<label class='form-check-label' for='kvs" + std::to_string(i) + "'>KVS" + std::to_string(i) + "</label>";
-        page += "<label class='switch'>";
-        page += "<input type='checkbox' id='kvs" + std::to_string(i) + "'>";
-        page += "<span class='slider round'></span>";
-        page += "</label>";
+        page += "<label class='form-check-label' for='" + server.first + "'>" + server.first + "</label>";
+        page += "<input type='checkbox' class='form-check-input toggle-switch server-switch' id='" + server.first + "'";
+        if (status == 1)
+        {
+            page += " checked"; // Only add 'checked' attribute if status is 1
+        }
+        page += ">"; // Close the input tag
+        page += "<label class='form-check-label' for='" + server.first + "'></label>";
         page += "</div>";
     }
     page += "</div>";
     page += "</div>";
 
     // Paginated Table
-    page += "<div class='mt-4'><h2>Table</h2>";
-    page += "<table class='table table-bordered'>";
-    page += "<thead><tr><th>ID</th><th>Name</th><th>Value</th></tr></thead>";
-    page += "<tbody>";
-    for (int i = 1; i <= 10; ++i)
-    {
-        page += "<tr><td>" + std::to_string(i) + "</td><td>Component</td><td>Value</td></tr>";
-    }
-    page += "</tbody>";
-    page += "</table>";
-
-    // Pagination
-    page += "<nav><ul class='pagination justify-content-center'>";
-    page += "<li class='page-item'><a class='page-link' href='#'>Previous</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>1</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>2</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>3</a></li>";
-    page += "<li class='page-item'><a class='page-link' href='#'>Next</a></li>";
-    page += "</ul></nav>";
-    page += "</div>";
-    page += "</div>"
+    page += "<div class='mt-4'><h2>Tablets in Memory</h2>";
+    page += "<a href= '#' id='loadData'>Load Data</a>"
+            "<table class=' table table-bordered mt - 3' id='dataTable' style='display : none;'"
+            ">"
+            " <thead>"
+            "<tr>"
+            " <th>Name</th>"
+            "<th>Details</th>"
+            " </tr>"
+            "</thead>"
+            " <tbody>"
+            // <!-- Rows will be added here dynamically -->
+            "</tbody>"
+            " </table>"
+            "<nav aria-label='Page navigation'>"
+            "<ul class='pagination'>"
+            // <!-- Pagination links will be added here dynamically -->
+            "</ul>"
+            " </nav>"
+            "</div>"
             "</div>"
             "</div>"
             "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'></script>"
@@ -321,16 +329,88 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             "</script>";
     page += "<script>"
             "$(document).ready(function() {"
-            "    $('.fe-server-switch').change(function() {"
-            "        var serverName = $(this).attr('id');"
-            "        var isChecked = $(this).prop('checked');"
-            "        var toggleState = isChecked ? 1 : 0 ;"
-            "        $.post('/admin/component/toggle', { serverName: serverName, toggleState: toggleState }, function(data, status) {"
-            "            console.log('Toggle status for ' + serverName + ': ' + data);"
-            "        });"
-            "    });"
+            "$('.server-switch').change(function() {"
+            // Create a form element
+            " var form = $('<form>', {"
+            "    'action': '/admin/component/toggle',"
+            "  'method': 'POST'"
+            "   });"
+
+            // Get server name and toggle state
+            "  var serverName = $(this).attr('id');"
+            "  var isChecked = $(this).prop('checked');"
+            " var toggleState = isChecked ? 1 : 0;"
+
+            // Add parameters to the form as hidden inputs
+            "$('<input>').attr({"
+            "type: 'hidden',"
+            "name: 'status',"
+            " value: toggleState"
+            "}).appendTo(form);"
+
+            " $('<input>').attr({"
+            "type: 'hidden',"
+            "  name: 'component_id',"
+            " value: serverName"
+            "}).appendTo(form);"
+
+            // Append the form to the body and submit it
+            "form.appendTo('body').submit();"
+            " });"
             "});"
             "</script>";
+    page += "<script>"
+            " $('#loadData').click(function(e) {"
+            "e.preventDefault();"
+            "$('#dataTable').show();" // Show the table
+            "loadData(1);"            // Load first page of data
+            "});"
+
+            "function loadData(page) {"
+            "$.ajax({"
+            "url: 'your-data-source', // URL to fetch data"
+            "method: 'GET',"
+            "dataType: 'json',"
+            "success: function(data) {"
+            "renderTable(data.rows);"
+            "setupPagination(data.totalPages, page);"
+            "}"
+            "});"
+            "}"
+
+            "function renderTable(rows) {"
+            "const tbody = $('#dataTable tbody');"
+            "tbody.empty();" // Clear previous rows
+            "rows.forEach((row, index) => {"
+            "const tr = $('<tr>').append("
+            "$('<td>').text(row.name).addClass('expandable'),"
+            " $('<td>').text(row.details).hide()"
+            ").appendTo(tbody);"
+
+            "tr.find('.expandable').click(function() {"
+            "$(this).siblings().toggle(); " // Toggle visibility of details
+            "});"
+            "});"
+            " }"
+
+            "function setupPagination(totalPages, currentPage) {"
+            "const pagination = $('.pagination');"
+            "pagination.empty(); // Clear previous links"
+            "for (let i = 1; i <= totalPages; i++) {"
+            "const li = $('<li>').addClass('page-item').append("
+            "$('<a>').addClass('page-link').text(i).attr('href', '#')"
+            ");"
+            "if (i === currentPage) {"
+            " li.addClass('active');"
+            "}"
+            "li.click(function(e) {"
+            " e.preventDefault();"
+            "loadData(i);"
+            "}).appendTo(pagination);"
+            "}"
+            "}"
+            "});"
+            "</script> ";
 
     page += "</body>"
             "</html>";
@@ -338,6 +418,8 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     res.set_code(200);
     res.append_body_str(page);
     res.set_header("Content-Type", "text/html");
+
+    iterateUnorderedMapOfStringToInt(server_status);
 
     logger.log("Returned reponse for GET dashboard", LOGGER_DEBUG);
 }
@@ -371,8 +453,8 @@ void parse_coord_msg(string &msg)
             }
             vector<string> fe_vec = Utils::split(trimmed, " ");
             // put name and port into map
-            string server_name = fe_vec[0];
-            int port = atoi(fe_vec[1].c_str());
+            string server_name = sg_name + '_' + fe_vec[0];
+            int port = atoi(fe_vec[1].c_str()) + 3000; // need to map to 12000s for ports.
             kvs_servers[server_name] = port;
             // update status
             server_status[server_name] = 1; // 1 for active 0 for killed in status
@@ -418,14 +500,15 @@ void parse_lb_msg(string &msg)
         vector<string> fe_vec = Utils::split(trimmed, " ");
         // put name and port into map
         string name = fe_vec[0];
-        int port = atoi(fe_vec[1].c_str());
+        int port = atoi(fe_vec[1].c_str()) + 3000;
         lb_servers[name] = port;
         // update status
         server_status[name] = 1; // 1 for active 0 for killed in status
     }
 
     // if msg not malformed, update global bool
-    if (!lb_servers.empty()){
+    if (!lb_servers.empty())
+    {
         lb_init = true;
     }
     // iterateUnorderedMapOfStringToInt(lb_servers);
@@ -491,23 +574,25 @@ void get_server_data(int sockfd)
     }
 
     // Close the socket
-    close(sockfd);
+    // close(sockfd);
 }
 
 /*
 Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
-{   
+{
+    cout << "in redirect" << endl;
     int server = 7500;
-    logger.log("Redirecting client to server with port " + server, LOGGER_INFO);
+    logger.log("abc", LOGGER_DEBUG);
     // Format the server address properly assuming HTTP protocol and same host
-    std::string redirectUrl = "http://localhost:" + server;
-    res.set_code(303);
- 
+    std::string redirectUrl = "http://localhost:" + to_string(server);
+    cout << "redirect Url is :" << redirectUrl << endl;
+
     // Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
     res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
     res.append_body_str("<html><body>Temporary Redirect to <a href='" + redirectUrl + "'›" + redirectUrl + "</a></body></html>");
+    res.set_code(303);
 }
 
 int main()
@@ -516,132 +601,126 @@ int main()
     logger.log("Admin console init", LOGGER_INFO);
     /* Create sockets on defined ports 8000 and 8001 */
 
-    // Create socket for port 8080
-    int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
-    if (listen_sock == -1)
-    {
-        std::cerr << "Socket creation failed\n";
-        return 1;
-    }
-
-    // Set socket option to enable address reuse
-    int enable = 1;
-    if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    {
-        std::cerr << "Setsockopt failed for port 8080\n";
-        return 1;
-    }
-
-    string ip_addr = "127.0.0.1";
-    int listen_port = 8080;
-    struct sockaddr_in servaddr;
-    socklen_t servaddr_size = sizeof(servaddr);
-    bzero(&servaddr, sizeof(servaddr));
-    servaddr.sin_family = AF_INET;
-    servaddr.sin_port = htons(listen_port);
-    inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
-
-    // bind socket to port
-    if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
-    {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
-        logger.log(msg, LOGGER_CRITICAL);
-        return 1;
-    }
-
-    // Listen for incoming connections
-    if (listen(listen_sock, 3) < 0)
-    {
-        std::cerr << "Listen failed\n";
-        return 1;
-    }
-
-    int i = 0;
-
-    // Accept incoming connections and handle them in separate threads
-    while (i < 1)
-    {
-         // if we got messages from both coord and lb, exit loop
-        if (lb_init) // @todo add this once confirmed kvs && coord_init
-        {
-            cout << "lb init done" << endl;
-            break;
-        }
-
-        int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
-        if (temp_sock < 0)
-        {
-            std::cerr << "Accept failed for port 8080\n";
-            return 1;
-        }
-
-        // spin up thread
-        std::thread serv_thread(get_server_data, temp_sock);
-        serv_thread.detach();
-        i++;
-    
-    }
-
-    // // Initialize frontend (FE) servers
-    // for (int i = 1; i <= 4; ++i)
+    // // Create socket for port 8080
+    // int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
+    // if (listen_sock == -1)
     // {
-    //     string fe_key = "FE" + to_string(i);
-    //     int port_number = 8000 + i - 1; // Increment port number for each server
-    //     lb_servers[fe_key] = port_number;
-    //     server_status[fe_key] = 1; // Set status to 1 for each FE server
+    //     std::cerr << "Socket creation failed\n";
+    //     return 1;
     // }
 
-    // // Initialize Key-Value Store (KVS) servers
-    // for (int i = 1; i <= 2; ++i)
-    // { // Assuming two KVS servers
-    //     string kvs_key = "KVS" + to_string(i);
-    //     int port_number = 9000 + i - 1; // Increment port number for each server
-    //     kvs_servers[kvs_key] = port_number;
-    //     server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    // // Set socket option to enable address reuse
+    // int enable = 1;
+    // if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    // {
+    //     std::cerr << "Setsockopt failed for port 8080\n";
+    //     return 1;
     // }
+
+    // string ip_addr = "127.0.0.1";
+    // int listen_port = 8080;
+    // struct sockaddr_in servaddr;
+    // socklen_t servaddr_size = sizeof(servaddr);
+    // bzero(&servaddr, sizeof(servaddr));
+    // servaddr.sin_family = AF_INET;
+    // servaddr.sin_port = htons(listen_port);
+    // inet_aton(ip_addr.c_str(), &servaddr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+
+    // // bind socket to port
+    // if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
+    // {
+    //     std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
+    //     logger.log(msg, LOGGER_CRITICAL);
+    //     return 1;
+    // }
+
+    // // Listen for incoming connections
+    // if (listen(listen_sock, 3) < 0)
+    // {
+    //     std::cerr << "Listen failed\n";
+    //     return 1;
+    // }
+
+    // // Accept incoming connections and handle them in separate threads
+    // while (server_loops < 1)
+    // {
+    //     // if we got messages from both coord and lb, exit loop
+    //     if (lb_init) // @todo add this once confirmed kvs && coord_init
+    //     {
+    //         cout << "lb init done" << endl;
+    //         break;
+    //     }
+
+    //     int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
+    //     if (temp_sock < 0)
+    //     {
+    //         std::cerr << "Accept failed for port 8080\n";
+    //         return 1;
+    //     }
+
+    //     get_server_data(temp_sock);
+    //     server_loops++;
+    // }
+
+    // Initialize frontend (FE) servers
+    for (int i = 1; i <= 4; ++i)
+    {
+        string fe_key = "FE" + to_string(i);
+        int port_number = 8000 + i - 1; // Increment port number for each server
+        lb_servers[fe_key] = port_number;
+        server_status[fe_key] = 1; // Set status to 1 for each FE server
+    }
+
+    // Initialize Key-Value Store (KVS) servers
+    for (int i = 1; i <= 2; ++i)
+    { // Assuming two KVS servers
+        string kvs_key = "KVS" + to_string(i);
+        int port_number = 9000 + i - 1; // Increment port number for each server
+        kvs_servers[kvs_key] = port_number;
+        server_status[kvs_key] = 1; // Set status to 1 for each KVS server
+    }
 
     logger.log("Admin console ready.", LOGGER_INFO);
 
-    // Create socket for port 8081
-    int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (kvs_sock == -1)
-    {
-        std::cerr << "Socket creation failed\n";
-        return 1;
-    }
+    // // Create socket for port 8081
+    // int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
+    // if (kvs_sock == -1)
+    // {
+    //     std::cerr << "Socket creation failed\n";
+    //     return 1;
+    // }
 
-    // Set socket option to enable address reuse
-    if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
-    {
-        std::cerr << "Setsockopt failed for port 8081\n";
-        return 1;
-    }
+    // // Set socket option to enable address reuse
+    // if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
+    // {
+    //     std::cerr << "Setsockopt failed for port 8081\n";
+    //     return 1;
+    // }
 
-    int kvs_port = 8081;
-    struct sockaddr_in kvs_sock_addr;
-    socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
-    bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
-    kvs_sock_addr.sin_family = AF_INET;
-    kvs_sock_addr.sin_port = htons(kvs_port);
-    inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
+    // int kvs_port = 8081;
+    // struct sockaddr_in kvs_sock_addr;
+    // socklen_t kvs_addr_len = sizeof(kvs_sock_addr);
+    // bzero(&kvs_sock_addr, sizeof(kvs_sock_addr));
+    // kvs_sock_addr.sin_family = AF_INET;
+    // kvs_sock_addr.sin_port = htons(kvs_port);
+    // inet_aton(ip_addr.c_str(), &kvs_sock_addr.sin_addr); // servaddr.sin_addr.s_addr = htons(INADDR_ANY);
 
-    // bind socket to port
-    if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
-    {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
-        logger.log(msg, LOGGER_CRITICAL);
-        return 1;
-    }
+    // // bind socket to port
+    // if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
+    // {
+    //     std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
+    //     logger.log(msg, LOGGER_CRITICAL);
+    //     return 1;
+    // }
 
-    // Listen for incoming connections
-    if (listen(kvs_sock, 3) < 0)
-    {
-        std::cerr << "Listen failed\n";
-        return 1;
-    }
+    // // Listen for incoming connections
+    // if (listen(kvs_sock, 3) < 0)
+    // {
+    //     std::cerr << "Listen failed\n";
+    //     return 1;
+    // }
 
-    kvs_fd = kvs_sock; // set to global var
-
+    // kvs_fd = kvs_sock; // set to global var
 
     // Define Admin Console routes
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
@@ -651,7 +730,7 @@ int main()
     HttpServer::get("*", redirect_handler);
 
     // Run Admin HTTP server
-    HttpServer::run(8080); // Assuming port 8080 for Admin Console
+    HttpServer::run(8082); // Assuming port 8080 for Admin Console
 
     return 0;
 }
