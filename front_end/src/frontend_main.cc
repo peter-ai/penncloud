@@ -12,12 +12,6 @@
 
 using namespace std;
 
-atomic<bool> runServer(true);
-
-void contactLoadBalancer()
-{
-}
-
 int main(int argc, char* argv[])
 {
 	int opt;
