@@ -704,18 +704,20 @@ std::vector<char> KVSGroupServer::delr(std::string &row, std::vector<char> &inpu
 
 std::vector<char> KVSGroupServer::delv(std::string &row, std::vector<char> &inputs)
 {
-    // find index of \b to extract col from inputs
-    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
-    // \b not found in index
-    if (col_end == inputs.end())
-    {
-        // log and send error message
-        std::string err_msg = "-ER Malformed arguments to DELV(R,C) - column not found";
-        kvs_group_server_logger.log(err_msg, 40);
-        std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
-        return res_bytes;
-    }
-    std::string col(inputs.begin(), col_end);
+    // // find index of \b to extract col from inputs
+    // auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // // \b not found in index
+    // if (col_end == inputs.end())
+    // {
+    //     // log and send error message
+    //     std::string err_msg = "-ER Malformed arguments to DELV(R,C) - column not found";
+    //     kvs_group_server_logger.log(err_msg, 40);
+    //     std::vector<char> res_bytes(err_msg.begin(), err_msg.end());
+    //     return res_bytes;
+    // }
+    // std::string col(inputs.begin(), col_end);
+    // remainder of inputs is col
+    std::string col(inputs.begin(), inputs.end());
 
     // log command and args
     kvs_group_server_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
