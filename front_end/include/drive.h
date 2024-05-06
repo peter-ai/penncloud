@@ -29,6 +29,11 @@ void create_folder(const HttpRequest& req, HttpResponse& res);
 
 void delete_filefolder(const HttpRequest& req, HttpResponse& res);
 
+void move_filefolder(const HttpRequest& req, HttpResponse& res);
+
+void rename_filefolder(const HttpRequest& req, HttpResponse& res);
+
+
 
 
 

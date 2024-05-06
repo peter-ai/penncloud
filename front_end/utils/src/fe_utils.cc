@@ -450,9 +450,14 @@ std::vector<char> FeUtils::kv_rename_row(int fd, std::vector<char> oldrow, std::
     // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
     std::string cmd = "RNMR";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
+
+    fe_utils_logger.log("RNMR", LOGGER_DEBUG);
+    fe_utils_logger.log("old row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("new row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
+
     insert_arg(fn_string, oldrow);
     insert_arg(fn_string, newrow);
-    fn_string.push_back('\b');
+    // fn_string.push_back('\b');
     std::vector<char> response = {};
 
     fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);

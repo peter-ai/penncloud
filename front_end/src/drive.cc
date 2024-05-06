@@ -149,6 +149,15 @@ vector<char> format_folder_contents(vector<vector<char>> &vec)
     return output;
 }
 
+// replaces subsrting 
+void replace_substring(string& str, const string& from, const string& to) {
+    size_t startPos = 0;
+    while ((startPos = str.find(from, startPos)) != string::npos) {
+        str.replace(startPos, from.length(), to);
+        startPos += to.length();
+    }
+}
+
 // Recursive helper function to delete folder
 bool delete_folder(int fd, vector<char> parent_folder)
 {
@@ -215,6 +224,71 @@ bool delete_folder(int fd, vector<char> parent_folder)
     }
 }
 
+
+// Recursive helper function to rename folder and subfolder paths
+bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername, vector<char> moving_folder)
+{
+    logger.log("In move subfolders", LOGGER_DEBUG);
+    // check parent name
+    string pfolder(parent_folder.begin(), parent_folder.end());
+    logger.log("parent folder: " + pfolder, LOGGER_INFO);
+
+    // get row
+    vector<char> folder_content = FeUtils::kv_get_row(fd, parent_folder);
+    // content list, remove '+OK<sp>'
+    std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+    // split on delim
+    std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+
+    if (!contents.empty())
+    {
+        logger.log("Parent folder " + string(parent_folder.begin(), parent_folder.end()) + " not empty", LOGGER_INFO);
+        // Iterate through each element in the formatted contents
+        for (auto col_name : contents)
+        {
+            if (col_name.empty())
+            {
+                continue;
+            }
+            if (is_folder(col_name))
+            {
+                // If it's a folder, recursively delete its contents
+                // get row of folder
+                vector<char> new_rowname = new_foldername;
+                new_rowname.insert(new_rowname.end(), col_name.begin(), col_name.end());
+
+                vector<char> old_rowname = parent_folder;
+                old_rowname.insert(old_rowname.end(), col_name.begin(), col_name.end());
+
+                logger.log("Old row name is " + string(old_rowname.begin(), old_rowname.end()), LOGGER_DEBUG);
+                logger.log("New row name is " + string(new_rowname.begin(), new_rowname.end()), LOGGER_DEBUG);
+
+                // the new row name should be new folder name + col : ie : user/newname/column/
+
+                move_subfolders(fd, old_rowname, new_rowname, col_name);
+            }
+        }
+    }
+
+    vector<char> new_rowname = new_foldername;
+    new_rowname.insert(new_rowname.end(), moving_folder.begin(), moving_folder.end());
+    string new_parent_str(new_rowname.begin(),new_rowname.end());
+
+    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) +   " to " + new_parent_str, LOGGER_INFO);
+    // After deleting all contents, delete the folder itself
+    if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
+    {
+        logger.log("Renamed parent folder " + pfolder + " to: " + new_parent_str, LOGGER_INFO);
+        return true;
+    }
+    else
+    {
+        logger.log("Could not rename parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_CRITICAL);
+        return false;
+    }
+}
+
+
 // Recursive helper function to rename folder and subfolder paths
 bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername)
 {
@@ -258,7 +332,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
             }
         }
     }
-    logger.log("Deleting parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
+    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
     // After deleting all contents, delete the folder itself
     if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
     {
@@ -1222,6 +1296,8 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         if (kv_successful(folder_content))
         {
 
+            newname += '/';
+
             // delete folder from parent
             // get parent path
             // get folder name
@@ -1239,13 +1315,12 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
             vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
+            newname_vec.push_back('/');
+
             vector<char> new_folderpath = parent_path_vec;
             new_folderpath.insert(new_folderpath.end(), newname_vec.begin(), newname_vec.end());
 
             logger.log("New child path is: " + string(new_folderpath.begin(), new_folderpath.end()), LOGGER_DEBUG);
-
-            // @todo check with peter whether this will be appended automatically
-            newname_vec.push_back('/');
 
             // recursively delete the folders children
             if (rename_subfolders(sockfd, child_path, new_folderpath))
@@ -1291,8 +1366,8 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 {
 
     logger.log("In rename filefolder", LOGGER_DEBUG);
-    // of type /api/drive/rename/* where child directory is being served
-    string childpath_str = req.path.substr(18);
+    // of type /api/drive/move/* where child directory is being served
+    string childpath_str = req.path.substr(16);
     string username = get_username(childpath_str);
     bool present = HttpServer::check_kvs_addr(username);
     std::vector<std::string> kvs_addr;
@@ -1350,6 +1425,9 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
     // get new name
     string newparent = formParams["newparent"];
+
+    replace_substring(newparent, "%2F", "/");
+
     vector<char> newparent_vec(newparent.begin(), newparent.end());
 
     logger.log("New parent is:" + newparent, LOGGER_DEBUG);
@@ -1447,7 +1525,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
             logger.log("Moving folder to new parent by renaming subfolders", LOGGER_DEBUG);
 
             // recursively delete the folders children
-            if (rename_subfolders(sockfd, child_path, newparent_vec))
+            if (move_subfolders(sockfd, child_path, newparent_vec, folder_name_vec))
             {
                 logger.log("Rename recursion success", LOGGER_DEBUG);
 
