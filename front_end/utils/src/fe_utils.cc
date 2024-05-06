@@ -411,3 +411,29 @@ std::string FeUtils::validate_session_id(int kvs_fd, std::string &username, cons
         return "";
     }
 }
+
+
+// pass a fd and row to perform DELETEROW(r)
+std::vector<char> FeUtils::kv_del_row(int fd, std::vector<char> row)
+{
+    // string to send  COMMAND + 2<SP> + row + 2<SP> + col....
+    std::string cmd = "DELR";
+    std::vector<char> fn_string(cmd.begin(), cmd.end());
+    insert_arg(fn_string, row);
+    std::vector<char> response = {};
+
+    // send message to kvs and check for error
+    if (writeto_kvs(fn_string, fd) == 0)
+    {
+        // potentially logger
+        fe_utils_logger.log("Unable to write to KVS server", 40);
+        response = {'-', 'E', 'R'};
+        return response;
+    }
+
+    // wait to recv response from kvs
+    response = readfrom_kvs(fd);
+
+    // return value
+    return response;
+}

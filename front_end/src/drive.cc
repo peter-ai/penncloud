@@ -11,6 +11,8 @@ using namespace std;
 vector<char> ok_vec = {'+', 'O', 'K', ' '};
 vector<char> err_vec = {'-', 'E', 'R', ' '};
 
+Logger logger("Drive");
+
 // helper to return parent path
 string split_parent_filename(const vector<string> &vec, string &filename)
 {
@@ -146,7 +148,73 @@ vector<char> format_folder_contents(vector<vector<char>> &vec)
 
     return output;
 }
-// 3431416482696731938431374517029964808742144996087957558348317691
+
+// Recursive helper function to delete folder
+bool delete_folder(int fd, vector<char> parent_folder)
+{
+    // check parent name
+    string pfolder(parent_folder.begin(), parent_folder.end());
+    logger.log("parent folder: " + pfolder, LOGGER_INFO);
+
+    // get row
+    vector<char> folder_content = FeUtils::kv_get_row(fd, parent_folder);
+    // content list, remove '+OK<sp>'
+    std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+    // split on delim
+    std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+
+    // Iterate through each element in the formatted contents
+    for (auto col_name : contents)
+    {
+        if (col_name.empty())
+        {
+            continue;
+        }
+        // Check if the element is a file
+        if (!is_folder(col_name))
+        {
+            logger.log("Found file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
+            // If it's a file, delete it
+            if (kv_successful(FeUtils::kv_del(fd, parent_folder, col_name)))
+            {
+                logger.log("Deleted file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
+            }
+            else
+            {
+                logger.log("Could not delete file: " + string(col_name.begin(), col_name.end()), LOGGER_CRITICAL);
+            }
+        }
+        else
+        {
+            // If it's a folder, recursively delete its contents
+            // get row of folder
+            vector<char> child_folder = parent_folder;
+            child_folder.insert(child_folder.end(), col_name.begin(), col_name.end());
+
+            logger.log("Found subfolder: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
+            logger.log("Subfolder path is: " + string(child_folder.begin(), child_folder.end()), LOGGER_INFO);
+
+            delete_folder(fd, child_folder);
+        }
+    }
+
+    // After deleting all contents, delete the folder itself
+    if (kv_successful(FeUtils::kv_del_row(fd, parent_folder)))
+    {
+        logger.log("Deleted parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
+        return true;
+    }
+    else
+    {
+        logger.log("Could not parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_CRITICAL);
+        return false;
+    }
+}
+
+// Handler opens a file or folder and displays html.
+// This is the landing page for drive that the user cna interact with
+// there are no other get requests
+// 3431416482696731938431374517029964808742144996087957558348317691  --?
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // @PETER ADDED
@@ -201,6 +269,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
+            logger.log("Folder content is=" + string(folder_content.begin(), folder_content.end()), LOGGER_DEBUG);
+
             if (kv_successful(folder_content))
             {
                 // content list, remove '+OK<sp>'
@@ -209,7 +279,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
                 std::vector<char> formatted_content = format_folder_contents(contents);
 
-                // @PETER ADDED
+                // folder processing
                 std::string folder_contents(formatted_content.begin(), formatted_content.end());
                 std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
                 sort(folder_items.begin(), folder_items.end()); // sort items
@@ -532,6 +602,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 res.set_code(303);
 
                 // set response headers / redirect to 400 error
+                logger.log ("603 setting 400", LOGGER_DEBUG);
                 res.set_header("Location", "/400");
                 FeUtils::expire_cookies(res, username, sid);
             }
@@ -575,6 +646,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 res.set_code(303);
 
                 // set response headers / redirect to 400 error
+                logger.log ("647 setting 400", LOGGER_DEBUG);
                 res.set_header("Location", "/400");
                 FeUtils::expire_cookies(res, username, sid);
             }
@@ -675,6 +747,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         {
             res.set_code(303);
             // set cookies on response
+            logger.log ("748 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             FeUtils::expire_cookies(res, username, valid_session_id);
             close(sockfd);
@@ -693,19 +766,11 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
             res.set_code(303); // OK
             res.set_header("Location", "/drive/" + parentpath_str);
             // vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
-
-            // // content list, remove '+OK<sp>'
-            // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-            // // split on delim
-            // vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
-            // vector<char> formatted_content = format_folder_contents(contents);
-
-            // //@todo: update with html!
-            // res.append_body_bytes(formatted_content.data(), formatted_content.size());
         }
         else
         {
             res.set_code(303); // Bad Request
+            logger.log ("771 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             FeUtils::expire_cookies(res, username, valid_session_id);
             // maybe retry? tbd
@@ -715,6 +780,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     {
         // No body found in the request
         res.set_code(303); // Bad Request
+        logger.log ("781 setting 400", LOGGER_DEBUG);
         res.set_header("Location", "/400");
     }
 
@@ -778,6 +844,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         if (elements.size() < 1)
         {
             res.set_code(303);
+            logger.log ("845 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             // res.set_code(400);
             return;
@@ -800,13 +867,22 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         {
             // currently returning 400 but not sure what behavior should be
             res.set_code(303);
+            logger.log ("868 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             // res.set_code(400);
         }
         else
         {
-            if (kv_successful(FeUtils::kv_put(sockfd, row_name, folder_name, {})))
+            logger.log("trying to create folder " + elements[0], LOGGER_DEBUG);
+
+            vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
+            
+            logger.log("kvs response: " + string(response.begin(), response.end()), LOGGER_DEBUG);
+
+            if (kv_successful(response))
             {
+
+                logger.log("create folder " + elements[0] + " success", LOGGER_DEBUG);
 
                 // create new column for row
                 vector<char> folder_row = row_name;
@@ -831,7 +907,9 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
             }
             else
             {
-                // logger error
+                
+                logger.log("create folder " + elements[0] + " failed", LOGGER_DEBUG);
+                logger.log ("894 setting 400", LOGGER_DEBUG);
                 res.set_code(303);
                 res.set_header("Location", "/400");
                 // res.set_code(400);
@@ -840,6 +918,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
+        logger.log ("903 setting 400", LOGGER_DEBUG);
         res.set_code(303);
         res.set_header("Location", "/400");
     }
@@ -900,27 +979,20 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
-            // success
-            // res.set_code(200);
-
-            // reload page to show file has been deleted
-            // vector<char> folder_content = FeUtils::kv_get_row(sockfd, parent_path_vec);
-
-            // // content list, remove '+OK<sp>'
-            // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-            // vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
-            // vector<char> formatted_content = format_folder_contents(contents);
-            // res.append_body_bytes(formatted_content.data(), formatted_content.size());
-            // res.set_code(200);
 
             res.set_code(303);
             res.set_header("Location", "/drive/" + parentpath_str);
         }
         else
         {
+            logger.log ("970 setting 400", LOGGER_DEBUG);
             res.set_code(303);
             res.set_header("Location", "/400");
         }
+    }
+    else
+    {
+       
     }
 
     // set cookies on response

@@ -55,6 +55,10 @@ namespace FeUtils
     // pass a fd and row, col to perform DELETE(r,c)
     std::vector<char> kv_del(int fd, std::vector<char> row, std::vector<char> col);
 
+
+    // pass a fd and row to perform DELETEROW(r)
+    std::vector<char> kv_del_row(int fd, std::vector<char> row);
+
     // checks if a char vector starts with +OK
     bool kv_success(const std::vector<char> &vec);
 
