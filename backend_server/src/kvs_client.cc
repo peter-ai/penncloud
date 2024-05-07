@@ -1,8 +1,4 @@
-#include <poll.h>
-
 #include "../include/kvs_client.h"
-#include "../utils/include/be_utils.h"
-#include "../include/backend_server.h"
 
 Logger kvs_client_logger("KVS Client");
 

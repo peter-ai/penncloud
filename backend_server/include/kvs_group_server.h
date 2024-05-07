@@ -2,7 +2,11 @@
 #define KVS_GROUP_SERVER_H
 
 #include <string>
-
+#include <poll.h>
+#include <fstream>
+#include <cstdio>
+#include "../utils/include/be_utils.h"
+#include "../include/backend_server.h"
 #include "../../utils/include/utils.h"
 
 class KVSGroupServer

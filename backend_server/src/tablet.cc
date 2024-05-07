@@ -1,7 +1,5 @@
 #include "../include/tablet.h"
-#include "../utils/include/be_utils.h"
 
-#include <fstream>
 
 Logger tablet_logger("Tablet");
 

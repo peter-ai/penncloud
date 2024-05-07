@@ -228,7 +228,7 @@ namespace LoadBalancer
         }
     }
 
-    void LoadBalancer::lb_to_admin(int admin_port)
+    void lb_to_admin(int admin_port)
     {
         int sock = socket(AF_INET, SOCK_STREAM, 0);
         if (sock < 0)

@@ -4,10 +4,6 @@
  */
 
 #include "../include/fe_utils.h"
-#include <unistd.h>
-#include <sys/socket.h>
-#include <iostream>
-#include <algorithm>
 
 Logger fe_utils_logger("FE Utils");
 
@@ -53,7 +49,7 @@ std::vector<char> readfrom_kvs(int fd)
     std::vector<char> kvs_data;
     char buffer[4096];
     uint32_t data_size = 0;
-    int total_bytes_recvd = 0;
+    size_t total_bytes_recvd = 0;
     bool size_extracted = false;
     char size_buffer[4];
     int size_buffer_filled = 0;

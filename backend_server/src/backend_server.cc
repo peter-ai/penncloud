@@ -1,12 +1,5 @@
-#include <iostream>
-#include <arpa/inet.h>
-#include <fstream>
-
 #include "../include/backend_server.h"
-#include "../../utils/include/utils.h"
-#include "../utils/include/be_utils.h"
-#include "../include/kvs_client.h"
-#include "../include/kvs_group_server.h"
+
 
 Logger be_logger = Logger("Backend server");
 

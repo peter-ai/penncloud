@@ -5,7 +5,8 @@
 #include <map>
 #include <unordered_map>
 #include <shared_mutex>
-
+#include <fstream>
+#include "../utils/include/be_utils.h"
 #include "../../utils/include/utils.h"
 
 class Tablet

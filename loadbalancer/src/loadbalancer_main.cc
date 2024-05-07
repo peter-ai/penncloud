@@ -1,6 +1,4 @@
 #include "../include/loadbalancer.h"
-#include <iostream>
-#include <thread>
 
 // main method that run load balancer
 int main(int argc, char **argv)
