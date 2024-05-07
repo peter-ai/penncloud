@@ -106,8 +106,8 @@ public:
      */
 
     // both methods return the max sequence number replayed to ensure server can update its sequence number
-    uint32_t replay_log_from_file(const std::string &file_name); // replay log from file_name and apply operations to this tablet object
-    uint32_t replay_log_from_stream(std::vector<char> &stream);  // replay log from stream and apply operations to this tablet object
+    void replay_log_from_file(const std::string &file_name); // replay log from file_name and apply operations to this tablet object
+    void replay_log_from_stream(std::vector<char> &stream);  // replay log from stream and apply operations to this tablet object
 
     /**
      * TABLET COMMIT PARSING

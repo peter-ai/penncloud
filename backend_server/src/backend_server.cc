@@ -736,9 +736,9 @@ void BackendServer::admin_live()
 
             be_logger.log("Built " + tablet_range + " tablet from local checkpoint data", 20);
 
-            // ! replay your downloaded logs
+            // replay your downloaded logs
             be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
-            // tablet.replay_log(downloaded_logs.at(tablet_range));
+            tablet->replay_log_from_stream(downloaded_logs.at(tablet_range));
         }
 
         // Extract the log next and replay it
@@ -750,12 +750,13 @@ void BackendServer::admin_live()
         std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
-        // ! replay the log to update the tablet
+        // replay the log to update the tablet
         be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
-        // tablet.replay_log(log_data);
+        tablet->replay_log_from_stream(log_data);
 
-        // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
+        // replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
         be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
+        tablet->replay_log_from_file(tablet->log_filename);
     }
 
     // set flag to false to indicate server is now alive

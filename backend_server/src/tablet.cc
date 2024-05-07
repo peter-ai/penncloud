@@ -540,7 +540,7 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
 // TABLET LOG REPLAY
 // *********************************************
 
-uint32_t Tablet::replay_log_from_file(const std::string &file_name)
+void Tablet::replay_log_from_file(const std::string &file_name)
 {
     // open file in binary mode for reading
     std::ifstream file;
@@ -553,9 +553,6 @@ uint32_t Tablet::replay_log_from_file(const std::string &file_name)
         file.close();
         return;
     }
-
-    // max transaction number
-    uint32_t max_transaction_num = 0;
 
     // tracks transaction status across set of operations
     uint32_t transaction_num;
@@ -682,21 +679,14 @@ uint32_t Tablet::replay_log_from_file(const std::string &file_name)
         {
             // reset necessaray transaction related fields
             bool prepare_seen = false;
-
-            // save max transaction number
-            max_transaction_num = std::max(max_transaction_num, operation_seq_num);
         }
     }
 
     file.close();
-    return max_transaction_num;
 }
 
-uint32_t Tablet::replay_log_from_stream(std::vector<char> &stream)
+void Tablet::replay_log_from_stream(std::vector<char> &stream)
 {
-    // max transaction number
-    uint32_t max_transaction_num;
-
     // tracks transaction status across set of operations
     uint32_t transaction_num;
     bool transaction_complete;
@@ -808,13 +798,8 @@ uint32_t Tablet::replay_log_from_stream(std::vector<char> &stream)
         {
             // reset necessaray transaction related fields
             bool prepare_seen = false;
-
-            // save max transaction number
-            max_transaction_num = std::max(max_transaction_num, operation_seq_num);
         }
     }
-
-    return max_transaction_num;
 }
 
 // *********************************************
