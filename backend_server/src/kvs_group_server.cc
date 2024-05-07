@@ -342,7 +342,8 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
     // write BEGIN to log
-    write_to_log(operation_log_filename, operation_seq_num, "BEGN");
+    // P is added to indicate that the operation was performed as a primary
+    write_to_log(operation_log_filename, operation_seq_num, "BEGNP");
 
     // Send PREPARE to all secondaries
     if (construct_and_send_prepare(operation_seq_num, command, row, secondary_servers) < 0)
@@ -562,7 +563,8 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
 
     // write BEGIN to log
-    write_to_log(tablet->log_filename, operation_seq_num, "BEGN");
+    // S is added to mark that the operation was performed as a secondary
+    write_to_log(tablet->log_filename, operation_seq_num, "BEGNS");
 
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREPARE from primary", 20);
 

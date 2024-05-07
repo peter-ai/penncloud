@@ -1,6 +1,5 @@
 #include "../include/tablet.h"
 
-
 Logger tablet_logger("Tablet");
 
 // *********************************************
@@ -538,6 +537,287 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
 }
 
 // *********************************************
+// TABLET LOG REPLAY
+// *********************************************
+
+uint32_t Tablet::replay_log_from_file(const std::string &file_name)
+{
+    // open file in binary mode for reading
+    std::ifstream file;
+    file.open(file_name, std::ifstream::in | std::ifstream::binary);
+
+    // verify file was opened
+    if (!file.is_open())
+    {
+        tablet_logger.log("Error opening file for log replay", 40);
+        file.close();
+        return;
+    }
+
+    // max transaction number
+    uint32_t max_transaction_num = 0;
+
+    // tracks transaction status across set of operations
+    uint32_t transaction_num;
+    bool transaction_complete;
+    bool is_primary_during_transaction;
+    // tracks if an abort operation already occurred in this transaction as a secondary (don't want to release locks twice)
+    bool prepare_seen = false;
+
+    // read until the end of the file
+    while (true)
+    {
+        // exit loop if we've reached the end of the file
+        // must be located at the start in case the log file is empty
+        if (file.eof())
+        {
+            break;
+        }
+
+        // read 4 characters to get the sequence number of the operation
+        std::vector<char> operation_seq_num_vec(4);
+        file.read(operation_seq_num_vec.data(), 4);
+        uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(operation_seq_num_vec);
+
+        // read 4 characters to get the operation
+        std::vector<char> operation_vec(4);
+        file.read(operation_vec.data(), 4);
+        std::string operation(operation_vec.begin(), operation_vec.end());
+
+        // handle different operations in log file
+        if (operation == "BEGN")
+        {
+            // read character to determine if operation was carried out as a primary or secondary (each should be 1 character)
+            std::vector<char> server_type_vec(1);
+            file.read(server_type_vec.data(), 1);
+            std::string server_type(server_type_vec.begin(), server_type_vec.end());
+
+            server_type == "P" ? is_primary_during_transaction = true : is_primary_during_transaction = false; // set server type for transaction
+            transaction_num = operation_seq_num;                                                               // set global transaction number for operation
+            transaction_complete = false;                                                                      // set flag indicating this transaction is in progress
+        }
+        else if (operation == "PREP")
+        {
+            // read 4 characters to extract the write operation
+            std::vector<char> write_vec(4);
+            file.read(write_vec.data(), 4);
+            std::string write_operation(write_vec.begin(), write_vec.end());
+
+            // read 4 characters to get the size of the row key
+            std::vector<char> row_name_size_vec(4);
+            file.read(row_name_size_vec.data(), 4);
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(row_name_size_vec);
+
+            // extract the row name
+            std::vector<char> row_name_vec(row_name_size);
+            file.read(row_name_vec.data(), row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+
+            // safe guard - if server was a primary, then prepare log should never have been found
+            // however, if it was found, we'll still read the necessary items to clear it from the log, but we won't acquire the row lock
+            if (is_primary_during_transaction)
+            {
+                prepare_seen = true;
+                // acquire the exclusive row lock to perform the operation
+                acquire_exclusive_row_lock(write_operation, row_name);
+            }
+        }
+        else if (operation == "CMMT")
+        {
+            // read 4 characters to extract the write operation
+            std::vector<char> write_vec(4);
+            file.read(write_vec.data(), 4);
+            std::string write_operation(write_vec.begin(), write_vec.end());
+
+            // read 4 characters to get the size of the row key
+            std::vector<char> row_name_size_vec(4);
+            file.read(row_name_size_vec.data(), 4);
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(row_name_size_vec);
+
+            // extract the row name
+            std::vector<char> row_name_vec(row_name_size);
+            file.read(row_name_vec.data(), row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+
+            // read 4 characters to get the size of the inputs
+            std::vector<char> inputs_size_vec(4);
+            file.read(inputs_size_vec.data(), 4);
+            uint32_t inputs_size = BeUtils::network_vector_to_host_num(inputs_size_vec);
+
+            // extract the inputs
+            std::vector<char> inputs(inputs_size);
+            file.read(inputs.data(), inputs_size);
+
+            // if you're the primary, you need to acquire the locks first (secondary would already have acquired it during prepare)
+            if (is_primary_during_transaction)
+            {
+                // acquire the exclusive row lock to perform the operation
+                acquire_exclusive_row_lock(write_operation, row_name);
+            }
+
+            // perform the commit operation
+            execute_write_operation(write_operation, row_name, inputs);
+        }
+        else if (operation == "ABRT")
+        {
+            // read 4 characters to get the size of the row key
+            std::vector<char> row_name_size_vec(4);
+            file.read(row_name_size_vec.data(), 4);
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(row_name_size_vec);
+
+            // extract the row name
+            std::vector<char> row_name_vec(row_name_size);
+            file.read(row_name_vec.data(), row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+
+            // if you're the primary, do nothing
+            // if you're the secondary, do nothing UNLESS you previously saw a PREPARE command
+            if (!is_primary_during_transaction && prepare_seen)
+            {
+                // release the exclusive row lock held in preparation for COMMIT
+                release_exclusive_row_lock(row_name);
+            }
+        }
+        else if (operation == "ENDT")
+        {
+            // reset necessaray transaction related fields
+            bool prepare_seen = false;
+
+            // save max transaction number
+            max_transaction_num = std::max(max_transaction_num, operation_seq_num);
+        }
+    }
+
+    file.close();
+    return max_transaction_num;
+}
+
+uint32_t Tablet::replay_log_from_stream(std::vector<char> &stream)
+{
+    // max transaction number
+    uint32_t max_transaction_num;
+
+    // tracks transaction status across set of operations
+    uint32_t transaction_num;
+    bool transaction_complete;
+    bool is_primary_during_transaction;
+    // tracks if an abort operation already occurred in this transaction as a secondary (don't want to release locks twice)
+    bool prepare_seen = false;
+
+    // read until the end of the file
+    while (!stream.empty())
+    {
+        // read 4 characters to get the sequence number of the operation
+        uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(stream);
+        stream.erase(stream.begin(), stream.begin() + 4);
+
+        // read 4 characters to get the operation
+        std::vector<char> operation_vec(stream.begin(), stream.begin() + 4);
+        std::string operation(operation_vec.begin(), operation_vec.end());
+        stream.erase(stream.begin(), stream.begin() + 4);
+
+        // handle different operations in log file
+        if (operation == "BEGN")
+        {
+            // read character to determine if operation was carried out as a primary or secondary (each should be 1 character)
+            std::string server_type(stream.begin(), stream.begin() + 1);
+            stream.erase(stream.begin());
+
+            server_type == "P" ? is_primary_during_transaction = true : is_primary_during_transaction = false; // set server type for transaction
+            transaction_num = operation_seq_num;                                                               // set global transaction number for operation
+            transaction_complete = false;                                                                      // set flag indicating this transaction is in progress
+        }
+        else if (operation == "PREP")
+        {
+            // read 4 characters to get the write operation
+            std::vector<char> write_vec(stream.begin(), stream.begin() + 4);
+            std::string write_operation(write_vec.begin(), write_vec.end());
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // read 4 characters to get the size of the row key
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // extract the row name
+            std::vector<char> row_name_vec(stream.begin(), stream.begin() + row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+            stream.erase(stream.begin(), stream.begin() + row_name_size);
+
+            // safe guard - if server was a primary, then prepare log should never have been found
+            // however, if it was found, we'll still read the necessary items to clear it from the log, but we won't acquire the row lock
+            if (is_primary_during_transaction)
+            {
+                prepare_seen = true;
+                // acquire the exclusive row lock to perform the operation
+                acquire_exclusive_row_lock(write_operation, row_name);
+            }
+        }
+        else if (operation == "CMMT")
+        {
+            // read 4 characters to get the write operation
+            std::vector<char> write_vec(stream.begin(), stream.begin() + 4);
+            std::string write_operation(write_vec.begin(), write_vec.end());
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // read 4 characters to get the size of the row key
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // extract the row name
+            std::vector<char> row_name_vec(stream.begin(), stream.begin() + row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+            stream.erase(stream.begin(), stream.begin() + row_name_size);
+
+            // read 4 characters to get the size of the inputs
+            uint32_t inputs_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // extract the inputs
+            std::vector<char> inputs(stream.begin(), stream.begin() + inputs_size);
+
+            // if you're the primary, you need to acquire the locks first (secondary would already have acquired it during prepare)
+            if (is_primary_during_transaction)
+            {
+                // acquire the exclusive row lock to perform the operation
+                acquire_exclusive_row_lock(write_operation, row_name);
+            }
+
+            // perform the commit operation
+            execute_write_operation(write_operation, row_name, inputs);
+        }
+        else if (operation == "ABRT")
+        {
+            // read 4 characters to get the size of the row key
+            uint32_t row_name_size = BeUtils::network_vector_to_host_num(stream);
+            stream.erase(stream.begin(), stream.begin() + 4);
+
+            // extract the row name
+            std::vector<char> row_name_vec(stream.begin(), stream.begin() + row_name_size);
+            std::string row_name(row_name_vec.begin(), row_name_vec.end());
+            stream.erase(stream.begin(), stream.begin() + row_name_size);
+
+            // if you're the primary, do nothing
+            // if you're the secondary, do nothing UNLESS you previously saw a PREPARE command
+            if (!is_primary_during_transaction && prepare_seen)
+            {
+                // release the exclusive row lock held in preparation for COMMIT
+                release_exclusive_row_lock(row_name);
+            }
+        }
+        else if (operation == "ENDT")
+        {
+            // reset necessaray transaction related fields
+            bool prepare_seen = false;
+
+            // save max transaction number
+            max_transaction_num = std::max(max_transaction_num, operation_seq_num);
+        }
+    }
+
+    return max_transaction_num;
+}
+
+// *********************************************
 // CONSTRUCT RESPONSE
 // *********************************************
 
@@ -556,4 +836,160 @@ std::vector<char> Tablet::construct_msg(const std::string &msg, bool error)
         response_msg.insert(response_msg.begin() + ok.size(), ' '); // Add a space after "+OK"
     }
     return response_msg;
+}
+
+// *********************************************
+// TABLET COMMIT PARSING
+// *********************************************
+
+// Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
+void Tablet::execute_write_operation(std::string &command, std::string &row, std::vector<char> inputs)
+{
+    // call handler for command
+    if (command == "putv")
+    {
+        putv(row, inputs);
+    }
+    else if (command == "cput")
+    {
+        cput(row, inputs);
+    }
+    else if (command == "delr")
+    {
+        delr(row, inputs);
+    }
+    else if (command == "delv")
+    {
+        delv(row, inputs);
+    }
+    else if (command == "rnmr")
+    {
+        rnmr(row, inputs);
+    }
+    else if (command == "rnmc")
+    {
+        rnmc(row, inputs);
+    }
+    else
+    {
+        tablet_logger.log("Unrecognized write command - should NOT occur", 40);
+    }
+}
+
+void Tablet::putv(std::string &row, std::vector<char> &inputs)
+{
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to PUT(R,C,V) - column not found";
+        tablet_logger.log(err_msg, 40);
+    }
+    std::string col(inputs.begin(), col_end);
+
+    // remainder of input is value
+    std::vector<char> val(col_end + 1, inputs.end());
+
+    // log command and args
+    tablet_logger.log("PUTV R[" + row + "] C[" + col + "]", 20);
+
+    // retrieve tablet and put value for row and col combination
+    put_value(row, col, val);
+}
+
+void Tablet::cput(std::string &row, std::vector<char> &inputs)
+{
+    // find index of \b to extract col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to CPUT(R,C,V1,V2) - column not found";
+        tablet_logger.log(err_msg, 40);
+    }
+    std::string col(inputs.begin(), col_end);
+
+    // clear inputs UP TO AND INCLUDING the last \b chara
+    inputs.erase(inputs.begin(), col_end + 1);
+
+    // remainder of input is value1 and value2
+
+    // extract the number in front of val1
+    uint32_t bytes_in_val1 = BeUtils::network_vector_to_host_num(inputs);
+
+    // clear the first 4 bytes from inputs
+    inputs.erase(inputs.begin(), inputs.begin() + sizeof(uint32_t));
+
+    // copy the number of characters in bytes_in_val1 to val1
+    std::vector<char> val1;
+    std::memcpy(&val1, inputs.data(), bytes_in_val1);
+
+    // remaining characters are val2
+    inputs.erase(inputs.begin(), inputs.begin() + bytes_in_val1);
+    std::vector<char> val2 = inputs;
+
+    // log command and args
+    tablet_logger.log("CPUT R[" + row + "] C[" + col + "]", 20);
+
+    // call CPUT on tablet
+    cond_put_value(row, col, val1, val2);
+}
+
+void Tablet::delr(std::string &row, std::vector<char> &inputs)
+{
+    // log command and args
+    tablet_logger.log("DELR R[" + row + "]", 20);
+
+    // retrieve tablet and delete row
+    delete_row(row);
+}
+
+void Tablet::delv(std::string &row, std::vector<char> &inputs)
+{
+    std::string col(inputs.begin(), inputs.end());
+
+    // log command and args
+    tablet_logger.log("DELV R[" + row + "] C[" + col + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    delete_value(row, col);
+}
+
+void Tablet::rnmr(std::string &row, std::vector<char> &inputs)
+{
+    // remainder of inputs is new row
+    std::string new_row(inputs.begin(), inputs.end());
+
+    // log command and args
+    tablet_logger.log("RNMR R1[" + row + "] R2[" + new_row + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    rename_row(row, new_row);
+}
+
+void Tablet::rnmc(std::string &row, std::vector<char> &inputs)
+{
+    // find index of \b to extract old col from inputs
+    auto col_end = std::find(inputs.begin(), inputs.end(), '\b');
+    // \b not found in index
+    if (col_end == inputs.end())
+    {
+        // log and send error message
+        std::string err_msg = "-ER Malformed arguments to RNMC(R, C1, C2) - column not found";
+        tablet_logger.log(err_msg, 40);
+    }
+    std::string old_col(inputs.begin(), col_end);
+    // clear inputs UP TO AND INCLUDING the last \b char
+    inputs.erase(inputs.begin(), col_end + 1);
+    // remainder of inputs is new col
+    std::string new_col(inputs.begin(), inputs.end());
+
+    // log command and args
+    tablet_logger.log("RNMC R[" + row + "] C1[" + old_col + "] C2[" + new_col + "]", 20);
+
+    // retrieve tablet and delete value from row and col combination
+    rename_column(row, old_col, new_col);
 }

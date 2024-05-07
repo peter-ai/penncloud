@@ -99,7 +99,26 @@ public:
 
     void serialize(const std::string &file_name);             // serialize tablet into a file called file_name
     void deserialize_from_file(const std::string &file_name); // deserialize file_name into this tablet object
-    void deserialize_from_stream(std::vector<char> &stream);  // deserialize file_name into this tablet object
+    void deserialize_from_stream(std::vector<char> &stream);  // deserialize stream into this tablet object
+
+    /**
+     * LOG REPLAY METHODS
+     */
+
+    // both methods return the max sequence number replayed to ensure server can update its sequence number
+    uint32_t replay_log_from_file(const std::string &file_name); // replay log from file_name and apply operations to this tablet object
+    uint32_t replay_log_from_stream(std::vector<char> &stream);  // replay log from stream and apply operations to this tablet object
+
+    /**
+     * TABLET COMMIT PARSING
+     */
+    void execute_write_operation(std::string &command, std::string &row, std::vector<char> inputs);
+    void putv(std::string &row, std::vector<char> &inputs);
+    void cput(std::string &row, std::vector<char> &inputs);
+    void delr(std::string &row, std::vector<char> &inputs);
+    void delv(std::string &row, std::vector<char> &inputs);
+    void rnmr(std::string &row, std::vector<char> &inputs);
+    void rnmc(std::string &row, std::vector<char> &inputs);
 
 private:
     std::vector<char> construct_msg(const std::string &msg, bool error); // construct success/error msg to send back to client
