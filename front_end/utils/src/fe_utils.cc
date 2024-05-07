@@ -440,7 +440,7 @@ std::vector<char> FeUtils::kvs_get_allrows(int fd)
 }
 
 // Function to split a vector<char> based on a vector<char> delimiter
-std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const std::vector<char> &delimiter)
+std::vector<std::vector<char>> FeUtils::split_vector(const std::vector<char> &data, const std::vector<char> &delimiter)
 {
     std::vector<std::vector<char>> result;
     size_t start = 0;
@@ -474,7 +474,7 @@ std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const
 }
 
 // takes in the vector of all rows coming from the server and separates into a vecotr of strings
-std::vector<std::string> parse_all_rows(std::vector<char> &tablet)
+std::vector<std::string> FeUtils::parse_all_rows(std::vector<char> &tablet)
 {
     std::vector<std::string> rows;
     if (tablet.at(0) == '+' && tablet.at(1) == 'O' && tablet.at(2) == 'K')
@@ -505,7 +505,6 @@ std::vector<std::string> parse_all_rows(std::vector<char> &tablet)
     return rows;
 }
 
-
 // pass a fd and row to perform DELETEROW(r)
 std::vector<char> FeUtils::kv_del_row(int fd, std::vector<char> row)
 {
@@ -533,7 +532,6 @@ std::vector<char> FeUtils::kv_del_row(int fd, std::vector<char> row)
     // return value
     return response;
 }
-
 
 // pass a fd and row to perform DELETEROW(r)
 std::vector<char> FeUtils::kv_rename_row(int fd, std::vector<char> oldrow, std::vector<char> newrow)
@@ -569,7 +567,6 @@ std::vector<char> FeUtils::kv_rename_row(int fd, std::vector<char> oldrow, std::
     return response;
 }
 
-
 // pass a fd and row to perform DELETEROW(r)
 std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vector<char> oldcol, std::vector<char> newcol)
 {
@@ -599,4 +596,3 @@ std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vec
     // return value
     return response;
 }
-

@@ -733,7 +733,7 @@ int main()
     }
 
     // Accept incoming connections and handle them in separate threads
-    while (server_loops < 1)
+    while (server_loops < 2)
     {
         // if we got messages from both coord and lb, exit loop
         if (lb_init) // @todo add this once confirmed kvs && coord_init
