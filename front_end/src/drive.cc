@@ -68,39 +68,39 @@ bool kv_successful(const vector<char> &vec)
     return equal(prefix.begin(), prefix.end(), vec.begin());
 }
 
-// Function to split a vector<char> based on a vector<char> delimiter
-vector<vector<char>> split_vector(const vector<char> &data, const vector<char> &delimiter)
-{
-    vector<vector<char>> result;
-    size_t start = 0;
-    size_t end = data.size();
+// // Function to split a vector<char> based on a vector<char> delimiter
+// vector<vector<char>> FeUtils::split_vector(const vector<char> &data, const vector<char> &delimiter)
+// {
+//     vector<vector<char>> result;
+//     size_t start = 0;
+//     size_t end = data.size();
 
-    if (data.size() == 0)
-    {
-        return {{}};
-    }
+//     if (data.size() == 0)
+//     {
+//         return {{}};
+//     }
 
-    while (start < end)
-    {
-        // Find the next occurrence of delimiter starting from 'start'
-        auto pos = search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
+//     while (start < end)
+//     {
+//         // Find the next occurrence of delimiter starting from 'start'
+//         auto pos = search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
 
-        if (pos == data.end())
-        {
-            // No delimiter found, copy the rest of the vector
-            result.emplace_back(data.begin() + start, data.end());
-            break;
-        }
-        else
-        {
-            // Delimiter found, copy up to the delimiter and move 'start' past the delimiter
-            result.emplace_back(data.begin() + start, pos);
-            start = distance(data.begin(), pos) + delimiter.size();
-        }
-    }
+//         if (pos == data.end())
+//         {
+//             // No delimiter found, copy the rest of the vector
+//             result.emplace_back(data.begin() + start, data.end());
+//             break;
+//         }
+//         else
+//         {
+//             // Delimiter found, copy up to the delimiter and move 'start' past the delimiter
+//             result.emplace_back(data.begin() + start, pos);
+//             start = distance(data.begin(), pos) + delimiter.size();
+//         }
+//     }
 
-    return result;
-}
+//     return result;
+// }
 
 // Function to split a vector<char> based on the first occurrence of a vector<char> delimiter
 vector<vector<char>> split_vec_first_delim(const vector<char> &data, const vector<char> &delimiter)
@@ -149,10 +149,12 @@ vector<char> format_folder_contents(vector<vector<char>> &vec)
     return output;
 }
 
-// replaces subsrting 
-void replace_substring(string& str, const string& from, const string& to) {
+// replaces subsrting
+void replace_substring(string &str, const string &from, const string &to)
+{
     size_t startPos = 0;
-    while ((startPos = str.find(from, startPos)) != string::npos) {
+    while ((startPos = str.find(from, startPos)) != string::npos)
+    {
         str.replace(startPos, from.length(), to);
         startPos += to.length();
     }
@@ -170,7 +172,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
     // content list, remove '+OK<sp>'
     std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
     // split on delim
-    std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+    std::vector<std::vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
 
     if (!contents.empty())
     {
@@ -224,7 +226,6 @@ bool delete_folder(int fd, vector<char> parent_folder)
     }
 }
 
-
 // Recursive helper function to rename folder and subfolder paths
 bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername, vector<char> moving_folder)
 {
@@ -238,7 +239,7 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
     // content list, remove '+OK<sp>'
     std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
     // split on delim
-    std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+    std::vector<std::vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
 
     if (!contents.empty())
     {
@@ -272,9 +273,9 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
 
     vector<char> new_rowname = new_foldername;
     new_rowname.insert(new_rowname.end(), moving_folder.begin(), moving_folder.end());
-    string new_parent_str(new_rowname.begin(),new_rowname.end());
+    string new_parent_str(new_rowname.begin(), new_rowname.end());
 
-    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) +   " to " + new_parent_str, LOGGER_INFO);
+    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) + " to " + new_parent_str, LOGGER_INFO);
     // After deleting all contents, delete the folder itself
     if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
     {
@@ -288,7 +289,6 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
     }
 }
 
-
 // Recursive helper function to rename folder and subfolder paths
 bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername)
 {
@@ -301,7 +301,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
     // content list, remove '+OK<sp>'
     std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
     // split on delim
-    std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+    std::vector<std::vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
 
     if (!contents.empty())
     {
@@ -349,7 +349,6 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
 // Handler opens a file or folder and displays html.
 // This is the landing page for drive that the user cna interact with
 // there are no other get requests
-// 3431416482696731938431374517029964808742144996087957558348317691  --?
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // @PETER ADDED
@@ -411,7 +410,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // content list, remove '+OK<sp>'
                 std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
                 // split on delim
-                std::vector<std::vector<char>> contents = split_vector(folder_elements, {'\b'});
+                std::vector<std::vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
                 std::vector<char> formatted_content = format_folder_contents(contents);
 
                 // folder processing
@@ -856,7 +855,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         vector<char> line_feed = {'\r', '\n'};
 
         // split body on boundary
-        vector<vector<char>> elements = split_vector(req.body_as_bytes(), bound_vec);
+        vector<vector<char>> elements = FeUtils::split_vector(req.body_as_bytes(), bound_vec);
         vector<char> elem1 = elements[1];
 
         // @note: assuming we only upload 1 file at a time?
@@ -993,7 +992,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         // content list, remove '+OK<sp>'
         vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
         // split on delim
-        vector<vector<char>> contents = split_vector(folder_elements, {'\b'});
+        vector<vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
         vector<char> formatted_content = format_folder_contents(contents);
 
         // if folder name in use - @PETER add a front-end validation check for this
@@ -1028,7 +1027,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
 
                 // content list, remove '+OK<sp>'
                 // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-                // contents = split_vector(folder_elements, {'\b'});
+                // contents = FeUtils::split_vector(folder_elements, {'\b'});
                 // formatted_content = format_folder_contents(contents);
                 // res.append_body_bytes(formatted_content.data(), formatted_content.size());
                 // res.set_code(200);

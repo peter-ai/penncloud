@@ -56,11 +56,10 @@ namespace FeUtils
     std::vector<char> kv_del(int fd, std::vector<char> row, std::vector<char> col);
 
     // gets all rows from a given server
-    std::vector<char> kvs_get_allrows(int fd);  
+    std::vector<char> kvs_get_allrows(int fd);
 
     // takes in the vector of all rows coming from the server and separates into a vecotr of strings
     std::vector<std::string> parse_all_rows(std::vector<char> &tablet);
-
 
     // pass a fd and row to perform DELETEROW(r)
     std::vector<char> kv_del_row(int fd, std::vector<char> row);
@@ -97,6 +96,8 @@ namespace FeUtils
     /// @param req HttpRequest object
     /// @return returns an empty string if the session is invalid, otherwise returns the user's session ID
     std::string validate_session_id(int kvs_fd, std::string &username, const HttpRequest &req);
+
+    std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const std::vector<char> &delimiter);
 }
 
 #endif

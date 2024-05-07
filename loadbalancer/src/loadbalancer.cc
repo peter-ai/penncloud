@@ -173,6 +173,8 @@ namespace LoadBalancer
         std::uniform_int_distribution<> dis(0, activeServers.size() - 1);
         int randomIndex = dis(generator);
 
+        loadbalancer_logger.log("index is " + std::to_string(randomIndex) + ")", 20);
+
         // Retrieve the server associated with the random index
         int server_port = activeServers.at(randomIndex);
         server_mutex.unlock(); // unlock active servers
