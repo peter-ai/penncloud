@@ -747,6 +747,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
 
             std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+            filename = FeUtils::urlDecode(filename);
             std::vector<char> filename_vec(filename.begin(), filename.end());
 
             // get file content
@@ -886,8 +887,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
             close(sockfd);
             return;
         }
-        string childpath_str = parentpath_str + filename;
-
         vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
         vector<char> col_vec(filename.begin(), filename.end());
 
@@ -1108,6 +1107,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // comver tto vector<char>
         vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+        filename = FeUtils::urlDecode(filename);
         vector<char> filename_vec(filename.begin(), filename.end());
 
         if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
