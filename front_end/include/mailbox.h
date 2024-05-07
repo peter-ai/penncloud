@@ -21,6 +21,7 @@
 #include <string.h>
 #include <openssl/md5.h>
 #include <iomanip>
+#include <algorithm>
 
 
 #include "email_data.h"
