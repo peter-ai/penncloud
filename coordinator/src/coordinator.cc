@@ -264,9 +264,10 @@ int main(int argc, char *argv[])
         logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
     }
     else
-    {
-        if (VERBOSE)
-            logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
+    {   
+        admin_msg.pop_back();
+        admin_msg.pop_back();
+        logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
     }
 
     // close socket
@@ -486,13 +487,13 @@ void *kvs_thread(void *arg)
                     // error while reading from source
                     if (bytes_recvd < 0)
                     {
-                        logger.log("Error reading from source", 40);
+                        logger.log("Error reading from source", LOGGER_ERROR);
                         break;
                     }
                     // check condition where connection was preemptively closed by source
                     else if (bytes_recvd == 0)
                     {
-                        logger.log("Remote socket closed connection", 40);
+                        logger.log("Remote socket closed connection", LOGGER_ERROR);
                         break;
                     }
 
@@ -560,7 +561,8 @@ void *kvs_thread(void *arg)
                 }
                 else
                 {
-                    logger.log("Unrecognized command from KVS server. This should NOT occur.", 50);
+                    logger.log("Unrecognized command from KVS server - SIGINT to KVS " + kvs->server_addr + " likely received - ensure this is intentional", LOGGER_CRITICAL);
+                    break;
                 }
             }
         }
@@ -791,6 +793,7 @@ std::string get_admin_message()
     }
     cluster_mutex.unlock_shared();
 
+    message.pop_back();
     message += "\r\n"; // add terminating characters
     return message;
 }
