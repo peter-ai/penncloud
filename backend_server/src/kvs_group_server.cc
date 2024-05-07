@@ -222,6 +222,9 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
     // erase RECO command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
+    // extract recovering server's port number and erase from inputs
+    uint32_t recovering_port_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
     // extract checkpoint version number and erase from inputs
     uint32_t sent_checkpoint_version = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
@@ -287,6 +290,9 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
             // response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
     }
+
+    // track recovering server so it can receive update operations
+    BackendServer::ports_in_recovery.insert(recovering_port_num);
 
     // send response back to server
     send_response(response);

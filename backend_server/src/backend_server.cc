@@ -659,10 +659,12 @@ void BackendServer::admin_live()
 
     // construct message to primary - RECO<SP>CP# SEQ# (no space between CP# and SEQ#)
     std::vector<char> recovery_msg = {'R', 'E', 'C', 'O', ' '};
+    std::vector<uint8_t> my_port_num = BeUtils::host_num_to_network_vector(BackendServer::group_port);
+    recovery_msg.insert(recovery_msg.end(), my_port_num.begin(), my_port_num.end());
     std::vector<uint8_t> last_cp_num = BeUtils::host_num_to_network_vector(BackendServer::last_checkpoint);
-    recovery_msg.insert(recovery_msg.begin(), last_cp_num.begin(), last_cp_num.end());
+    recovery_msg.insert(recovery_msg.end(), last_cp_num.begin(), last_cp_num.end());
     std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
-    recovery_msg.insert(recovery_msg.begin(), last_seq_num.begin(), last_seq_num.end());
+    recovery_msg.insert(recovery_msg.end(), last_seq_num.begin(), last_seq_num.end());
 
     // Download and clear your logs. This is to ensure that primary can send you requests, and it'll log to your log file
     // The downloaded logs are used if your checkpoint version is the same as the primary's
