@@ -13,6 +13,8 @@
 #include <algorithm> // std::transform
 #include <sys/time.h>
 #include <poll.h> // For poll
+#include <sstream>
+#include <iomanip>
 #include "../../../http_server/include/http_request.h"
 #include "../../../utils/include/utils.h"
 
@@ -98,6 +100,10 @@ namespace FeUtils
     std::string validate_session_id(int kvs_fd, std::string &username, const HttpRequest &req);
 
     std::vector<std::vector<char>> split_vector(const std::vector<char> &data, const std::vector<char> &delimiter);
+
+    std::string urlEncode(const std::string value);
+
+    std::string urlDecode(const std::string value);
 }
 
 #endif
