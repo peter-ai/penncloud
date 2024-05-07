@@ -1,6 +1,5 @@
 #include "../include/backend_server.h"
 
-
 Logger be_logger = Logger("Backend server");
 
 // *********************************************
@@ -221,20 +220,55 @@ void BackendServer::handle_coord_comm()
             std::string ping = "PING";
             BeUtils::write_with_crlf(coord_sock_fd, ping);
 
-            // ! poll from coordinator (with 1 second timeout) - DO THIS INSTEAD OF SLEEPING FOR ONE SECOND
-            // ! broadcast
-            // ! primary + secondaries (same as init)
+            // wait for a potential broadcast message
+            if (BeUtils::wait_for_events({coord_sock_fd}, 1) >= 0)
+            {
+                be_logger.log("Received broadcast from coordinator", 20);
 
-            // // get potential broadcast message
-            // if (BeUtils::wait_for_events({coord_sock_fd}, 1) >= 0)
-            // {
-            //     // read from
-            //     BeUtils::ReadResult read_from_coord = BeUtils::read_with_crlf(coord_sock_fd);
-            //     // ! this read result should be the broadcast
-            // }
+                // read from coordinator
+                BeUtils::ReadResult broadcast = BeUtils::read_with_crlf(coord_sock_fd);
 
-            // Sleep for 1 seconds before sending subsequent heartbeat
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+                // error reading from coordinator
+                if (broadcast.error_code < 0)
+                {
+                    continue;
+                }
+                // split broadcast on space
+                std::vector<std::string> new_servers = Utils::split(std::string(broadcast.byte_stream.begin(), broadcast.byte_stream.end()), " ");
+
+                if (!new_servers.empty())
+                {
+                    // set primary port
+                    primary_port = std::stoi(new_servers.at(0).substr(IP.length()));
+                    be_logger.log("New primary at " + std::to_string(primary_port), 20);
+
+                    // clear secondary ports in preparation for new secondaries
+                    secondary_ports_lock.lock();
+                    secondary_ports.clear();
+
+                    // set secondary ports if present
+                    std::string secondaries;
+                    if (new_servers.size() > 1)
+                    {
+                        for (size_t i = 1; i < new_servers.size(); i++)
+                        {
+                            std::string secondary_port = new_servers.at(i).substr(IP.length());
+                            secondary_ports.insert(std::stoi(secondary_port));
+                            secondaries += secondary_port + " ";
+                        }
+                    }
+                    secondary_ports_lock.unlock();
+
+                    // log new information about server
+                    is_primary
+                        ? be_logger.log("Server type [PRIMARY]", 20)
+                        : be_logger.log("Server type [SECONDARY]", 20);
+
+                    be_logger.log("Group primary at " + std::to_string(primary_port), 20);
+                    secondary_ports.empty() ? be_logger.log("No group secondaries", 20) : be_logger.log("Group secondaries at " + secondaries, 20);
+                }
+                // note that if a read value was received within 1 second, a faster heartbeat will just go out
+            }
         }
     }
 }
@@ -582,6 +616,8 @@ void BackendServer::accept_and_handle_admin_comm(int admin_sock_fd)
 /// @brief performs pseudo-kill on server
 void BackendServer::admin_kill()
 {
+    be_logger.log("Backend server killed by admin - shutting down", 50);
+
     // set flag to indicate server is dead
     is_dead = true;
 
@@ -608,8 +644,10 @@ void BackendServer::admin_kill()
 /// @brief restarts server after pseudo kill from admin
 void BackendServer::admin_live()
 {
+    be_logger.log("Backend server restarted by admin", 50);
+
     // send RECO to coordinator and wait for message about who the primary is
-    be_logger.log("Server in recovery - contacting coordinator for primary", 50);
+    be_logger.log("Server in recovery - contacting coordinator for primary", 20);
     std::string msg = "RECO";
     BeUtils::write_with_crlf(coord_sock_fd, msg);
     BeUtils::ReadResult coord_response = BeUtils::read_with_crlf(coord_sock_fd);
@@ -617,14 +655,16 @@ void BackendServer::admin_live()
     // extract primary from coord_response
     std::string contact_primary(coord_response.byte_stream.begin(), coord_response.byte_stream.end());
     int contact_primary_port = std::stoi(contact_primary.substr(IP.length()));
-    be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 50);
+    be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 20);
 
     // construct message to primary - RECO<SP>CP# SEQ# (no space between CP# and SEQ#)
     std::vector<char> recovery_msg = {'R', 'E', 'C', 'O', ' '};
+    std::vector<uint8_t> my_port_num = BeUtils::host_num_to_network_vector(BackendServer::group_port);
+    recovery_msg.insert(recovery_msg.end(), my_port_num.begin(), my_port_num.end());
     std::vector<uint8_t> last_cp_num = BeUtils::host_num_to_network_vector(BackendServer::last_checkpoint);
-    recovery_msg.insert(recovery_msg.begin(), last_cp_num.begin(), last_cp_num.end());
+    recovery_msg.insert(recovery_msg.end(), last_cp_num.begin(), last_cp_num.end());
     std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
-    recovery_msg.insert(recovery_msg.begin(), last_seq_num.begin(), last_seq_num.end());
+    recovery_msg.insert(recovery_msg.end(), last_seq_num.begin(), last_seq_num.end());
 
     // Download and clear your logs. This is to ensure that primary can send you requests, and it'll log to your log file
     // The downloaded logs are used if your checkpoint version is the same as the primary's
@@ -696,9 +736,9 @@ void BackendServer::admin_live()
 
             be_logger.log("Built " + tablet_range + " tablet from local checkpoint data", 20);
 
-            // ! replay your downloaded logs
+            // replay your downloaded logs
             be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
-            // tablet.replay_log(downloaded_logs.at(tablet_range));
+            tablet->replay_log_from_stream(downloaded_logs.at(tablet_range));
         }
 
         // Extract the log next and replay it
@@ -710,12 +750,13 @@ void BackendServer::admin_live()
         std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
-        // ! replay the log to update the tablet
+        // replay the log to update the tablet
         be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
-        // tablet.replay_log(log_data);
+        tablet->replay_log_from_stream(log_data);
 
-        // TODO replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
+        // replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
         be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
+        tablet->replay_log_from_file(tablet->log_filename);
     }
 
     // set flag to false to indicate server is now alive

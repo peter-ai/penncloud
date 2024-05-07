@@ -222,6 +222,9 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
     // erase RECO command from beginning of inputs
     inputs.erase(inputs.begin(), inputs.begin() + 5);
+    // extract recovering server's port number and erase from inputs
+    uint32_t recovering_port_num = BeUtils::network_vector_to_host_num(inputs);
+    inputs.erase(inputs.begin(), inputs.begin() + 4);
     // extract checkpoint version number and erase from inputs
     uint32_t sent_checkpoint_version = BeUtils::network_vector_to_host_num(inputs);
     inputs.erase(inputs.begin(), inputs.begin() + 4);
@@ -232,7 +235,7 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
     // check if the requesting server requires your checkpoint files
     std::vector<char> response;
     bool checkpoint_required;
-    // last check
+    // last checkpoint comparison
     if (BackendServer::last_checkpoint != sent_checkpoint_version)
     {
         response.push_back('C');
@@ -254,6 +257,8 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
         // read entire checkpoint file into a vector and append to response
         if (checkpoint_required)
         {
+            kvs_group_server_logger.log("Sending checkpoint files for " + tablet_range, 20);
+
             std::string cp_filename = BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
             std::vector<char> cp_file_data = BeUtils::read_from_file_into_vec(cp_filename);
 
@@ -263,30 +268,93 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
             // append the cp_file_data vector to the end of response
             response.insert(response.end(), cp_file_data.begin(), cp_file_data.end());
-
-            // append the size of the log file file to the front of the vector
-            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
-
-            // append the log_file_data vector to the end of response
-            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
         // use sequence number to determine which portion of the log file the server needs
         else
         {
             // sequence number indicates that the server has an END log for that operation
             // they should receive any operations AFTER this sequence number
+            // iterate until you find BEGN log for first operation STRICTLY GREATER than the provided sequence number
+            while (!log_file_data.empty())
+            {
+                // read 4 characters to get the sequence number of the operation
+                uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(log_file_data);
+                if (operation_seq_num > sent_seq_num)
+                {
+                    break;
+                }
 
-            // TODO go through the log and provide LOGS WITH SEQ NUM STRICTLY GREATER THAN SEQ NUM SENT BY SERVER
+                // erase sequence number
+                log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
 
-            // // append the size of the checkpoint file to the front of the vector
-            // std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-            // log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+                // read 4 characters to get the operation
+                std::vector<char> operation_vec(log_file_data.begin(), log_file_data.begin() + 4);
+                std::string operation(operation_vec.begin(), operation_vec.end());
+                log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
 
-            // // append the log_file_data vector to the end of response
-            // response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+                // erase contents for different operations in log file
+                if (operation == "BEGN")
+                {
+                    log_file_data.erase(log_file_data.begin());
+                }
+                else if (operation == "PREP")
+                {
+                    // erase operation
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+                }
+                else if (operation == "CMMT")
+                {
+                    // erase operation
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+
+                    // read 4 characters to get the size of the inputs
+                    uint32_t inputs_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // extract the inputs
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + inputs_size);
+                }
+                else if (operation == "ABRT")
+                {
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+                }
+            }
         }
+
+        kvs_group_server_logger.log("Sending log file for " + tablet_range, 20);
+
+        // append the size of the log file file to the front of the vector
+        std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+        log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+        // append the log_file_data vector to the end of response
+        response.insert(response.end(), log_file_data.begin(), log_file_data.end());
     }
+
+    kvs_group_server_logger.log("Adding " + std::to_string(recovering_port_num) + " to recovering server list", 20);
+    // track recovering server so it can receive update operations
+    BackendServer::ports_in_recovery.insert(recovering_port_num);
+
+    kvs_group_server_logger.log("Primary server completed recovery assist", 20);
 
     // send response back to server
     send_response(response);
@@ -336,7 +404,8 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Opened connection with all secondaries", 20);
 
     // write BEGIN to log
-    write_to_log(operation_log_filename, operation_seq_num, "BEGN");
+    // P is added to indicate that the operation was performed as a primary
+    write_to_log(operation_log_filename, operation_seq_num, "BEGNP");
 
     // Send PREPARE to all secondaries
     if (construct_and_send_prepare(operation_seq_num, command, row, secondary_servers) < 0)
@@ -381,7 +450,14 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     }
 
     // wait for servers to respond with acks
-    BackendServer::wait_for_acks_from_servers(secondary_servers);
+    std::vector<int> dead_servers = BackendServer::wait_for_acks_from_servers(secondary_servers);
+    // remove dead servers from map of servers so we're not waiting on an ACK from them
+    for (int dead_server : dead_servers)
+    {
+        close(secondary_servers[dead_server]); // close fd for dead server
+        secondary_servers.erase(dead_server);  // remove dead server from map
+    }
+
     // read acks from all remaining servers, since these servers have read events available on their fds
     for (const auto &server : secondary_servers)
     {
@@ -425,45 +501,51 @@ int KVSGroupServer::construct_and_send_prepare(uint32_t operation_seq_num, std::
 /// @brief Handles votes from secondaries following PREPARE message
 bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers)
 {
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
-
-    // construct a vector of fds to wait on with timeout
-    std::vector<int> secondary_fds;
-    for (const auto &server : secondary_servers)
+    if (!secondary_servers.empty())
     {
-        secondary_fds.push_back(server.second);
-    }
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
 
-    // Wait up to 2 seconds for secondaries to respond to PREPARE command
-    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
-    {
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Timeout exceeded - failed to receive votes from all secondaries", 20);
-        return false;
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
-
-    // read votes from all secondaries
-    bool all_secondaries_in_favor = true;
-    for (int secondary_fd : secondary_fds)
-    {
-        BeUtils::ReadResult secondary_read = BeUtils::read_with_size(secondary_fd);
-        // return false if there was an error reading from a secondary
-        if (secondary_read.error_code != 0)
+        // construct a vector of fds to wait on with timeout
+        std::vector<int> secondary_fds;
+        for (const auto &server : secondary_servers)
         {
-            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary", 20);
+            secondary_fds.push_back(server.second);
+        }
+
+        // Wait up to 2 seconds for secondaries to respond to PREPARE command
+        if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+        {
+            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Timeout exceeded - failed to receive votes from all secondaries", 20);
             return false;
         }
-        // process vote sent by secondary
-        // extract vote from beginning of inputs
-        std::string vote(secondary_read.byte_stream.begin(), secondary_read.byte_stream.begin() + 4);
-        vote = Utils::to_lowercase(vote);
-        if (vote == "secn")
-        {
-            all_secondaries_in_favor = false;
-        }
-    }
 
-    return all_secondaries_in_favor;
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
+
+        // read votes from all secondaries
+        bool all_secondaries_in_favor = true;
+        for (int secondary_fd : secondary_fds)
+        {
+            BeUtils::ReadResult secondary_read = BeUtils::read_with_size(secondary_fd);
+            // return false if there was an error reading from a secondary
+            if (secondary_read.error_code != 0)
+            {
+                kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary", 20);
+                return false;
+            }
+            // process vote sent by secondary
+            // extract vote from beginning of inputs
+            std::string vote(secondary_read.byte_stream.begin(), secondary_read.byte_stream.begin() + 4);
+            vote = Utils::to_lowercase(vote);
+            if (vote == "secn")
+            {
+                all_secondaries_in_favor = false;
+            }
+        }
+
+        return all_secondaries_in_favor;
+    }
+    // no secondaries to read from, send true
+    return true;
 }
 
 /// @brief Construct and send COMMIT to secondary servers
@@ -543,7 +625,8 @@ void KVSGroupServer::prepare(std::vector<char> &inputs)
     std::shared_ptr<Tablet> tablet = BackendServer::retrieve_data_tablet(row);
 
     // write BEGIN to log
-    write_to_log(tablet->log_filename, operation_seq_num, "BEGN");
+    // S is added to mark that the operation was performed as a secondary
+    write_to_log(tablet->log_filename, operation_seq_num, "BEGNS");
 
     kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Secondary received PREPARE from primary", 20);
 

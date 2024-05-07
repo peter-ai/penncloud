@@ -48,6 +48,10 @@ private:
     void commit(std::vector<char> &inputs);  // handle prepare msg from primary
     void abort(std::vector<char> &inputs);   // handle prepare msg from primary
 
+    // Client response methods
+    void send_error_response(const std::string &msg);    // constructs an error response and internally calls send_response()
+    void send_response(std::vector<char> &response_msg); // sends response to group_server_fd on open connection
+
     // Tablet write operations
     // Need to send a copy of inputs here because secondary receives exact copy of this command, and inputs is modified heavily in write operations
     std::vector<char> execute_write_operation(std::string &command, std::string &row, std::vector<char> inputs);
@@ -57,10 +61,6 @@ private:
     std::vector<char> delv(std::string &row, std::vector<char> &inputs);
     std::vector<char> rnmr(std::string &row, std::vector<char> &inputs);
     std::vector<char> rnmc(std::string &row, std::vector<char> &inputs);
-
-    // Client response methods
-    void send_error_response(const std::string &msg);    // constructs an error response and internally calls send_response()
-    void send_response(std::vector<char> &response_msg); // sends response to group_server_fd on open connection
 
     // 2PC state cleanup
     void clean_operation_state(std::unordered_map<int, int> secondary_servers); // close connections to all secondaries
