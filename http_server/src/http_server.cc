@@ -278,7 +278,7 @@ void HttpServer::accept_and_handle_admin_comm(int admin_sock_fd)
         {
             admin_kill();
         }
-        else if (result == "LIVE")
+        else if (result == "WAKE")
         {
             admin_live();
         }
@@ -294,6 +294,7 @@ void HttpServer::accept_and_handle_admin_comm(int admin_sock_fd)
 /// @brief performs pseudo-kill on server
 void HttpServer::admin_kill()
 {
+    http_logger.log("Frontend server killed by admin - shutting down", 50);
     // set flag to indicate server is dead
     is_dead = true;
 
@@ -310,6 +311,7 @@ void HttpServer::admin_kill()
 /// @brief restarts server after pseudo kill from admin
 void HttpServer::admin_live()
 {
+    http_logger.log("Frontend server restarted by admin", 50);
     is_dead = false;
 }
 
