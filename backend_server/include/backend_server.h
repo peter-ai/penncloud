@@ -1,6 +1,9 @@
 #ifndef BACKEND_SERVER_H
 #define BACKEND_SERVER_H
 
+#include <iostream>
+#include <arpa/inet.h>
+#include <fstream>
 #include <fcntl.h>
 #include <sys/socket.h> // socket
 #include <netinet/in.h> // sockaddr_in
@@ -10,10 +13,12 @@
 #include <vector>
 #include <memory>
 #include <queue>
-
 #include "tablet.h"
 #include "kvs_client.h"
 #include "../../utils/include/utils.h"
+#include "../utils/include/be_utils.h"
+#include "../include/kvs_client.h"
+#include "../include/kvs_group_server.h"
 
 class BackendServer
 {

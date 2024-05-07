@@ -6,7 +6,7 @@ TARGETS = frontend_main
 
 all: $(TARGETS)
 
-frontend_main: ./src/frontend_main.cc ./utils/src/fe_utils.cc ../http_server/src/http_server.cc ./src/authentication.cc ./src/response_codes.cc ./src/mailbox.cc ./src/drive.cc ./src/smtp_client.cc
+frontend_main: ./src/frontend_main.cc ./utils/src/fe_utils.cc ../http_server/libhttp_server.a ./src/authentication.cc ./src/response_codes.cc ./src/mailbox.cc ./src/drive.cc ./src/smtp_client.cc
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	rm -f *o
 

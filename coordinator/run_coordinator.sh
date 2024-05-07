@@ -4,4 +4,4 @@
 cd coordinator
 make clean
 make
-./coordinator -v -s 1 -b 1
+./coordinator -s 1 -b 1

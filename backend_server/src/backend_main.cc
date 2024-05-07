@@ -1,4 +1,3 @@
-#include "../../utils/include/utils.h"
 #include "../include/backend_server.h"
 
 // main function to run storage server

@@ -264,9 +264,10 @@ int main(int argc, char *argv[])
         logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
     }
     else
-    {
-        if (VERBOSE)
-            logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
+    {   
+        admin_msg.pop_back();
+        admin_msg.pop_back();
+        logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
     }
 
     // close socket
@@ -486,13 +487,13 @@ void *kvs_thread(void *arg)
                     // error while reading from source
                     if (bytes_recvd < 0)
                     {
-                        logger.log("Error reading from source", 40);
+                        logger.log("Error reading from source", LOGGER_ERROR);
                         break;
                     }
                     // check condition where connection was preemptively closed by source
                     else if (bytes_recvd == 0)
                     {
-                        logger.log("Remote socket closed connection", 40);
+                        logger.log("Remote socket closed connection", LOGGER_ERROR);
                         break;
                     }
 
@@ -518,38 +519,50 @@ void *kvs_thread(void *arg)
                 if (command.compare("PING") == 0)
                 {
                     // TODO this was commented out to view other messages coming to coordinator
-                    // logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
-                    kvs->alive = true;
+                    logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
+                    if (!kvs->alive)
+                    {
+                        // add alive server to client map
+                        client_map_mutex.lock();
+                        for (auto &key : kvs->kv_range)
+                        {
+                            client_map[key].push_back(*kvs);
+                        }
+                        client_map_mutex.unlock();
+
+                        // if cluster group is empty - no primary is set currently - assign this server as primary
+                        if (kvs_clusters[kvs->kvs_group].empty())
+                            kvs->primary = true;
+
+                        // add alive server to cluster group
+                        cluster_mutex.lock();
+                        kvs_clusters[kvs->kvs_group].push_back(*kvs);
+                        cluster_mutex.unlock();
+
+                        // broadcast updated server list and primary to all kvs in cluster
+                        broadcast_to_cluster(kvs->kvs_group);
+                        kvs->alive = true;
+                    }
                 }
                 // Received RECO from KVS
                 else if (command.compare("RECO") == 0)
                 {
                     logger.log("Received RECO from " + kvs->server_addr, LOGGER_INFO);
                     if (kvs->alive)
-                        continue; // if kvs is already alive, do not process the below commands
-
-                    // kvs is alive
-                    kvs->alive = true;
-
-                    // add alive server to client map
-                    client_map_mutex.lock();
-                    for (auto &key : kvs->kv_range)
                     {
-                        client_map[key].push_back(*kvs);
+                        continue; // if kvs is already alive, do not process the below commands
                     }
-                    client_map_mutex.unlock();
-
-                    // add alive server to cluster group
-                    cluster_mutex.lock();
-                    kvs_clusters[kvs->kvs_group].push_back(*kvs);
-                    cluster_mutex.unlock();
-
-                    // broadcast updated server list and primary to all kvs in cluster
-                    broadcast_to_cluster(kvs->kvs_group);
+                    else
+                    {
+                        // kvs is alive - send recovery message
+                        kvs->alive = true;
+                        send_kvs_reco(*kvs);
+                    }
                 }
                 else
                 {
-                    logger.log("Unrecognized command from KVS server. This should NOT occur.", 50);
+                    logger.log("Unrecognized command from KVS server - SIGINT to KVS " + kvs->server_addr + " likely received - ensure this is intentional", LOGGER_CRITICAL);
+                    break;
                 }
             }
         }
@@ -597,7 +610,7 @@ void *kvs_thread(void *arg)
             kvs_clusters[kvs->kvs_group].erase(position);
 
             // if current server was primary select a new primary
-            if (kvs->primary)
+            if (kvs->primary && !kvs_clusters[kvs->kvs_group].empty())
             {
                 // no longer primary
                 kvs->primary = false;
@@ -609,7 +622,10 @@ void *kvs_thread(void *arg)
             cluster_mutex.unlock();
 
             // broadcast updated server list and primary to all kvs in cluster
-            broadcast_to_cluster(kvs->kvs_group);
+            if (!kvs_clusters[kvs->kvs_group].empty())
+            {
+                broadcast_to_cluster(kvs->kvs_group);
+            }
         }
     }
 
@@ -777,11 +793,15 @@ std::string get_admin_message()
     }
     cluster_mutex.unlock_shared();
 
+    message.pop_back();
     message += "\r\n"; // add terminating characters
     return message;
 }
 
-/// @brief send init response to kvs
+/// @brief function to construct and send init message 
+/// @param kvs - kvs to send init to
+/// @param request - request message
+/// @return true is successful, false otherwise
 bool send_kvs_init(struct kvs_args &kvs, std::string &request)
 {
     bool successful = true;
@@ -800,11 +820,45 @@ bool send_kvs_init(struct kvs_args &kvs, std::string &request)
     else
     {
         if (VERBOSE)
-            logger.log("Sent response to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
+            logger.log("Sent initialization message to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
     }
 
     request.clear();
-    response.clear();
+    return successful;
+}
+
+/// @brief function to construct and send reco message 
+/// @param kvs - kvs to send reco to
+/// @param request - request message
+/// @return true is successful, false otherwise
+bool send_kvs_reco(struct kvs_args &kvs)
+{
+    bool successful = true;
+    int sent = 0;
+    std::string response = "";
+
+    // construct message
+    for (auto &server: kvs_clusters[kvs.kvs_group])
+    {
+        if (server.primary) 
+        {
+            response = server.server_addr + "\r\n";
+            break;
+        }
+    }
+
+    // send response to kvs
+    if ((sent = send(kvs.fd, &response[0], response.size(), 0)) == -1)
+    {
+        logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_CRITICAL);
+        if (errno == ECONNRESET)
+            successful = false; // connection has been closed so exit loop
+    }
+    else
+    {
+        if (VERBOSE)
+            logger.log("Sent recovery message to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
+    }
 
     return successful;
 }

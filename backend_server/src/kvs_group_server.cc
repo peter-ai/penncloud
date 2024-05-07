@@ -1,11 +1,4 @@
-#include <poll.h>
-#include <fstream>
-#include <cstdio>
-
-#include "../../utils/include/utils.h"
 #include "../include/kvs_group_server.h"
-#include "../utils/include/be_utils.h"
-#include "../include/backend_server.h"
 
 Logger kvs_group_server_logger("KVS Group Server");
 

@@ -1,13 +1,15 @@
 #ifndef KVS_CLIENT_H
 #define KVS_CLIENT_H
 
+#include <poll.h>
 #include <string>
 #include <memory>
 #include <sys/socket.h> // recv
 #include <unistd.h>     // close
-
-#include "tablet.h"
+#include "../utils/include/be_utils.h"
+#include "../include/backend_server.h"
 #include "../../utils/include/utils.h"
+#include "tablet.h"
 
 class KVSClient
 {
