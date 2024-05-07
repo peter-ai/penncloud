@@ -572,7 +572,7 @@ std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vec
     insert_arg(fn_string, row);
     insert_arg(fn_string, oldcol);
     insert_arg(fn_string, newcol);
-    fn_string.push_back('\b');
+    // fn_string.push_back('\b');
     std::vector<char> response = {};
 
     fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
