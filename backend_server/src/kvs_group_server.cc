@@ -266,13 +266,6 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
 
             // append the cp_file_data vector to the end of response
             response.insert(response.end(), cp_file_data.begin(), cp_file_data.end());
-
-            // append the size of the log file file to the front of the vector
-            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
-
-            // append the log_file_data vector to the end of response
-            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
         // use sequence number to determine which portion of the log file the server needs
         else
@@ -343,14 +336,14 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
                     log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
                 }
             }
-
-            // append the size of the log file file to the front of the vector
-            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
-
-            // append the log_file_data vector to the end of response
-            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
+
+        // append the size of the log file file to the front of the vector
+        std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+        log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+        // append the log_file_data vector to the end of response
+        response.insert(response.end(), log_file_data.begin(), log_file_data.end());
     }
 
     // track recovering server so it can receive update operations
