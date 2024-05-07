@@ -257,6 +257,8 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
         // read entire checkpoint file into a vector and append to response
         if (checkpoint_required)
         {
+            kvs_group_server_logger.log("Sending checkpoint files for " + tablet_range, 20);
+
             std::string cp_filename = BackendServer::disk_dir + tablet_range + "_tablet_v" + std::to_string(BackendServer::last_checkpoint);
             std::vector<char> cp_file_data = BeUtils::read_from_file_into_vec(cp_filename);
 
@@ -338,6 +340,8 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
             }
         }
 
+        kvs_group_server_logger.log("Sending log file for " + tablet_range, 20);
+
         // append the size of the log file file to the front of the vector
         std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
         log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
@@ -346,8 +350,11 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
         response.insert(response.end(), log_file_data.begin(), log_file_data.end());
     }
 
+    kvs_group_server_logger.log("Adding " + std::to_string(recovering_port_num) + " to recovering server list", 20);
     // track recovering server so it can receive update operations
     BackendServer::ports_in_recovery.insert(recovering_port_num);
+
+    kvs_group_server_logger.log("Primary server completed recovery assist", 20);
 
     // send response back to server
     send_response(response);
