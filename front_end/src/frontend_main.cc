@@ -32,6 +32,7 @@ int main(int argc, char *argv[])
 
 	/* Public GET API */
 	HttpServer::get("/home", home_page);
+	HttpServer::get("/compose", compose_email);
 	HttpServer::get("/account", update_password_page);
 	HttpServer::get("/update_success", update_password_success_page);
 	HttpServer::get("/409", error_409_page); // Conflict
@@ -60,7 +61,7 @@ int main(int argc, char *argv[])
 	HttpServer::post("/api/drive/move/*", move_filefolder);		// create a folder
 	HttpServer::get("/drive/*", open_filefolder);				// open file/folder
 
-	// run HTTPServer
+	// run HTTPServerx
 	HttpServer::run(port);
 
 	return 0;
