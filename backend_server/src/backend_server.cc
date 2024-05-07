@@ -227,6 +227,19 @@ void BackendServer::handle_coord_comm()
         {
             std::string ping = "PING";
             BeUtils::write_with_crlf(coord_sock_fd, ping);
+
+            // ! poll from coordinator (with 1 second timeout) - DO THIS INSTEAD OF SLEEPING FOR ONE SECOND
+            // ! broadcast
+            // ! primary + secondaries (same as init)
+
+            // // get potential broadcast message
+            // if (BeUtils::wait_for_events({coord_sock_fd}, 1) >= 0)
+            // {
+            //     // read from
+            //     BeUtils::ReadResult read_from_coord = BeUtils::read_with_crlf(coord_sock_fd);
+            //     // ! this read result should be the broadcast
+            // }
+
             // Sleep for 1 seconds before sending subsequent heartbeat
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
@@ -560,7 +573,7 @@ void BackendServer::accept_and_handle_admin_comm(int admin_sock_fd)
         {
             admin_kill();
         }
-        else if (admin_msg_str == "LIVE")
+        else if (admin_msg_str == "WAKE")
         {
             admin_live();
         }
@@ -595,6 +608,8 @@ void BackendServer::admin_kill()
     server_tablets.clear();           // remove tablets from memory
     client_connections.clear();       // clear map of active client connections
     group_server_connections.clear(); // clear map of active group server connections
+    primary_port = 0;                 // clear current primary
+    secondary_ports.clear();          // clear all secondaries
 }
 
 /// @brief restarts server after pseudo kill from admin
@@ -738,7 +753,6 @@ void BackendServer::coordinate_checkpoint()
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
         if (!is_dead && is_primary)
         {
-
             // Sleep for 30 seconds between each checkpoint
             std::this_thread::sleep_for(std::chrono::seconds(60));
 
