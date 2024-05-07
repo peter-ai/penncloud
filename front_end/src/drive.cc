@@ -422,11 +422,10 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 std::string folder_html = "";
                 size_t item_iter = 0;
                 int row_count = 0;
-                
+
                 std::string option_open = "<option>";
                 std::string option_close = "</option>";
                 std::string options = "";
-
 
                 while (item_iter < folder_items.size())
                 {
@@ -688,105 +687,104 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                               "</div>"
                               "</div>"
 
-                    // WIPPPPPP
-                    "<div class='modal fade' id='renameFolderModal' tabindex='-1' aria-labelledby='renameFolderModalLabel' aria-hidden='true'>"
-                    "<div class='modal-dialog modal-dialog-centered'>"
-                    "<div class='modal-content'>"
-                    "<div class='modal-header'>"
-                    "<h1 class='modal-title fs-5' id='renameFolderModalLabel'>Rename an item</h1>"
-                    "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
-                    "</div>"
-                    "<div class='modal-body'>"
-                    "<form id='renameFolderForm' method='POST' action='/api/drive/rename/" +
+                              // WIPPPPPP
+                              "<div class='modal fade' id='renameFolderModal' tabindex='-1' aria-labelledby='renameFolderModalLabel' aria-hidden='true'>"
+                              "<div class='modal-dialog modal-dialog-centered'>"
+                              "<div class='modal-content'>"
+                              "<div class='modal-header'>"
+                              "<h1 class='modal-title fs-5' id='renameFolderModalLabel'>Rename an item</h1>"
+                              "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
+                              "</div>"
+                              "<div class='modal-body'>"
+                              "<form id='renameFolderForm' method='POST' action='/api/drive/rename/" +
                     childpath_str + "'>"
                                     "<div class='mb-3'>"
                                     "<label for='item-old-name' class='col-form-label'>Item:</label>"
                                     "<select name='old-name' class='form-select' aria-label='Default select example' id='item-old-name' form='renameFolderForm' required>"
-                                    "<option hidden disabled selected value> Select an item </option>"
-                                    + options +
-                                    "</select>"
-                                    "<label for='new-item-name' class='col-form-label'>New name:</label>"
-                                    "<input name='new-name' type='text' class='form-control' id='new-item-name' minlength=1 maxlength=255 required aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
-                                    "</div>"
-                                    "</form>"
-                                    "</div>"
-                                    "<div class='modal-footer'>"
-                                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
-                                    "<button type='submit' class='btn btn-primary' onclick='var folders = " +
+                                    "<option hidden disabled selected value> Select an item </option>" +
+                    options +
+                    "</select>"
+                    "<label for='new-item-name' class='col-form-label'>New name:</label>"
+                    "<input name='new-name' type='text' class='form-control' id='new-item-name' minlength=1 maxlength=255 required aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
+                    "</div>"
+                    "</form>"
+                    "</div>"
+                    "<div class='modal-footer'>"
+                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                    "<button type='submit' class='btn btn-primary' onclick='var folders = " +
                     folders + "; var files = " + files + "; if ($(\"#renameFolderForm\")[0].checkValidity()) {if ($(\"#renameFolderForm\")[0][0].value.slice(-1)==\"/\" && folders.includes($(\"#renameFolderForm\")[0][1].value + \"/\") || $(\"#renameFolderForm\")[0][0].value.slice(-1)!=\"/\" && files.includes($(\"#renameFolderForm\")[0][1].value)) { $(\"#renameFolderForm\")[0][1].setCustomValidity(\"Item already exists.\"); $(\"#renameFolderForm\")[0].reportValidity(); } else {$(\"#renameFolderForm\").submit();} } else {$(\"#renameFolderForm\")[0][1].setCustomValidity(($(\"#renameFolderForm\")[0][1].value.length !== 0 ? \"Some of the input characters are bad.\" : \"Please fill out this field.\")); $(\"#renameFolderForm\")[0].reportValidity();}'>Rename</button>"
-                              "</div>"
-                              "</div>"
-                              "</div>"
-                              "</div>"
+                                                         "</div>"
+                                                         "</div>"
+                                                         "</div>"
+                                                         "</div>"
 
+                                                         "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                                                         "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                                                         "crossorigin='anonymous'></script>"
+                                                         "<script>"
+                                                         "$('.delete').on('click', function() {"
+                                                         "    $('#deleteModal').modal('show');"
+                                                         "});"
 
-                              "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                              "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                              "crossorigin='anonymous'></script>"
-                              "<script>"
-                              "$('.delete').on('click', function() {"
-                              "    $('#deleteModal').modal('show');"
-                              "});"
+                                                         "$('#deleteModal').on('show.bs.modal', function(e) {"
+                                                         "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                                                         "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                                                         "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                                                         "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                                                         "});"
+                                                         "</script>"
+                                                         "<script>"
+                                                         "$('#item-old-name').on('change', function (e) {"
+                                                         "var selection = $(this).find('option:selected').text();"
 
-                              "$('#deleteModal').on('show.bs.modal', function(e) {"
-                              "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-                              "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-                              "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-                              "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                              "});"
-                              "</script>"
-                              "<script>"
-                                "$('#item-old-name').on('change', function (e) {"
-                                    "var selection = $(this).find('option:selected').text();"
-                                    
-                                    "if (selection.slice(-1)=== '/') {"
-                                        "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
-                                        "if($('#renameHelp').length==0) {"
-                                        "console.log(selection);"
-                                        "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
-                                        "}"
-                                    "}" 
-                                    "else {"
-                                        "$('#renameHelp').remove();"
-                                        "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
-                                    "}"
-                                "})"
-                              "</script>"
+                                                         "if (selection.slice(-1)=== '/') {"
+                                                         "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
+                                                         "if($('#renameHelp').length==0) {"
+                                                         "console.log(selection);"
+                                                         "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
+                                                         "}"
+                                                         "}"
+                                                         "else {"
+                                                         "$('#renameHelp').remove();"
+                                                         "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
+                                                         "}"
+                                                         "})"
+                                                         "</script>"
 
-                              "<script>"
-                              "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                              "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'light');"
-                              ""
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'dark');"
-                              "}"
-                              "});"
-                              "</script>"
-                              "<script>"
-                              "function setTheme() {"
-                              "var theme = sessionStorage.getItem('data-bs-theme');"
-                              "if (theme !== null) {"
-                              "if (theme === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', true);"
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', false);"
-                              "}"
-                              "}"
-                              "};"
-                              "</script>"
-                              "</body>"
-                              "</html>";
+                                                         "<script>"
+                                                         "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                                                         "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                                                         "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                                         "$('#switchLabel').html('Light Mode');"
+                                                         "sessionStorage.setItem('data-bs-theme', 'light');"
+                                                         ""
+                                                         "}"
+                                                         "else {"
+                                                         "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                                         "$('#switchLabel').html('Dark Mode');"
+                                                         "sessionStorage.setItem('data-bs-theme', 'dark');"
+                                                         "}"
+                                                         "});"
+                                                         "</script>"
+                                                         "<script>"
+                                                         "function setTheme() {"
+                                                         "var theme = sessionStorage.getItem('data-bs-theme');"
+                                                         "if (theme !== null) {"
+                                                         "if (theme === 'dark') {"
+                                                         "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                                         "$('#switchLabel').html('Dark Mode');"
+                                                         "$('#flexSwitchCheckReverse').attr('checked', true);"
+                                                         "}"
+                                                         "else {"
+                                                         "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                                         "$('#switchLabel').html('Light Mode');"
+                                                         "$('#flexSwitchCheckReverse').attr('checked', false);"
+                                                         "}"
+                                                         "}"
+                                                         "};"
+                                                         "</script>"
+                                                         "</body>"
+                                                         "</html>";
 
                 // @PETER ADDED - reset cookies of user
                 res.append_body_str(page);
@@ -1262,8 +1260,8 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // of type /api/drive/rename/* where child directory is being served
-    string childpath_str = req.path.substr(18);
-    string username = get_username(childpath_str);
+    string parent_path_str = req.path.substr(18);
+    string username = get_username(parent_path_str);
     bool present = HttpServer::check_kvs_addr(username);
     std::vector<std::string> kvs_addr;
 
@@ -1295,7 +1293,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         return;
     }
 
-    vector<char> child_path(childpath_str.begin(), childpath_str.end());
+    vector<char> parent_path_vec(parent_path_str.begin(), parent_path_str.end());
 
     // get new name using parameters
     // Extract form parameters (status and component id) from the HTTP request body
@@ -1326,11 +1324,16 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
     logger.log("New name is:" + newname, LOGGER_DEBUG);
 
+    // construct child path
+    string childpath_str = parent_path_str + oldname;
+
+    vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
     // if we are trying to rename a file
     if (oldname.back() != '/')
     {
         // this works with UI - @PA
-        vector<char> parent_path_vec(childpath_str.begin(), childpath_str.end());
+
         vector<char> filename_vec(oldname.begin(), oldname.end());
 
         if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
@@ -1352,7 +1355,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
-        
+
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
         if (kv_successful(folder_content))
@@ -1363,7 +1366,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             // delete folder from parent
             // get parent path
             // get folder name
-            
+
             // string foldername; @PA
             string foldername = oldname;
 
@@ -1371,13 +1374,10 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             vector<string> split_filepath = Utils::split(childpath_str, "/");
             // string parentpath_str = split_parent_filename(split_filepath, foldername); @PA
 
-            // foldername += '/'; @PA
-            string parentpath_str = childpath_str; 
 
-            logger.log("Parent path is " + parentpath_str, LOGGER_DEBUG);
+            logger.log("Parent path is " + parent_path_str, LOGGER_DEBUG);
             logger.log("Folder name is " + foldername, LOGGER_DEBUG);
 
-            vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
             vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
             newname_vec.push_back('/');
@@ -1399,7 +1399,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
                     // redirect
                     res.set_code(303);
-                    res.set_header("Location", "/drive/" + parentpath_str);
+                    res.set_header("Location", "/drive/" + parent_path_str);
                 }
                 else
                 {
