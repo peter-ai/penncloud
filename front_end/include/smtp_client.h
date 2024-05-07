@@ -33,9 +33,13 @@ private:
     static std::string getMXRecord(const std::string &domain);
 
     // Resolves a hostname (typically obtained from MX records) to an IP address using
-    static std::string resolveMXtoIP(const std::string &mxHostname);
+    //static std::string resolveMXtoIP(const std::string &mxHostname);
+    static std::vector<std::string> resolveMXtoIP(const std::string &mxHostname);
 
-    static bool start_connection(const std::string &serverIP, int serverPort);
+
+    // static bool start_connection(const std::string &serverIP, int serverPort);
+    static bool start_connection(const std::vector<std::string> &serverIPs, int serverPort);
+
 
     SMTPClient() {}
 

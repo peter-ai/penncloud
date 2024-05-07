@@ -1,6 +1,6 @@
 #include "../include/smtp_client.h"
 
-//initialize static field
+// initialize static field
 int SMTPClient::sock = -1;
 
 Logger smtp_client_logger("SMTP Client");
@@ -118,20 +118,24 @@ std::string SMTPClient::getMXRecord(const std::string &domain)
 }
 
 // Resolves a hostname (typically obtained from MX records) to an IP address using
-std::string SMTPClient::resolveMXtoIP(const std::string &mxHostname)
+// get the reachable one, not the first resolved one hence vector
+// Handling multiple IP addresses by selecting the first reachable one involves modifying your connection setup to iterate through all resolved IP addresses until a successful connection is established.
+std::vector<std::string> SMTPClient::resolveMXtoIP(const std::string &mxHostname)
 {
     struct addrinfo hints, *res, *p;
-    int status;
+    std::vector<std::string> ipAddresses;
     char ipstr[INET6_ADDRSTRLEN];
 
     memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC; // AF_INET or AF_INET6 to force version
+    hints.ai_family = AF_UNSPEC; // Accept any IP version
     hints.ai_socktype = SOCK_STREAM;
 
-    if ((status = getaddrinfo(mxHostname.c_str(), NULL, &hints, &res)) != 0)
+    int status = getaddrinfo(mxHostname.c_str(), NULL, &hints, &res);
+
+    if (status != 0)
     {
         smtp_client_logger.log(gai_strerror(status), 40);
-        return "";
+        return ipAddresses; // Return an empty vector if resolution fails
     }
 
     for (p = res; p != NULL; p = p->ai_next)
@@ -147,58 +151,66 @@ std::string SMTPClient::resolveMXtoIP(const std::string &mxHostname)
             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
             addr = &(ipv6->sin6_addr);
         }
-
-        // convert the IP to a string and break after the first one is found
         inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
-        break;
+        ipAddresses.push_back(std::string(ipstr));
     }
 
-    freeaddrinfo(res); // free the linked list
-
-    return std::string(ipstr);
+    freeaddrinfo(res); // Free the linked list
+    return ipAddresses;
 }
 
-bool SMTPClient::start_connection(const std::string &serverIP, int serverPort)
+bool SMTPClient::start_connection(const std::vector<std::string> &serverIPs, int serverPort)
 {
-    sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0)
+    struct addrinfo hints, *res;
+
+    for (const std::string &ip : serverIPs)
     {
-        
-        smtp_client_logger.log("Socket creation error", 40);
-        return false;
+        memset(&hints, 0, sizeof hints);
+        hints.ai_family = AF_UNSPEC; // Any IP version
+        hints.ai_socktype = SOCK_STREAM;
+
+        if (getaddrinfo(ip.c_str(), std::to_string(serverPort).c_str(), &hints, &res) != 0)
+        {
+            smtp_client_logger.log("Failed to resolve server address for IP: " + ip, 40);
+            continue; // Try the next IP
+        }
+
+        for (struct addrinfo *p = res; p != NULL; p = p->ai_next)
+        {
+            sock = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+            if (sock < 0)
+                continue;
+
+            if (connect(sock, p->ai_addr, p->ai_addrlen) == 0)
+            {
+                freeaddrinfo(res); // Free the linked list
+                return true;       // Successfully connected
+            }
+            close(sock); // Close the socket if connect fails
+        }
+
+        freeaddrinfo(res); // Free the linked list
     }
 
-    struct sockaddr_in serv_addr;
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(serverPort);
-    if (inet_pton(AF_INET, serverIP.c_str(), &serv_addr.sin_addr) <= 0)
-    {
-        smtp_client_logger.log("Invalid address / Address not supported", 40);
-        return false;
-    }
-
-    // Connect to server
-    if (connect(sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
-    {
-        smtp_client_logger.log("Connection Failed", 40);
-        return false;
-    }
-    return true;
+    smtp_client_logger.log("Connection failed: All IPs unreachable", 40);
+    return false;
 }
 
 bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
 {
-
+    std::cout << domain << std::endl;
     std::string mxRecord = getMXRecord(domain);
 
-    if(mxRecord.empty()){
+    if (mxRecord.empty())
+    {
         smtp_client_logger.log("Cannot get MX Record", 40);
         return false;
     }
-    std::string ip = resolveMXtoIP(mxRecord);
 
-    if(ip.empty()){
-        smtp_client_logger.log("Cannot resolve MX Record to IP address ", 40);
+    std::vector<std::string> ips = resolveMXtoIP(mxRecord);
+    if (ips.empty())
+    {
+        smtp_client_logger.log("No IPs resolved from MX record", 40);
         return false;
     }
 
@@ -206,7 +218,12 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     // serverPort = port;
     // serverIP = ip;
 
-    if (!start_connection(ip, port))
+    for (auto &ip : ips)
+    {
+        smtp_client_logger.log("Resolved ip: " + ip, 20);
+    }
+    port = 25;
+    if (!start_connection(ips, port))
     {
         close(sock);
         return false;
@@ -228,7 +245,14 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     }
 
     // MAIL FROM command
-    send_data("MAIL FROM:<" + email.from + ">\r\n");
+    // change from @localhost or @penncloud.com to @seas.upenn.edu
+    std::string senderWithAuthorizedDomain = Utils::split_on_first_delim(email.from, "@")[0] + "@seas.upenn.edu";
+    
+    //parse out
+    std::string to = Utils::split_on_first_delim(email.to, " ")[1];
+    std::string from = Utils::split_on_first_delim(senderWithAuthorizedDomain, " ")[1];
+
+    send_data("MAIL FROM:<" + from + ">\r\n");
     if (receive_data().find("250") != 0)
     {
         close(sock);
@@ -236,7 +260,7 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     }
 
     // RCPT TO command
-    send_data("RCPT TO:<" + email.to + ">\r\n");
+    send_data("RCPT TO:<" + to + ">\r\n");
     if (receive_data().find("250") != 0)
     {
         close(sock);
@@ -251,10 +275,14 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     }
 
     // Message header and body with old message included
-    std::string message = "From: " + email.from + "\r\nTo: " + email.to + "\r\nSubject: " + email.subject + "\r\n\r\n" + email.body + "\r\n";
+    std::string message = email.from + "\r\n" + email.to + "\r\n" + email.subject + "\r\n\r\n" + Utils::l_trim(Utils::split_on_first_delim(email.body, ":")[1]) + "\r\n";
+    //std::string message = "From: " + email.from + "\r\nTo: " + email.to + "\r\nSubject: " + email.subject + "\r\n\r\n" + email.body + "\r\n";
+
     if (!email.oldBody.empty())
     {
-        message += "-----Original Message-----\r\n" + email.oldBody + "\r\n";
+        if (!email.oldBody.empty()){
+        message += "-----Original Message-----\r\n" + Utils::split_on_first_delim(email.oldBody, ":")[1] + "\r\n";
+        }
     }
     message += ".\r\n";
 
