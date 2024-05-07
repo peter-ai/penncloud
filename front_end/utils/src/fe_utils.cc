@@ -572,7 +572,7 @@ std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vec
     insert_arg(fn_string, row);
     insert_arg(fn_string, oldcol);
     insert_arg(fn_string, newcol);
-    fn_string.push_back('\b');
+    // fn_string.push_back('\b');
     std::vector<char> response = {};
 
     fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
@@ -591,4 +591,57 @@ std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vec
 
     // return value
     return response;
+}
+
+/// @brief helper function to url encode a string
+/// @param value string to url encode 
+/// @return url encoded string
+std::string FeUtils::urlEncode(const std::string value) {
+    std::ostringstream escaped;
+    escaped.fill('0');
+    escaped << std::hex;
+
+    for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
+        std::string::value_type c = (*i);
+
+        // keep alphanumeric and other accepted characters as is
+        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
+            escaped << c;
+            continue;
+        }
+
+        // remaining characters are percent-encoded
+        escaped << std::uppercase;
+        escaped << '%' << std::setw(2) << int((unsigned char) c);
+        escaped << std::nouppercase;
+    }
+
+    return escaped.str();
+}
+
+/// @brief helper function to url dencode a string
+/// @param value string to url dencode 
+/// @return string that has been decoded
+std::string FeUtils::urlDecode(const std::string value) {
+    std::ostringstream decoded; // This will hold the decoded result
+
+    //loop over each character in the string
+    for (size_t i = 0; i < value.size(); ++i) {
+        char c = value[i]; //get the current character
+
+        if (c == '+') { //'+' in URLs represents a space
+            decoded << ' ';
+        } else if (c == '%' && i + 2 < value.size()) {
+            //if '%' is found and there are at least two characters after it
+            std::string hexValue = value.substr(i + 1, 2); //extract the next two characters
+            int charValue; //store the converted hexadecimal value
+            std::istringstream(hexValue) >> std::hex >> charValue; //cnvert hex to int
+            decoded << static_cast<char>(charValue); //cast the int to char and add to the stream
+            i += 2; //skip the next two characters that were part of the hex value
+        } else {
+            decoded << c; //add the character as is if it's not a special case char
+        }
+    }
+
+    return decoded.str(); //cnvert stream to string
 }

@@ -418,15 +418,24 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
                 sort(folder_items.begin(), folder_items.end()); // sort items
                 std::string folders = "[";
+                std::string files = "[";
                 std::string folder_html = "";
                 size_t item_iter = 0;
                 int row_count = 0;
+                
+                std::string option_open = "<option>";
+                std::string option_close = "</option>";
+                std::string options = "";
+
 
                 while (item_iter < folder_items.size())
                 {
                     std::string item = folder_items[item_iter];
                     if (item.compare("sid") != 0 && item.compare("pass") != 0)
                     {
+                        // options for rename list
+                        options += option_open + item + option_close;
+
                         // start row
                         if (row_count % 9 == 0)
                         {
@@ -464,6 +473,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                         }
                         else
                         {
+                            files += "\"" + item + "\",";
+
                             folder_html +=
                                 "<div class='col-4 text-center text-wrap'>"
                                 "<a href='" +
@@ -502,9 +513,15 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     folder_html += "</div>";
 
                 // construct array of folders in cwd
-                if (row_count > 0)
+                if (row_count > 0 && folders.back() != '[' && files.back() != '[')
+                {
                     folders.pop_back();
+                    files.pop_back();
+                }
                 folders.push_back(']');
+                files.push_back(']');
+                logger.log(folders, LOGGER_DEBUG);
+                logger.log(files, LOGGER_DEBUG);
 
                 std::vector<std::string> path_elems = Utils::split(childpath_str, "/");
                 std::string drive = "";
@@ -586,7 +603,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "</h1>"
                     "</div>"
                     "<div class='col-1 text-center'>"
-                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#renameModal' disabled>"
+                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#renameFolderModal'>"
                     "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-pen' viewBox='0 0 16 16'>"
                     "<path d='m13.498.795.149-.149a1.207 1.207 0 1 1 1.707 1.708l-.149.148a1.5 1.5 0 0 1-.059 2.059L4.854 14.854a.5.5 0 0 1-.233.131l-4 1a.5.5 0 0 1-.606-.606l1-4a.5.5 0 0 1 .131-.232l9.642-9.642a.5.5 0 0 0-.642.056L6.854 4.854a.5.5 0 1 1-.708-.708L9.44.854A1.5 1.5 0 0 1 11.5.796a1.5 1.5 0 0 1 1.998-.001m-.644.766a.5.5 0 0 0-.707 0L1.95 11.756l-.764 3.057 3.057-.764L14.44 3.854a.5.5 0 0 0 0-.708z'/>"
                     "</svg><br/>"
@@ -671,6 +688,38 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                               "</div>"
                               "</div>"
 
+                    // WIPPPPPP
+                    "<div class='modal fade' id='renameFolderModal' tabindex='-1' aria-labelledby='renameFolderModalLabel' aria-hidden='true'>"
+                    "<div class='modal-dialog modal-dialog-centered'>"
+                    "<div class='modal-content'>"
+                    "<div class='modal-header'>"
+                    "<h1 class='modal-title fs-5' id='renameFolderModalLabel'>Rename an item</h1>"
+                    "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
+                    "</div>"
+                    "<div class='modal-body'>"
+                    "<form id='renameFolderForm' method='POST' action='/api/drive/rename/" +
+                    childpath_str + "'>"
+                                    "<div class='mb-3'>"
+                                    "<label for='item-old-name' class='col-form-label'>Item:</label>"
+                                    "<select name='old-name' class='form-select' aria-label='Default select example' id='item-old-name' form='renameFolderForm' required>"
+                                    "<option hidden disabled selected value> Select an item </option>"
+                                    + options +
+                                    "</select>"
+                                    "<label for='new-item-name' class='col-form-label'>New name:</label>"
+                                    "<input name='new-name' type='text' class='form-control' id='new-item-name' minlength=1 maxlength=255 required aria-describedby='folderHelp' oninput='setCustomValidity(\"\")'>"
+                                    "</div>"
+                                    "</form>"
+                                    "</div>"
+                                    "<div class='modal-footer'>"
+                                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                                    "<button type='submit' class='btn btn-primary' onclick='var folders = " +
+                    folders + "; var files = " + files + "; if ($(\"#renameFolderForm\")[0].checkValidity()) {if ($(\"#renameFolderForm\")[0][0].value.slice(-1)==\"/\" && folders.includes($(\"#renameFolderForm\")[0][1].value + \"/\") || $(\"#renameFolderForm\")[0][0].value.slice(-1)!=\"/\" && files.includes($(\"#renameFolderForm\")[0][1].value)) { $(\"#renameFolderForm\")[0][1].setCustomValidity(\"Item already exists.\"); $(\"#renameFolderForm\")[0].reportValidity(); } else {$(\"#renameFolderForm\").submit();} } else {$(\"#renameFolderForm\")[0][1].setCustomValidity(($(\"#renameFolderForm\")[0][1].value.length !== 0 ? \"Some of the input characters are bad.\" : \"Please fill out this field.\")); $(\"#renameFolderForm\")[0].reportValidity();}'>Rename</button>"
+                              "</div>"
+                              "</div>"
+                              "</div>"
+                              "</div>"
+
+
                               "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
                               "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
                               "crossorigin='anonymous'></script>"
@@ -686,6 +735,24 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                               "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
                               "});"
                               "</script>"
+                              "<script>"
+                                "$('#item-old-name').on('change', function (e) {"
+                                    "var selection = $(this).find('option:selected').text();"
+                                    
+                                    "if (selection.slice(-1)=== '/') {"
+                                        "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
+                                        "if($('#renameHelp').length==0) {"
+                                        "console.log(selection);"
+                                        "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
+                                        "}"
+                                    "}" 
+                                    "else {"
+                                        "$('#renameHelp').remove();"
+                                        "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
+                                    "}"
+                                "})"
+                              "</script>"
+
                               "<script>"
                               "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
                               "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
@@ -747,6 +814,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             std::string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
 
             std::vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+            filename = FeUtils::urlDecode(filename);
             std::vector<char> filename_vec(filename.begin(), filename.end());
 
             // get file content
@@ -886,8 +954,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
             close(sockfd);
             return;
         }
-        string childpath_str = parentpath_str + filename;
-
         vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
         vector<char> col_vec(filename.begin(), filename.end());
 
@@ -1108,6 +1174,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // comver tto vector<char>
         vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+        filename = FeUtils::urlDecode(filename);
         vector<char> filename_vec(filename.begin(), filename.end());
 
         if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
@@ -1194,8 +1261,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 // post with form attribtue
 void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-
-    logger.log("In rename filefolder", LOGGER_DEBUG);
     // of type /api/drive/rename/* where child directory is being served
     string childpath_str = req.path.substr(18);
     string username = get_username(childpath_str);
@@ -1224,7 +1289,8 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     if (valid_session_id.empty())
     {
         // for now, returning code for check on postman
-        res.set_code(401);
+        res.set_header("Location", "/401");
+        res.set_code(303);
         close(sockfd);
         return;
     }
@@ -1254,27 +1320,24 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     formParams[key] = value;
 
     // get new name
-    string newname = formParams["name"];
+    string oldname = FeUtils::urlDecode(formParams["old-name"]);
+    string newname = FeUtils::urlDecode(formParams["new-name"]);
     vector<char> newname_vec(newname.begin(), newname.end());
 
     logger.log("New name is:" + newname, LOGGER_DEBUG);
 
     // if we are trying to rename a file
-    if (!is_folder(child_path))
+    if (oldname.back() != '/')
     {
-        // get file name
-        string filename;
-        string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-
-        // comver tto vector<char>
-        vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-        vector<char> filename_vec(filename.begin(), filename.end());
+        // this works with UI - @PA
+        vector<char> parent_path_vec(childpath_str.begin(), childpath_str.end());
+        vector<char> filename_vec(oldname.begin(), oldname.end());
 
         if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
         {
 
             res.set_code(303);
-            res.set_header("Location", "/drive/" + parentpath_str);
+            res.set_header("Location", "/drive/" + childpath_str);
         }
         else
         {
@@ -1289,7 +1352,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
-
+        
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
         if (kv_successful(folder_content))
@@ -1300,13 +1363,16 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             // delete folder from parent
             // get parent path
             // get folder name
-            string foldername;
+            
+            // string foldername; @PA
+            string foldername = oldname;
 
             logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
             vector<string> split_filepath = Utils::split(childpath_str, "/");
-            string parentpath_str = split_parent_filename(split_filepath, foldername);
+            // string parentpath_str = split_parent_filename(split_filepath, foldername); @PA
 
-            foldername += '/';
+            // foldername += '/'; @PA
+            string parentpath_str = childpath_str; 
 
             logger.log("Parent path is " + parentpath_str, LOGGER_DEBUG);
             logger.log("Folder name is " + foldername, LOGGER_DEBUG);
