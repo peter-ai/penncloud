@@ -764,6 +764,7 @@ void Tablet::replay_log_from_stream(std::vector<char> &stream)
 
             // extract the inputs
             std::vector<char> inputs(stream.begin(), stream.begin() + inputs_size);
+            stream.erase(stream.begin(), stream.begin() + inputs_size);
 
             // if you're the primary, you need to acquire the locks first (secondary would already have acquired it during prepare)
             if (is_primary_during_transaction)

@@ -235,7 +235,7 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
     // check if the requesting server requires your checkpoint files
     std::vector<char> response;
     bool checkpoint_required;
-    // last check
+    // last checkpoint comparison
     if (BackendServer::last_checkpoint != sent_checkpoint_version)
     {
         response.push_back('C');
@@ -279,15 +279,77 @@ void KVSGroupServer::assist_with_recovery(std::vector<char> &inputs)
         {
             // sequence number indicates that the server has an END log for that operation
             // they should receive any operations AFTER this sequence number
+            // iterate until you find BEGN log for first operation STRICTLY GREATER than the provided sequence number
+            while (!log_file_data.empty())
+            {
+                // read 4 characters to get the sequence number of the operation
+                uint32_t operation_seq_num = BeUtils::network_vector_to_host_num(log_file_data);
+                if (operation_seq_num > sent_seq_num)
+                {
+                    break;
+                }
 
-            // TODO go through the log and provide LOGS WITH SEQ NUM STRICTLY GREATER THAN SEQ NUM SENT BY SERVER
+                // erase sequence number
+                log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
 
-            // // append the size of the checkpoint file to the front of the vector
-            // std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
-            // log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+                // read 4 characters to get the operation
+                std::vector<char> operation_vec(log_file_data.begin(), log_file_data.begin() + 4);
+                std::string operation(operation_vec.begin(), operation_vec.end());
+                log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
 
-            // // append the log_file_data vector to the end of response
-            // response.insert(response.end(), log_file_data.begin(), log_file_data.end());
+                // erase contents for different operations in log file
+                if (operation == "BEGN")
+                {
+                    log_file_data.erase(log_file_data.begin());
+                }
+                else if (operation == "PREP")
+                {
+                    // erase operation
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+                }
+                else if (operation == "CMMT")
+                {
+                    // erase operation
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+
+                    // read 4 characters to get the size of the inputs
+                    uint32_t inputs_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // extract the inputs
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + inputs_size);
+                }
+                else if (operation == "ABRT")
+                {
+                    // read 4 characters to get the size of the row key
+                    uint32_t row_name_size = BeUtils::network_vector_to_host_num(log_file_data);
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + 4);
+
+                    // erase the row name
+                    log_file_data.erase(log_file_data.begin(), log_file_data.begin() + row_name_size);
+                }
+            }
+
+            // append the size of the log file file to the front of the vector
+            std::vector<uint8_t> log_file_size_vec = BeUtils::host_num_to_network_vector(log_file_data.size());
+            log_file_data.insert(log_file_data.begin(), log_file_size_vec.begin(), log_file_size_vec.end());
+
+            // append the log_file_data vector to the end of response
+            response.insert(response.end(), log_file_data.begin(), log_file_data.end());
         }
     }
 
