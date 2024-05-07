@@ -74,6 +74,9 @@ std::string get_admin_message();
 
 bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 
+
+bool send_kvs_reco(struct kvs_args &kvs);
+
 /// @brief client server connection
 struct client_args
 {
