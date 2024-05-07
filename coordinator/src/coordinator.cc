@@ -795,7 +795,10 @@ std::string get_admin_message()
     return message;
 }
 
-/// @brief send init response to kvs
+/// @brief function to construct and send init message 
+/// @param kvs - kvs to send init to
+/// @param request - request message
+/// @return true is successful, false otherwise
 bool send_kvs_init(struct kvs_args &kvs, std::string &request)
 {
     bool successful = true;
@@ -821,6 +824,10 @@ bool send_kvs_init(struct kvs_args &kvs, std::string &request)
     return successful;
 }
 
+/// @brief function to construct and send reco message 
+/// @param kvs - kvs to send reco to
+/// @param request - request message
+/// @return true is successful, false otherwise
 bool send_kvs_reco(struct kvs_args &kvs)
 {
     bool successful = true;

@@ -72,9 +72,16 @@ void broadcast_to_cluster(int group);
 /// @return a specialized message to admin
 std::string get_admin_message();
 
+/// @brief function to construct and send init message 
+/// @param kvs - kvs to send init to
+/// @param request - request message
+/// @return true is successful, false otherwise
 bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 
-
+/// @brief function to construct and send reco message 
+/// @param kvs - kvs to send reco to
+/// @param request - request message
+/// @return true is successful, false otherwise
 bool send_kvs_reco(struct kvs_args &kvs);
 
 /// @brief client server connection
