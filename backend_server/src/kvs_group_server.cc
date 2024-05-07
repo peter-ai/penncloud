@@ -381,7 +381,14 @@ void KVSGroupServer::execute_two_phase_commit(std::vector<char> &inputs)
     }
 
     // wait for servers to respond with acks
-    BackendServer::wait_for_acks_from_servers(secondary_servers);
+    std::vector<int> dead_servers = BackendServer::wait_for_acks_from_servers(secondary_servers);
+    // remove dead servers from map of servers so we're not waiting on an ACK from them
+    for (int dead_server : dead_servers)
+    {
+        close(secondary_servers[dead_server]); // close fd for dead server
+        secondary_servers.erase(dead_server);  // remove dead server from map
+    }
+
     // read acks from all remaining servers, since these servers have read events available on their fds
     for (const auto &server : secondary_servers)
     {
@@ -425,45 +432,51 @@ int KVSGroupServer::construct_and_send_prepare(uint32_t operation_seq_num, std::
 /// @brief Handles votes from secondaries following PREPARE message
 bool KVSGroupServer::handle_secondary_votes(uint32_t operation_seq_num, std::unordered_map<int, int> &secondary_servers)
 {
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
-
-    // construct a vector of fds to wait on with timeout
-    std::vector<int> secondary_fds;
-    for (const auto &server : secondary_servers)
+    if (!secondary_servers.empty())
     {
-        secondary_fds.push_back(server.second);
-    }
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Waiting for votes from secondaries", 20);
 
-    // Wait up to 2 seconds for secondaries to respond to PREPARE command
-    if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
-    {
-        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Timeout exceeded - failed to receive votes from all secondaries", 20);
-        return false;
-    }
-    kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
-
-    // read votes from all secondaries
-    bool all_secondaries_in_favor = true;
-    for (int secondary_fd : secondary_fds)
-    {
-        BeUtils::ReadResult secondary_read = BeUtils::read_with_size(secondary_fd);
-        // return false if there was an error reading from a secondary
-        if (secondary_read.error_code != 0)
+        // construct a vector of fds to wait on with timeout
+        std::vector<int> secondary_fds;
+        for (const auto &server : secondary_servers)
         {
-            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary", 20);
+            secondary_fds.push_back(server.second);
+        }
+
+        // Wait up to 2 seconds for secondaries to respond to PREPARE command
+        if (BeUtils::wait_for_events(secondary_fds, 2000) < 0)
+        {
+            kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Timeout exceeded - failed to receive votes from all secondaries", 20);
             return false;
         }
-        // process vote sent by secondary
-        // extract vote from beginning of inputs
-        std::string vote(secondary_read.byte_stream.begin(), secondary_read.byte_stream.begin() + 4);
-        vote = Utils::to_lowercase(vote);
-        if (vote == "secn")
-        {
-            all_secondaries_in_favor = false;
-        }
-    }
 
-    return all_secondaries_in_favor;
+        kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Received all votes from secondaries", 20);
+
+        // read votes from all secondaries
+        bool all_secondaries_in_favor = true;
+        for (int secondary_fd : secondary_fds)
+        {
+            BeUtils::ReadResult secondary_read = BeUtils::read_with_size(secondary_fd);
+            // return false if there was an error reading from a secondary
+            if (secondary_read.error_code != 0)
+            {
+                kvs_group_server_logger.log("OP[" + std::to_string(operation_seq_num) + "] Failed to read vote from secondary", 20);
+                return false;
+            }
+            // process vote sent by secondary
+            // extract vote from beginning of inputs
+            std::string vote(secondary_read.byte_stream.begin(), secondary_read.byte_stream.begin() + 4);
+            vote = Utils::to_lowercase(vote);
+            if (vote == "secn")
+            {
+                all_secondaries_in_favor = false;
+            }
+        }
+
+        return all_secondaries_in_favor;
+    }
+    // no secondaries to read from, send true
+    return true;
 }
 
 /// @brief Construct and send COMMIT to secondary servers
