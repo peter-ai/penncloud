@@ -264,7 +264,7 @@ int main(int argc, char *argv[])
         logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_ERROR);
     }
     else
-    {   
+    {
         admin_msg.pop_back();
         admin_msg.pop_back();
         logger.log("Sent message to <Admin>: " + admin_msg, LOGGER_INFO);
@@ -465,11 +465,12 @@ void *kvs_thread(void *arg)
     std::vector<struct pollfd> fds(1);
     fds[0].fd = kvs->fd;
     fds[0].events = POLLIN;   // awaiting POLLIN event
-    int timeout_msecs = 4000; // timeout 4000 milliseconds = 4 seconds
+    int timeout_msecs = 3000; // timeout 4000 milliseconds = 4 seconds
     int ret;
 
     while ((ret = poll(fds.data(), fds.size(), timeout_msecs)))
     {
+        // logger.log("Poll stopped <" + kvs->server_addr + "> " + std::to_string(ret), LOGGER_WARN);
         if (ret > 0) // socket is ready to be read
         {
             // if events triggered, do stuff
@@ -518,7 +519,6 @@ void *kvs_thread(void *arg)
                 // Received PING from KVS
                 if (command.compare("PING") == 0)
                 {
-                    // TODO this was commented out to view other messages coming to coordinator
                     logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
                     if (!kvs->alive)
                     {
@@ -798,7 +798,7 @@ std::string get_admin_message()
     return message;
 }
 
-/// @brief function to construct and send init message 
+/// @brief function to construct and send init message
 /// @param kvs - kvs to send init to
 /// @param request - request message
 /// @return true is successful, false otherwise
@@ -827,7 +827,7 @@ bool send_kvs_init(struct kvs_args &kvs, std::string &request)
     return successful;
 }
 
-/// @brief function to construct and send reco message 
+/// @brief function to construct and send reco message
 /// @param kvs - kvs to send reco to
 /// @param request - request message
 /// @return true is successful, false otherwise
@@ -838,9 +838,9 @@ bool send_kvs_reco(struct kvs_args &kvs)
     std::string response = "";
 
     // construct message
-    for (auto &server: kvs_clusters[kvs.kvs_group])
+    for (auto &server : kvs_clusters[kvs.kvs_group])
     {
-        if (server.primary) 
+        if (server.primary)
         {
             response = server.server_addr + "\r\n";
             break;

@@ -94,9 +94,9 @@ namespace LoadBalancer
                 serverMutexes.at(server.first).lock(); // Lock server for reading
                 auto &data = server.second;
                 auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - data.lastHeartbeat);
-                if (duration.count() > 5)
+                if (duration.count() > 2)
                 {
-                    data.isActive = false; // Mark server as down if no heartbeat in last 5 seconds.
+                    data.isActive = false; // Mark server as down if no heartbeat in last 2 seconds.
                 }
                 else
                 {
@@ -161,6 +161,8 @@ namespace LoadBalancer
     {
         server_mutex.lock(); // Lock active servers for thread safety
 
+        loadbalancer_logger.log("Number of active servers - " + std::to_string(activeServers.size()), LOGGER_INFO);
+
         // Check if no active servers exist
         if (activeServers.empty())
         {
@@ -173,8 +175,6 @@ namespace LoadBalancer
         std::uniform_int_distribution<> dis(0, activeServers.size() - 1);
         int randomIndex = dis(generator);
 
-        loadbalancer_logger.log("index is " + std::to_string(randomIndex) + ")", 20);
-
         // Retrieve the server associated with the random index
         int server_port = activeServers.at(randomIndex);
         server_mutex.unlock(); // unlock active servers
@@ -185,8 +185,6 @@ namespace LoadBalancer
 
     void client_handler(const HttpRequest &request, HttpResponse &response)
     {
-        loadbalancer_logger.log("Entering client handler", 20); // DEBUG
-
         {
             // client is assigned a server that is alive
             std::string server = select_server();

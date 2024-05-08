@@ -152,6 +152,12 @@ void BackendServer::accept_and_handle_clients()
                 continue;
             }
 
+            if (is_dead)
+            {
+                close(client_fd);
+                continue;
+            }
+
             // extract port from client connection and initialize KVS_Client object
             int client_port = ntohs(client_addr.sin_port);
             be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
@@ -421,6 +427,10 @@ int BackendServer::dispatch_group_comm_thread()
         return -1;
     }
 
+    // // Set the group_comm_sock_fd socket to non-blocking mode
+    // int flags = fcntl(group_comm_sock_fd, F_GETFL, 0);
+    // fcntl(group_comm_sock_fd, F_SETFL, flags | O_NONBLOCK);
+
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
     std::thread group_comm_thread(accept_and_handle_group_comm, group_comm_sock_fd);
     group_comm_thread.detach();
@@ -461,6 +471,13 @@ void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
             {
                 be_logger.log("Unable to accept incoming connection from group server. Skipping", 30);
                 // error with incoming connection should NOT break the server loop
+                continue;
+            }
+
+            // server blocked above on accept - it should close this connection and jump out
+            if (is_dead && !is_recovering)
+            {
+                close(group_server_fd);
                 continue;
             }
 
@@ -785,11 +802,11 @@ void BackendServer::coordinate_checkpoint()
     {
         // initiate checkpoint as long as the server is alive and it's a primary
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
+
+        // Sleep for 60 seconds between each checkpoint
+        std::this_thread::sleep_for(std::chrono::seconds(60));
         if (!is_dead && is_primary)
         {
-            // Sleep for 30 seconds between each checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(60));
-
             // Begin checkpointing
             checkpoint_version++; // increment checkpoint version number
             // prepare version number as vector for message sending

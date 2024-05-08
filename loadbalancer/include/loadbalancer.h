@@ -29,11 +29,11 @@ namespace LoadBalancer
     };
     // Variables
     extern std::map<int, ServerData> servers;       // iterator for round-robin server selection, key is server port number
-    extern std::vector<int> activeServers;                      // vector of active server port numbers
+    extern std::vector<int> activeServers;          // vector of active server port numbers
     extern std::map<int, std::mutex> serverMutexes; // map of server mutexes, key is server port number
-    extern std::mutex server_mutex;                           // mutex for managing access to active servers
-    extern int client_listen_port;                            // the port number on which the LB listens to client connections
-    extern int server_listen_port;                            // the port number on which the LB listens to front end server connections
+    extern std::mutex server_mutex;                 // mutex for managing access to active servers
+    extern int client_listen_port;                  // the port number on which the LB listens to client connections
+    extern int server_listen_port;                  // the port number on which the LB listens to front end server connections
 
     // Functions
     int create_socket(int port);                               // Set up TCP socket bound to specified port
