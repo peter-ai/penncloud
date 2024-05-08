@@ -196,7 +196,7 @@ bool SMTPClient::start_connection(const std::vector<std::string> &serverIPs, int
     return false;
 }
 
-bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
+bool SMTPClient::sendEmail(const std::string &recipientEmail, const std::string &domain, const EmailData &email)
 {
     std::cout << domain << std::endl;
     std::string mxRecord = getMXRecord(domain);
@@ -249,7 +249,7 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     std::string senderWithAuthorizedDomain = Utils::split_on_first_delim(email.from, "@")[0] + "@seas.upenn.edu";
     
     //parse out
-    std::string to = Utils::split_on_first_delim(email.to, " ")[1];
+    //std::string to = Utils::split_on_first_delim(email.to, " ")[1];
     std::string from = Utils::split_on_first_delim(senderWithAuthorizedDomain, " ")[1];
 
     send_data("MAIL FROM:<" + from + ">\r\n");
@@ -260,7 +260,7 @@ bool SMTPClient::sendEmail(const std::string &domain, const EmailData &email)
     }
 
     // RCPT TO command
-    send_data("RCPT TO:<" + to + ">\r\n");
+    send_data("RCPT TO:<" + recipientEmail + ">\r\n");
     if (receive_data().find("250") != 0)
     {
         close(sock);

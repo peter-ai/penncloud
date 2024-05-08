@@ -19,9 +19,9 @@ namespace LoadBalancer
 {
     using namespace std;
 
-    std::unordered_map<int, ServerData> servers;
+    std::map<int, ServerData> servers;
     std::vector<int> activeServers;
-    std::unordered_map<int, std::mutex> serverMutexes;
+    std::map<int, std::mutex> serverMutexes;
     std::mutex server_mutex;
     int client_listen_port;
     int server_listen_port;
@@ -179,22 +179,6 @@ namespace LoadBalancer
         int server_port = activeServers.at(randomIndex);
         server_mutex.unlock(); // unlock active servers
 
-        // // Ensure the iterator is valid
-        // if (current_server == activeServers.end())
-        // {
-        //     current_server = activeServers.begin(); // Reset to start if at the end
-        // }
-
-        // // Select the current server
-        // int server_port = *current_server; // Dereference iterator to get current server port
-
-        // // Move to the next server for the next call
-        // ++current_server;
-        // if (current_server == activeServers.end())
-        // {
-        //     current_server = activeServers.begin(); // Wrap around if at the end
-        // }
-
         // Return the port number of the current server as a string
         return std::to_string(server_port);
     }
@@ -228,6 +212,7 @@ namespace LoadBalancer
         }
     }
 
+    //TO DO: change server map to ordered map on Key {8000 : ..., 8001 : ..., .... : ....}
     void lb_to_admin(int admin_port)
     {
         int sock = socket(AF_INET, SOCK_STREAM, 0);

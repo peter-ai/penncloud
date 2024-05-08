@@ -30,57 +30,77 @@ std::string parseEmailField(const std::string &emailContents, const std::string 
 	return "";
 }
 
-//URL Decoding: creates column value based off UIDL
+// URL Decoding: creates column value based off UIDL
 
-std::string urlEncode(const std::string &value) {
-    std::ostringstream escaped;
-    escaped.fill('0');
-    escaped << std::hex;
+std::string urlEncode(const std::string &value)
+{
+	std::ostringstream escaped;
+	escaped.fill('0');
+	escaped << std::hex;
 
-    for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
-        std::string::value_type c = (*i);
+	for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i)
+	{
+		std::string::value_type c = (*i);
 
-        // keep alphanumeric and other accepted characters as is
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            escaped << c;
-            continue;
-        }
+		// keep alphanumeric and other accepted characters as is
+		if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
+		{
+			escaped << c;
+			continue;
+		}
 
-        // remaining characters are percent-encoded
-        escaped << std::uppercase;
-        escaped << '%' << std::setw(2) << int((unsigned char) c);
-        escaped << std::nouppercase;
-    }
+		// remaining characters are percent-encoded
+		escaped << std::uppercase;
+		escaped << '%' << std::setw(2) << int((unsigned char)c);
+		escaped << std::nouppercase;
+	}
 
-    return escaped.str();
+	return escaped.str();
 }
 
-//URL Decoding: takes URL value and decodes it
+// URL Decoding: takes URL value and decodes it
 
-std::string urlDecode(const std::string &str) {
-    std::ostringstream decoded; // This will hold the decoded result
+std::string urlDecode(const std::string &str)
+{
+	std::ostringstream decoded; // This will hold the decoded result
 
-    //loop over each character in the string
-    for (size_t i = 0; i < str.size(); ++i) {
-        char c = str[i]; //get the current character
+	// loop over each character in the string
+	for (size_t i = 0; i < str.size(); ++i)
+	{
+		char c = str[i]; // get the current character
 
-        if (c == '+') { //'+' in URLs represents a space
-            decoded << ' ';
-        } else if (c == '%' && i + 2 < str.size()) {
-            //if '%' is found and there are at least two characters after it
-            std::string hexValue = str.substr(i + 1, 2); //extract the next two characters
-            int charValue; //store the converted hexadecimal value
-            std::istringstream(hexValue) >> std::hex >> charValue; //cnvert hex to int
-            decoded << static_cast<char>(charValue); //cast the int to char and add to the stream
-            i += 2; //skip the next two characters that were part of the hex value
-        } else {
-            decoded << c; //add the character as is if it's not a special case char
-        }
-    }
+		if (c == '+')
+		{ //'+' in URLs represents a space
+			decoded << ' ';
+		}
+		else if (c == '%' && i + 2 < str.size())
+		{
+			// if '%' is found and there are at least two characters after it
+			std::string hexValue = str.substr(i + 1, 2);		   // extract the next two characters
+			int charValue;										   // store the converted hexadecimal value
+			std::istringstream(hexValue) >> std::hex >> charValue; // cnvert hex to int
+			decoded << static_cast<char>(charValue);			   // cast the int to char and add to the stream
+			i += 2;												   // skip the next two characters that were part of the hex value
+		}
+		else
+		{
+			decoded << c; // add the character as is if it's not a special case char
+		}
+	}
 
-    return decoded.str(); //convert stream to string
+	return decoded.str(); // convert stream to string
 }
 
+std::string get_time_and_date() {
+	time_t now = time(0);
+	struct tm timeStruct;
+	char buf[100];
+	timeStruct = *localtime(&now);
+	//Mon Feb 05 23:00:00 2018
+	strftime(buf, sizeof(buf), "%c", &timeStruct);
+	string s = buf;
+	return s;
+}
 
 // EmailData parseEmail(const std::vector<char> &source)
 // {
@@ -165,87 +185,86 @@ std::vector<std::vector<char>> split_vec_first_delim_mbox(const std::vector<char
 
 EmailData parseEmailFromMailForm(const HttpRequest &req)
 {
-    EmailData emailData;
+	EmailData emailData;
 
-    // Check if the request contains a body
-    if (!req.body_as_bytes().empty())
-    {
-        // Find form boundary
-        std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
-        std::string header_str(headers[0]);
+	// Check if the request contains a body
+	if (!req.body_as_bytes().empty())
+	{
+		// Find form boundary
+		std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
+		std::string header_str(headers[0]);
 
-        // boundary provided by form
-        std::vector<std::string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
-        std::string boundary = "--" + find_boundary.back(); // Prepend with -- to match the actual boundary
-        std::vector<char> bound_vec(boundary.begin(), boundary.end());
+		// boundary provided by form
+		std::vector<std::string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
+		std::string boundary = "--" + find_boundary.back(); // Prepend with -- to match the actual boundary
+		std::vector<char> bound_vec(boundary.begin(), boundary.end());
 
-        std::vector<char> line_feed = {'\r', '\n'};
+		std::vector<char> line_feed = {'\r', '\n'};
 
-        // split body on boundary
-        std::vector<std::vector<char>> parts = split_vector_mbox(req.body_as_bytes(), bound_vec);
+		// split body on boundary
+		std::vector<std::vector<char>> parts = split_vector_mbox(req.body_as_bytes(), bound_vec);
 
-        // Skip the first and the last part as they are the boundary preamble and closing
-        for (size_t i = 1; i < parts.size() - 1; ++i)
-        {
-            std::vector<char> double_line_feed = {'\r', '\n', '\r', '\n'}; // Correct delimiter for headers and body separation
+		// Skip the first and the last part as they are the boundary preamble and closing
+		for (size_t i = 1; i < parts.size() - 1; ++i)
+		{
+			std::vector<char> double_line_feed = {'\r', '\n', '\r', '\n'}; // Correct delimiter for headers and body separation
 
-            std::vector<std::vector<char>> header_and_body = split_vec_first_delim_mbox(parts[i], double_line_feed);
+			std::vector<std::vector<char>> header_and_body = split_vec_first_delim_mbox(parts[i], double_line_feed);
 
-            if (header_and_body.size() < 2)
-                continue; // In case of any parsing error
+			if (header_and_body.size() < 2)
+				continue; // In case of any parsing error
 
-            std::string headers(header_and_body[0].begin(), header_and_body[0].end());
-            std::string body(header_and_body[1].begin(), header_and_body[1].end());
+			std::string headers(header_and_body[0].begin(), header_and_body[0].end());
+			std::string body(header_and_body[1].begin(), header_and_body[1].end());
 
-            headers = Utils::trim(headers);
-            body = Utils::trim(body);
+			headers = Utils::trim(headers);
+			body = Utils::trim(body);
 
-            // Finding the name attribute in the headers
-            auto name_pos = headers.find("name=");
+			// Finding the name attribute in the headers
+			auto name_pos = headers.find("name=");
 
-            if (name_pos != std::string::npos)
-            {
-                size_t start = name_pos + 6; // Skip 'name="'
+			if (name_pos != std::string::npos)
+			{
+				size_t start = name_pos + 6; // Skip 'name="'
 
-                size_t end = headers.find('"', start);
-                std::string name = headers.substr(start, end - start);
+				size_t end = headers.find('"', start);
+				std::string name = headers.substr(start, end - start);
 
-                // Store the corresponding value in the correct field
-                if (name == "time")
-                {
-                    emailData.time = "time: " + body;
-                }
-                else if (name == "from")
-                {
-                    emailData.from = "from: " + body;
-                }
-                else if (name == "to")
-                {
-                    emailData.to = "to: " + body;
-                }
-                else if (name == "subject")
-                {
-                    emailData.subject = "subject: " + body;
-                }
-                else if (name == "body")
-                {
-                    emailData.body = "body: " + body;
-                }
-                else if (name == "oldBody")
-                {
-                    emailData.oldBody = "oldBody: " + body;
-                }
-            }
-        }
-    }
-    // std::cout << emailData.time << std::endl;
-    // std::cout << emailData.to << std::endl;
-    // std::cout << emailData.from << std::endl;
-    // std::cout << emailData.subject << std::endl;
-    // std::cout << emailData.body << std::endl;
-    // std::cout << emailData.oldBody << std::endl;
+				// Store the corresponding value in the correct field
 
-    return emailData;
+				emailData.time = "time: " + get_time_and_date();
+
+				if (name == "from")
+				{
+					emailData.from = "from: " + body;
+				}
+				else if (name == "to")
+				{
+					emailData.to = "to: " + body;
+				}
+				else if (name == "subject")
+				{
+					emailData.subject = "subject: " + body;
+				}
+				else if (name == "body")
+				{
+					emailData.body = "body: " + body;
+				}
+				else if (name == "oldBody")
+				{
+					emailData.oldBody = "oldBody: " + body;
+				}
+			}
+		}
+	}
+	// std::cout << emailData.time << std::endl;
+	// std::cout << emailData.to << std::endl;
+	// std::cout << emailData.from << std::endl;
+	// std::cout << emailData.subject << std::endl;
+	// std::cout << emailData.body << std::endl;
+	// std::cout << emailData.oldBody << std::endl;
+
+	return emailData;
 }
 
 /**
@@ -259,7 +278,7 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 
 string parseMailboxPathToRowKey(const string &path)
 {
-    std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
+	std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
 	std::smatch matches;
 
 	// Execute the regex search
@@ -330,7 +349,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 	bool all_forwards_sent = true;
 
 	EmailData emailToForward = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
+	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
@@ -339,7 +358,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
+			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
@@ -390,7 +409,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	bool all_responses_sent = true;
 
 	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
+	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
@@ -400,7 +419,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
+			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
 
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
@@ -452,7 +471,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 	cout << "path: " << request.path << endl;
 
 	string rowKey = parseMailboxPathToRowKey(request.path);
-	
+
 	cout << "row of deletion" << rowKey << endl;
 
 	string emailId = request.get_qparam("uidl");
@@ -489,8 +508,8 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		return;
 	}
 
-	const EmailData email = parseEmailFromMailForm(request);	 // email data
-	string recipients = Utils::split_on_first_delim(email.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
+	const EmailData email = parseEmailFromMailForm(request);		   // email data
+	string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	cout << "RECIPIENTS: " + recipients << endl;
 	vector<string> recipientsEmails = parseRecipients(recipients);
 	bool all_emails_sent = true;
@@ -503,7 +522,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
+			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
 
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> value = charifyEmailContent(email);
@@ -523,7 +542,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, email))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, email))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to send email externally.");
@@ -1011,7 +1030,8 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 							  "</div>"
 							  "<div class='col-12'>"
 							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit'>Send</button>"
-							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" + cookies["user"] + "/mbox\"'>Back</button>"
+							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+			cookies["user"] + "/mbox\"'>Back</button>"
 							  "</div>"
 							  "</div>"
 							  "</form>"

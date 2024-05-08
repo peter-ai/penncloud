@@ -14,6 +14,7 @@
 #include <tuple>
 #include <list>
 #include <random>
+#include <map>
 #include "../../http_server/include/http_request.h"
 #include "../../http_server/include/http_response.h"
 #include "../../http_server/include/http_server.h"
@@ -27,9 +28,9 @@ namespace LoadBalancer
         bool isActive;                                       // boolean if server is up/down
     };
     // Variables
-    extern std::unordered_map<int, ServerData> servers;       // iterator for round-robin server selection, key is server port number
+    extern std::map<int, ServerData> servers;       // iterator for round-robin server selection, key is server port number
     extern std::vector<int> activeServers;                      // vector of active server port numbers
-    extern std::unordered_map<int, std::mutex> serverMutexes; // map of server mutexes, key is server port number
+    extern std::map<int, std::mutex> serverMutexes; // map of server mutexes, key is server port number
     extern std::mutex server_mutex;                           // mutex for managing access to active servers
     extern int client_listen_port;                            // the port number on which the LB listens to client connections
     extern int server_listen_port;                            // the port number on which the LB listens to front end server connections
