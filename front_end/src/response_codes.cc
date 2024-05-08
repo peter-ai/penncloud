@@ -301,10 +301,10 @@ void error_409_page(const HttpRequest &req, HttpResponse &res)
     res.set_header("Content-Type", "text/html");
 }
 
-/// @brief 409 conflict page
+/// @brief 404 not found (valid request)
 /// @param req HttpRequest object
 /// @param res HttpResponse object
-void error_409_page(const HttpRequest &req, HttpResponse &res)
+void error_404_page(const HttpRequest &req, HttpResponse &res)
 {
     std::string page =
         "<!doctype html>"
