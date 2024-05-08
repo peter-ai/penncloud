@@ -134,11 +134,8 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
     if (kvs_servers.find(servername) != kvs_servers.end())
     {
         int port = kvs_servers[servername];
-        // int fd = FeUtils::open_socket("127.0.0.1", port);
-
-        //   ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
-        // temp: @todo uncomment
-        ssize_t bytes_sent = 5;
+        int fd = FeUtils::open_socket("127.0.0.1", port);
+        ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to KVS server at port " + to_string(port), LOGGER_ERROR);
@@ -149,17 +146,13 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         }
         server_status[servername] = status;
         logger.log("Server status of " + servername + " is now  " + to_string(server_status[servername]), LOGGER_INFO);
-        // close(fd)
+        close(fd);
     }
     else if (lb_servers.find(servername) != lb_servers.end())
     {
         int port = lb_servers[servername];
-        // int fd = FeUtils::open_socket("127.0.0.1", port);
-
-        // ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
-
-        // temp: @todo uncomment
-        ssize_t bytes_sent = 5;
+        int fd = FeUtils::open_socket("127.0.0.1", port);
+        ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to FE server at port " + to_string(port), LOGGER_ERROR);
@@ -170,7 +163,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         }
         server_status[servername] = status;
         logger.log("Server status of " + servername + "is now=" + to_string(server_status[servername]), LOGGER_INFO);
-        // close(fd)
+        close(fd);
     }
     else
     {
