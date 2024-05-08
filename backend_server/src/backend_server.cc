@@ -733,6 +733,12 @@ void BackendServer::admin_live()
 
     std::vector<char> &stream = primary_recovery_response.byte_stream;
 
+    // across all log replays, take the max sequence number in case you become primary again and have to initiate with that seq num
+    seq_num_lock.lock();
+    uint32_t max_seq_num_from_replay = seq_num;
+    seq_num_lock.unlock();
+    be_logger.log("Sequence number before log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
+
     // loop through the number of tablets. For each one, you can expect the following:
     // Log - First 4 bytes are a number, and the next x bytes are the number of corresponding bytes
     // If first letter was NOT a C, then in each case, all you have to do is deserialize your checkpoint file for this tablet, and then read the logs
@@ -769,26 +775,30 @@ void BackendServer::admin_live()
 
             // replay your downloaded logs
             be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
-            tablet->replay_log_from_stream(downloaded_logs.at(tablet_range));
+            max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_stream(downloaded_logs.at(tablet_range)));
         }
 
         // Extract the log next and replay it
         // read 4 characters to get the size of the log
         uint32_t log_file_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
-
         // extract the log data and remove it from the stream
         std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
         // replay the log to update the tablet
         be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
-        tablet->replay_log_from_stream(log_data);
+        max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_stream(log_data));
 
         // replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
         be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
-        tablet->replay_log_from_file(tablet->log_filename);
+        max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_file(BackendServer::disk_dir + tablet->log_filename));
     }
+
+    seq_num_lock.lock();
+    seq_num = std::max(seq_num, max_seq_num_from_replay);
+    seq_num_lock.unlock();
+    be_logger.log("Sequence number after log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
 
     // set flag to false to indicate server is now alive
     is_recovering = false;
