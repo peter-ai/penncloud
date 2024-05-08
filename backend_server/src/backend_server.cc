@@ -247,6 +247,14 @@ void BackendServer::handle_coord_comm()
                     // set primary port
                     primary_port = std::stoi(new_servers.at(0).substr(IP.length()));
                     be_logger.log("New primary at " + std::to_string(primary_port), 20);
+                    // check if the primary port supplied by the coordinator is your group port
+                    // if so, this server takes on the role of the primary
+                    if (primary_port == group_port)
+                    {
+                        is_primary = true;
+                        // now that this server is the primary, it must update it's initiating checkpoint number to the last checkpoint
+                        checkpoint_version = last_checkpoint;
+                    }
 
                     // clear secondary ports in preparation for new secondaries
                     secondary_ports_lock.lock();
@@ -426,10 +434,6 @@ int BackendServer::dispatch_group_comm_thread()
         be_logger.log("Failed to bind server to group port " + std::to_string(group_port) + ". Exiting.", 40);
         return -1;
     }
-
-    // // Set the group_comm_sock_fd socket to non-blocking mode
-    // int flags = fcntl(group_comm_sock_fd, F_GETFL, 0);
-    // fcntl(group_comm_sock_fd, F_SETFL, flags | O_NONBLOCK);
 
     be_logger.log("Backend server accepting messages from group on port " + std::to_string(group_port), 20);
     std::thread group_comm_thread(accept_and_handle_group_comm, group_comm_sock_fd);
@@ -682,6 +686,8 @@ void BackendServer::admin_live()
     recovery_msg.insert(recovery_msg.end(), last_cp_num.begin(), last_cp_num.end());
     std::vector<uint8_t> last_seq_num = BeUtils::host_num_to_network_vector(BackendServer::seq_num);
     recovery_msg.insert(recovery_msg.end(), last_seq_num.begin(), last_seq_num.end());
+
+    be_logger.log("Size of recovery message is (should be 17) - " + std::to_string(recovery_msg.size()), LOGGER_DEBUG);
 
     // Download and clear your logs. This is to ensure that primary can send you requests, and it'll log to your log file
     // The downloaded logs are used if your checkpoint version is the same as the primary's
