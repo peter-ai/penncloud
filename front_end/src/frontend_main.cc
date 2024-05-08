@@ -35,6 +35,8 @@ int main(int argc, char *argv[])
 	HttpServer::get("/compose", compose_email);
 	HttpServer::get("/account", update_password_page);
 	HttpServer::get("/update_success", update_password_success_page);
+	HttpServer::get("/502", error_502_page); // Bad gateway
+	HttpServer::get("/500", error_500_page); // Internal server error
 	HttpServer::get("/409", error_409_page); // Conflict
 	HttpServer::get("/401", error_401_page); // Unauthorized
 	HttpServer::get("/400", error_400_page); // Bad API request
