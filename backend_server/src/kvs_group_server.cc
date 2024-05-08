@@ -190,6 +190,10 @@ void KVSGroupServer::checkpoint(std::vector<char> &inputs)
 
     // update version number of last checkpoint on this server
     BackendServer::last_checkpoint = version_num;
+    // reset the sequence number, since all data is now saved
+    BackendServer::seq_num_lock.lock();
+    BackendServer::seq_num = 0;
+    BackendServer::seq_num_lock.unlock();
 
     // Send acknowledgement back to primary
     std::vector<char> ack_response = {'A', 'C', 'K', 'N', ' '};
