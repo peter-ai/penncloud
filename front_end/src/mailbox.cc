@@ -307,6 +307,8 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 // responds to an email
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
+	Logger logger("Reply");
+	logger.log(request.body_as_bytes().data(), LOGGER_DEBUG);
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
 	{
@@ -319,6 +321,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	EmailData emailResponse = parseEmailFromMailForm(request);
 	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
+
 	for (string recipientEmail : recipientsEmails)
 	{
 		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
@@ -616,22 +619,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 			// parse email body
 			unordered_map<string, string> email = parseEmailBody(kvsResponse);
 
-			/*
-				TODO: Reply
-					- Create button
-					- On button click:
-						- Hide time
-						- Make to editable
-						- Make prepend "RE:" to subject and make editable
-						- Make recipients ediable
-						- Hide from
-						- Add mb-3 to body, clear text and make editable
-						- Clear style from oldBody to make it unhidden
-					- On submit
-						- update time field and submit
-			*/
-
-
 			std::string page =
 				"<!doctype html>"
 				"<html lang='en' data-bs-theme='dark'>"
@@ -641,7 +628,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				"<meta name='viewport' content='width=device-width, initial-scale=1'>"
 				"<meta name='description' content='CIS 5050 Spr24'>"
 				"<meta name='keywords' content='SignUp'>"
-				"<title>Sign Up - PennCloud.com</title>"
+				"<title>Email - PennCloud.com</title>"
 				"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
 				"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
 				"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -665,9 +652,9 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				"<div class='navbar-nav'>"
 				"<a class='nav-link' href='/home'>Home</a>"
 				"<a class='nav-link' href='/drive/" +
-				cookies["user"] + "/'>Drive</a>"
+				username + "/'>Drive</a>"
 								  "<a class='nav-link active' aria-current='page' href='/" +
-				cookies["user"] + "/mbox'>Email</a>"
+				username + "/mbox'>Email</a>"
 								  "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
 								  "<a class='nav-link' href='/account'>Account</a>"
 								  "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
@@ -684,61 +671,76 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 								  "</nav>"
 
 								  "<div class='container-fluid'>"
-								  "<div class='row mx-2 mt-3 mb-4'>"
-								  "<div class='col-11'>"
+								  "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
+								  "<div class='col-6'>"
 								  "<h1 class='display-6'>"
 								  "Email"
 								  "</h1>"
 								  "</div>"
-								  "<div class='col-1'>"
-								  "<h1 class='display-6'>"
-								  "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' fill='currentColor' class='bi bi-check2-circle' viewBox='0 0 16 16'>"
-								  "<path d='M2.5 8a5.5 5.5 0 0 1 8.25-4.764.5.5 0 0 0 .5-.866A6.5 6.5 0 1 0 14.5 8a.5.5 0 0 0-1 0 5.5 5.5 0 1 1-11 0'/>"
-								  "<path d='M15.354 3.354a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0z'/>"
-								  "</svg>"
-								  "</h1>"
+								  "<div class='col-2'>"
+								  "<button id='reply' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+								  "</svg> Reply"
+								  "</button>"
 								  "</div>"
+								  "<!--<div class='col-2'>"
+								  "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+								  "</svg> Reply All"
+								  "</button>"
+								  "</div>-->"
+								  "<div class='col-2'>"
+								  "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
+  								  "<path d='M5.921 11.9 1.353 8.62a.72.72 0 0 1 0-1.238L5.921 4.1A.716.716 0 0 1 7 4.719V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+								  "</svg> Forward"
+								  "</button>"
+								  "</div>"
+								  "<div class='col-2'></div>"
 								  "</div>"
 								  "<div class='row mt-2 mx-2'>"
 								  "<div class='col-2'></div>"
 								  "<div class='col-8 mb-4'>"
-								  "<form id='emailForm' action='/api/" +
-				cookies["user"] + "/mbox/send' method='POST' enctype='multipart/form-data'>"
+								  "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
 								  "<div class='form-group mb-3'>"
 								  "<div class='mb-3'>"
-								  "<div mb-2'><input type='hidden' class='form-control' id='from' name='from' value='" +
-				cookies["user"] + "@penncloud.com'></div>"
 									
 								  "<div class='mb-3'>"
 								  "<label for='time' class='form-label'>Received:</label>"
-								  "<input type='text' class='form-control' id='time' name='time' value='"+email["time"]+"' required disabled>"
+								  "<input type='text' class='form-control' id='time' name='time' value='"+email["time"]+"' required readonly>"
 								  "</div>"
 								  "<div class='mb-3'>"
 								  "<label for='from' class='form-label'>From:</label>"
-								  "<input type='email' class='form-control' id='from' name='from' value='"+email["from"]+"' multiple required disabled>"
+								  "<input type='email' class='form-control' id='from' name='from' value='"+email["from"]+"' multiple required readonly>"
 								  "</div>"
 								  "<div class='mb-3'>"
 								  "<label for='to' class='form-label'>Recipients:</label>"
-								  "<input type='email' class='form-control' id='to' name='to' value='"+email["to"]+"' multiple required disabled>"
+								  "<input type='email' class='form-control' id='to' name='to' value='"+email["to"]+"' multiple required readonly>"
+								  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
 								  "</div>"
 								  "<div class='mb-3'>"
 								  "<label for='subject' class='form-label'>Subject:</label>"
-								  "<input type='text' class='form-control' id='subject' name='subject' value='"+email["subject"]+"' required disabled>"
+								  "<input type='text' class='form-control' id='subject' name='subject' value='"+email["subject"]+"' required readonly>"
 								  "</div>"
 								  "<div>"
 								  "<label for='body' class='form-label'>Body:</label>"
-								  "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required disabled>"+email["body"]+"</textarea>"
+								  "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required readonly>"+email["body"]+"</textarea>"
 								  "</div>"
 								  "<div>"
-								  "<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required disabled>Time: "
-								  +email["time"]+"\nFrom: "+email["from"]+"\nTo: "+email["to"]+"\nSubject: "+email["subject"]+"\n"+email["body"]+
+								  "<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
+								  "-------------------------------------------------------------------------------------------------\n"
+								  "Time: "+email["time"]+"\nFrom: "+email["from"]+"\nTo: "+email["to"]+"\nSubject: "+email["subject"]+"\n" //+email["body"]+
 								  "</textarea>"
 								  "</div>"
 								  "</div>"
 								  "<div class='col-12 mb-2'>"
-								  "<!--<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>-->"
+								  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
 								  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
-				cookies["user"] + "/mbox\"'>Back</button>"
+				username + "/mbox\"'>Back</button>"
 								  "</div>"
 								  "</div>"
 								  "</form>"
@@ -750,6 +752,86 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 								  "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
 								  "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
 								  "crossorigin='anonymous'></script>"
+								"<script>"
+								"var body=`"+email["body"]+"`;"
+								"var from='"+email["from"]+"';"
+								"var to='"+email["to"]+"';"
+								"var subject='"+email["subject"]+"';"
+								"var uidl='"+colKey+"';"
+								"$('#reply').on('click', function(){"
+									"if ($(this).hasClass('active')) {"
+										"if ($('#forward').hasClass('active'))"
+										"{"
+											"$('#forward').removeClass('active');"
+											"$('#forward').attr('aria-pressed', 'false');"
+											"$('#subject').val($('#subject').val().replace('FWD: ', ''));"
+										"}"
+
+										"$('label[for=time], input#time').hide();"
+										"$('#to').attr('readonly', false);"
+										"$('#to').val(from);"
+										"$('#subject').val('RE: '+$('#subject').val());"
+										"$('#subject').attr('readonly', false);"
+										"$('label[for=from], input#from').hide();"
+										"$('#body').attr('readonly', false);"
+										"$('#body').text('');"
+										"$('#body').addClass('mb-3');"
+										"$('#oldBody').css('display', '');"
+										"$('#emailForm').attr('action', '/api/"+username+"/mbox/reply?uidl='+uidl);"
+									"}"
+									"else"
+									"{"
+										"$('label[for=time], input#time').show();"
+										"$('#to').attr('readonly', true);"
+										"$('#to').val(to);"
+										"$('#subject').val(subject);"
+										"$('#subject').attr('readonly', true);"
+										"$('label[for=from], input#from').show();"
+										"$('#body').attr('readonly', true);"
+										"$('#body').text(body);"
+										"$('#body').removeClass('mb-3');"
+										"$('#oldBody').css('display', 'none');"
+									"}"
+								"});"
+
+								"$('#forward').on('click', function(){"
+									"if ($(this).hasClass('active')) {"
+										"if ($('#reply').hasClass('active'))"
+										"if ($('#reply').hasClass('active'))"
+										"{"
+											"$('#reply').removeClass('active');"
+											"$('#reply').attr('aria-pressed', 'false');"
+											"$('#subject').val($('#subject').val().replace('RE: ', ''));"
+										"}"
+
+										"$('label[for=time], input#time').hide();"
+										"$('#to').attr('readonly', false);"
+										"$('#to').val('');"
+										"$('#subject').val('FWD: '+$('#subject').val());"
+										"$('#subject').prop('readonly', false);"
+										"$('label[for=from], input#from').hide();"
+										"$('#body').attr('readonly', false);"
+										"$('#body').text('');"
+										"$('#body').addClass('mb-3');"
+										"$('#oldBody').css('display', '');"
+										"$('#emailForm').attr('action', '/api/"+username+"/mbox/forward?uidl='+uidl);"
+									"}"
+									"else"
+									"{"
+										"$('label[for=time], input#time').show();"
+										"$('#to').attr('readonly', true);"
+										"$('#to').val(to);"
+										"$('#subject').val(subject);"
+										"$('#subject').attr('readonly', true);"
+										"$('label[for=from], input#from').show();"
+										"$('#body').attr('readonly', true);"
+										"$('#body').text(body);"
+										"$('#body').removeClass('mb-3');"
+										"$('#oldBody').css('display', 'none');"
+									"}"
+								"});"
+								"</script>"
+
 								  "<script>"
 								  "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
 								  "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
@@ -867,7 +949,6 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				string mail = FeUtils::urlDecode(email);
 				vector<string> mail_items = Utils::split(mail, "\r");
 				unordered_map<string, string> email_elements;
-
 				for (auto &item : mail_items)
 				{
 					int split_idx = item.find(':');
@@ -924,7 +1005,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				"<meta name='viewport' content='width=device-width, initial-scale=1'>"
 				"<meta name='description' content='CIS 5050 Spr24'>"
 				"<meta name='keywords' content='Home'>"
-				"<title>Home - PennCloud.com</title>"
+				"<title>Mailbox - PennCloud.com</title>"
 				"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
 				"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
 				"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -1189,7 +1270,7 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 			"<meta name='viewport' content='width=device-width, initial-scale=1'>"
 			"<meta name='description' content='CIS 5050 Spr24'>"
 			"<meta name='keywords' content='SignUp'>"
-			"<title>Sign Up - PennCloud.com</title>"
+			"<title>Compose Email - PennCloud.com</title>"
 			"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
 			"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
 			"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"

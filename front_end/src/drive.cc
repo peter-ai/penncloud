@@ -485,7 +485,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                     "<meta name='description' content='CIS 5050 Spr24'>"
                     "<meta name='keywords' content='Home'>"
-                    "<title>Home - PennCloud.com</title>"
+                    "<title>Drive - PennCloud.com</title>"
                     "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
                     "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
                     "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -794,6 +794,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
     }
 }
 
+// uploads a new file
 void upload_file(const HttpRequest &req, HttpResponse &res)
 {
 
@@ -1039,7 +1040,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
 }
 
 // deletes file or folder
-// @todo is this a post or a get? I think post with no body?
 void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     logger.log("In delete filefolder", LOGGER_DEBUG);
@@ -1157,7 +1157,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 }
 
 // renames file or folder
-// post with form attribtue
 void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // of type /api/drive/rename/* where child directory is being served
