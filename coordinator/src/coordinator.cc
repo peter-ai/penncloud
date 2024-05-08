@@ -565,8 +565,6 @@ void *kvs_thread(void *arg)
                     }
                     else
                     {
-                        // kvs is alive - send recovery message
-                        kvs->alive = true;
                         send_kvs_reco(*kvs);
                     }
                 }
