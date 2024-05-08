@@ -600,32 +600,204 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 			return;
 		}
 
+		// get mailbox and email ID
 		string rowKey = parseMailboxPathToRowKey(request.path);
-		// get UIDL from path query
 		string colKey = request.get_qparam("uidl");
 
+		// construct row and column keys
 		vector<char> row(rowKey.begin(), rowKey.end());
 		vector<char> col(colKey.begin(), colKey.end());
-		// Fetch the email from KVS
-		logger.log("Fetching email at ROW " + rowKey + " and COLUMN " + colKey, LOGGER_DEBUG); // DEBUG
+
+		// fetch the email from KVS
 		vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
 
 		if (FeUtils::kv_success(kvsResponse))
 		{
-			response.set_code(200); // OK
-			// get rid of "+OK "
-			response.append_body_bytes(kvsResponse.data() + 4,
-									   kvsResponse.size() - 4);
-			logger.log("Successful response from KVS received at email handler", LOGGER_DEBUG); // DEBUG
+			// parse email body
+			unordered_map<string, string> email = parseEmailBody(kvsResponse);
+
+			/*
+				TODO: Reply
+					- Create button
+					- On button click:
+						- Hide time
+						- Make to editable
+						- Make prepend "RE:" to subject and make editable
+						- Make recipients ediable
+						- Hide from
+						- Add mb-3 to body, clear text and make editable
+						- Clear style from oldBody to make it unhidden
+					- On submit
+						- update time field and submit
+			*/
+
+
+			std::string page =
+				"<!doctype html>"
+				"<html lang='en' data-bs-theme='dark'>"
+				"<head>"
+				"<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+				"<meta content='utf-8' http-equiv='encoding'>"
+				"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+				"<meta name='description' content='CIS 5050 Spr24'>"
+				"<meta name='keywords' content='SignUp'>"
+				"<title>Sign Up - PennCloud.com</title>"
+				"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
+				"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
+				"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
+				"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+				"</head>"
+
+				"<body onload='setTheme()'>"
+				"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
+				"<div class='container-fluid'>"
+				"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
+				"class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
+				"<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
+				"</svg>"
+				"PennCloud"
+				"</span>"
+				"<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
+				"<span class='navbar-toggler-icon'></span>"
+				"</button>"
+				"<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
+				"<div class='navbar-nav'>"
+				"<a class='nav-link' href='/home'>Home</a>"
+				"<a class='nav-link' href='/drive/" +
+				cookies["user"] + "/'>Drive</a>"
+								  "<a class='nav-link active' aria-current='page' href='/" +
+				cookies["user"] + "/mbox'>Email</a>"
+								  "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+								  "<a class='nav-link' href='/account'>Account</a>"
+								  "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+								  "<input type='hidden' />"
+								  "<button class='btn nav-link' type='submit'>Logout</button>"
+								  "</form>"
+								  "</div>"
+								  "</div>"
+								  "<div class='form-check form-switch form-check-reverse'>"
+								  "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+								  "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+								  "</div>"
+								  "</div>"
+								  "</nav>"
+
+								  "<div class='container-fluid'>"
+								  "<div class='row mx-2 mt-3 mb-4'>"
+								  "<div class='col-11'>"
+								  "<h1 class='display-6'>"
+								  "Email"
+								  "</h1>"
+								  "</div>"
+								  "<div class='col-1'>"
+								  "<h1 class='display-6'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' fill='currentColor' class='bi bi-check2-circle' viewBox='0 0 16 16'>"
+								  "<path d='M2.5 8a5.5 5.5 0 0 1 8.25-4.764.5.5 0 0 0 .5-.866A6.5 6.5 0 1 0 14.5 8a.5.5 0 0 0-1 0 5.5 5.5 0 1 1-11 0'/>"
+								  "<path d='M15.354 3.354a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0z'/>"
+								  "</svg>"
+								  "</h1>"
+								  "</div>"
+								  "</div>"
+								  "<div class='row mt-2 mx-2'>"
+								  "<div class='col-2'></div>"
+								  "<div class='col-8 mb-4'>"
+								  "<form id='emailForm' action='/api/" +
+				cookies["user"] + "/mbox/send' method='POST' enctype='multipart/form-data'>"
+								  "<div class='form-group mb-3'>"
+								  "<div class='mb-3'>"
+								  "<div mb-2'><input type='hidden' class='form-control' id='from' name='from' value='" +
+				cookies["user"] + "@penncloud.com'></div>"
+									
+								  "<div class='mb-3'>"
+								  "<label for='time' class='form-label'>Received:</label>"
+								  "<input type='text' class='form-control' id='time' name='time' value='"+email["time"]+"' required disabled>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='from' class='form-label'>From:</label>"
+								  "<input type='email' class='form-control' id='from' name='from' value='"+email["from"]+"' multiple required disabled>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='to' class='form-label'>Recipients:</label>"
+								  "<input type='email' class='form-control' id='to' name='to' value='"+email["to"]+"' multiple required disabled>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='subject' class='form-label'>Subject:</label>"
+								  "<input type='text' class='form-control' id='subject' name='subject' value='"+email["subject"]+"' required disabled>"
+								  "</div>"
+								  "<div>"
+								  "<label for='body' class='form-label'>Body:</label>"
+								  "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required disabled>"+email["body"]+"</textarea>"
+								  "</div>"
+								  "<div>"
+								  "<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required disabled>Time: "
+								  +email["time"]+"\nFrom: "+email["from"]+"\nTo: "+email["to"]+"\nSubject: "+email["subject"]+"\n"+email["body"]+
+								  "</textarea>"
+								  "</div>"
+								  "</div>"
+								  "<div class='col-12 mb-2'>"
+								  "<!--<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>-->"
+								  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+				cookies["user"] + "/mbox\"'>Back</button>"
+								  "</div>"
+								  "</div>"
+								  "</form>"
+								  "</div>"
+								  "<div class='col-2'></div>"
+								  "</div>"
+								  "</div>"
+
+								  "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+								  "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+								  "crossorigin='anonymous'></script>"
+								  "<script>"
+								  "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+								  "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+								  "$('#switchLabel').html('Light Mode');"
+								  "sessionStorage.setItem('data-bs-theme', 'light');"
+								  ""
+								  "}"
+								  "else {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+								  "$('#switchLabel').html('Dark Mode');"
+								  "sessionStorage.setItem('data-bs-theme', 'dark');"
+								  "}"
+								  "});"
+								  "</script>"
+								  "<script>"
+								  "function setTheme() {"
+								  "var theme = sessionStorage.getItem('data-bs-theme');"
+								  "if (theme !== null) {"
+								  "if (theme === 'dark') {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+								  "$('#switchLabel').html('Dark Mode');"
+								  "$('#flexSwitchCheckReverse').attr('checked', true);"
+								  "}"
+								  "else {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+								  "$('#switchLabel').html('Light Mode');"
+								  "$('#flexSwitchCheckReverse').attr('checked', false);"
+								  "}"
+								  "}"
+								  "};"
+								  "</script>"
+								  "</body>";
+
+			response.set_code(200);
+			response.append_body_str(page);
+			response.set_header("Content-Type", "text/html");
+			response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+			response.set_header("Pragma", "no-cache");
+			response.set_header("Expires", "0");
+			FeUtils::set_cookies(response, username, valid_session_id);
 		}
 		else
 		{
-			response.append_body_str("-ER Error processing request.");
-			response.set_code(404); // Bad request
+			response.set_code(303);
+			response.set_header("Location", "/404"); // Not found
 		}
-		response.set_header("Content-Type", "text/html");
 		close(socket_fd);
-		// end of handler --> http server sends response back to client
 	}
 	else
 	{
@@ -719,14 +891,16 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 												"<td>" +
 					recipient_list + "</td>"
 									 "<td class='text-center'>"
-
-									 "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
-									 "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
-									 "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
-									 "</svg>"
-									 "</td>"
-									 "<td class='text-center'>"
-									 "<form role='form' method='POST' action='/api/" +
+									 "<a href='/" +
+					username + "/mbox?uidl=" + email + "'>"
+													   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
+													   "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
+													   "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
+													   "</svg>"
+													   "</a>"
+													   "</td>"
+													   "<td class='text-center'>"
+													   "<form role='form' method='POST' action='/api/" +
 					username + "/mbox/delete?uidl=" + email + "'>"
 															  "<input type='hidden' name='test' value='" +
 					email + "' />"
@@ -1075,28 +1249,28 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 							  "</div>"
 							  "<div class='row mt-2 mx-2'>"
 							  "<div class='col-2'></div>"
-							  "<div class='col-8'>"
+							  "<div class='col-8 mb-4'>"
 							  "<form id='sendEmailForm' action='/api/" +
 			cookies["user"] + "/mbox/send' method='POST' enctype='multipart/form-data'>"
 							  "<div class='form-group'>"
 							  "<div class='mb-3'>"
-							  "<div mb-2'><input type='hidden' class='form-control' id='from' name='from' value='" +
+							  "<div><input type='hidden' class='form-control' id='from' name='from' value='" +
 			cookies["user"] + "@penncloud.com'></div>"
-							  "<div mb-2'><input type='hidden' class='form-control' id='time' name='time' value=''></div>"
-							  "<div class='form-floating mb-2'>"
+							  "<div><input type='hidden' class='form-control' id='time' name='time' value=''></div>"
+							  "<div class='form-floating mb-3'>"
 							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='to' required multiple placeholder=''>"
 							  "<label for='to' class='form-label'>To:</label>"
 							  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
 							  "</div>"
-							  "<div class='form-floating mb-2'>"
+							  "<div class='form-floating mb-3'>"
 							  "<input type='text' class='form-control' id='subject' name='subject' required placeholder=''>"
 							  "<label for='subject' class='form-label'>Subject:</label>"
 							  "</div>"
 							  "<div class='form-floating'>"
 							  "<textarea id='body' name='body' class='form-control' placeholder='' form='sendEmailForm' rows='15' style='height:100%;' required></textarea>"
-							  "<label for='body'>Body:</label>"
+							  "<label for='body' class='form-label'>Body:</label>"
 							  "</div>"
-							  "<div mb-2'><input type='hidden' class='form-control' id='oldBody' name='oldBody' value=''></div>"
+							  "<div><input type='hidden' class='form-control' id='oldBody' name='oldBody' value=''></div>"
 							  "</div>"
 							  "<div class='col-12'>"
 							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#sendEmailForm\").submit();'>Send</button>"
@@ -1161,4 +1335,40 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 		response.set_code(303);
 		response.set_header("Location", "/401");
 	}
+}
+
+/// @brief helper function that parses email body after retrieval from KVS
+/// @param kvs_response response from retrieving a valid email from KVS
+/// @return reutrns an unordered map of email components
+std::unordered_map<std::string, std::string> parseEmailBody(std::vector<char> kvs_response)
+{
+	string email(kvs_response.data() + 4);
+	string time, from, to, subject, body, oldBody;
+	int time_idx, from_idx, to_idx, subject_idx, body_idx, oldBody_idx;
+	time_idx = email.find("time:");
+	from_idx = email.find("from:");
+	to_idx = email.find("to:");
+	subject_idx = email.find("subject:");
+	body_idx = email.find("body:");
+	oldBody_idx = email.find("oldBody:");
+	time = Utils::split_on_first_delim(email.substr(time_idx, from_idx), ":")[1].substr(1);
+	from = Utils::split(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
+	to = Utils::split(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
+	subject = Utils::split(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
+	body = Utils::split(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
+	oldBody = Utils::split(email.substr(oldBody_idx), ":")[1].substr(1);
+	time.pop_back();
+	from.pop_back();
+	to.pop_back();
+	subject.pop_back();
+	body.pop_back();
+	oldBody.pop_back();
+
+	return unordered_map<string, string>{
+		{"time", time},
+		{"from", from},
+		{"to", to},
+		{"subject", subject},
+		{"body", body},
+		{"oldBody", oldBody}};
 }
