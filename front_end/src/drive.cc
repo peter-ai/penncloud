@@ -175,7 +175,6 @@ bool delete_folder(int fd, vector<char> parent_folder)
 
     if (!contents.empty())
     {
-        logger.log("Parent folder " + string(parent_folder.begin(), parent_folder.end()) + " not empty", LOGGER_INFO);
         // Iterate through each element in the formatted contents
         for (auto col_name : contents)
         {
@@ -341,9 +340,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
 // there are no other get requests
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    // @PETER ADDED
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
-    // TODO: @PETER ADDED - EVERY HANDLER MUST CHECK COOKIES TO MAKE SURE USER IS VALID
 
     if (cookies.count("user") && cookies.count("sid"))
     {
@@ -375,8 +372,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // validate session id
         string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-        // if invalid, return an error?
-        // @todo :: redirect to login page?
+
+        // redirect to login if invalid sid
         if (valid_session_id.empty())
         {
             // for now, returning code for check on postman
