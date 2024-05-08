@@ -53,55 +53,6 @@ bool is_folder(const vector<char> &vec)
     return vec.back() == '/';
 }
 
-bool kv_successful(const vector<char> &vec)
-{
-    // Check if the vector has at least 3 characters
-    if (vec.size() < 3)
-    {
-        return false;
-    }
-
-    // Define the expected prefix
-    vector<char> prefix = {'+', 'O', 'K'};
-
-    // Check if the first three characters match the prefix
-    return equal(prefix.begin(), prefix.end(), vec.begin());
-}
-
-// // Function to split a vector<char> based on a vector<char> delimiter
-// vector<vector<char>> FeUtils::split_vector(const vector<char> &data, const vector<char> &delimiter)
-// {
-//     vector<vector<char>> result;
-//     size_t start = 0;
-//     size_t end = data.size();
-
-//     if (data.size() == 0)
-//     {
-//         return {{}};
-//     }
-
-//     while (start < end)
-//     {
-//         // Find the next occurrence of delimiter starting from 'start'
-//         auto pos = search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
-
-//         if (pos == data.end())
-//         {
-//             // No delimiter found, copy the rest of the vector
-//             result.emplace_back(data.begin() + start, data.end());
-//             break;
-//         }
-//         else
-//         {
-//             // Delimiter found, copy up to the delimiter and move 'start' past the delimiter
-//             result.emplace_back(data.begin() + start, pos);
-//             start = distance(data.begin(), pos) + delimiter.size();
-//         }
-//     }
-
-//     return result;
-// }
-
 // Function to split a vector<char> based on the first occurrence of a vector<char> delimiter
 vector<vector<char>> split_vec_first_delim(const vector<char> &data, const vector<char> &delimiter)
 {
@@ -186,7 +137,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
             if (!is_folder(col_name))
             {
                 // If it's a file, delete it
-                if (kv_successful(FeUtils::kv_del(fd, parent_folder, col_name)))
+                if (FeUtils::kv_success(FeUtils::kv_del(fd, parent_folder, col_name)))
                 {
                     logger.log("Deleted file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
                 }
@@ -207,7 +158,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
     }
 
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_del_row(fd, parent_folder)))
+    if (FeUtils::kv_success(FeUtils::kv_del_row(fd, parent_folder)))
     {
         return true;
     }
@@ -268,7 +219,7 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
 
     logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) + " to " + new_parent_str, LOGGER_INFO);
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
+    if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
     {
         logger.log("Renamed parent folder " + pfolder + " to: " + new_parent_str, LOGGER_INFO);
         return true;
@@ -323,7 +274,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
     }
     logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
+    if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
     {
         logger.log("Renamed parent folder " + pfolder + " to: " + string(new_foldername.begin(), new_foldername.end()), LOGGER_INFO);
         return true;
@@ -390,7 +341,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-            if (kv_successful(folder_content))
+            if (FeUtils::kv_success(folder_content))
             {
                 // content list, remove '+OK<sp>'
                 std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
@@ -799,7 +750,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             // get file content
             std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
-            if (kv_successful(file_content))
+            if (FeUtils::kv_success(file_content))
             {
                 // get binary from 4th char onward (ignore +OK<sp>)
                 std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
@@ -936,7 +887,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
 
         vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
 
-        if (kv_successful(kvs_resp))
+        if (FeUtils::kv_success(kvs_resp))
         {
             // @todo should we instead get row for the page they are on?
             res.set_code(303); // OK
@@ -1047,7 +998,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         {
             vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
 
-            if (kv_successful(response))
+            if (FeUtils::kv_success(response))
             {
                 // create new column for row
                 vector<char> folder_row = row_name;
@@ -1139,7 +1090,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         filename = FeUtils::urlDecode(filename);
         vector<char> filename_vec(filename.begin(), filename.end());
 
-        if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+        if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
 
             res.set_code(303);
@@ -1160,7 +1111,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
             // recursively delete the folders children
             if (delete_folder(sockfd, child_path))
@@ -1178,7 +1129,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
                 vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
                 // dleete the folder from the parent folder
-                if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
                     // redirect
                     res.set_code(303);
@@ -1284,7 +1235,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
         vector<char> filename_vec(oldname.begin(), oldname.end());
 
-        if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
+        if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
         {
 
             res.set_code(303);
@@ -1303,7 +1254,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
 
             newname += '/';
@@ -1321,7 +1272,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             if (rename_subfolders(sockfd, child_path, new_folderpath))
             {
                 // dleete the folder from the parent folder
-                if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
+                if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
                 {
                     // redirect
                     res.set_code(303);
@@ -1435,7 +1386,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
         // if error, return
-        if (!kv_successful(file_content))
+        if (!FeUtils::kv_success(file_content))
         {
             logger.log("1378 setting 400", LOGGER_DEBUG);
             res.set_code(303);
@@ -1446,7 +1397,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
 
         // delete file from old parent
-        if (!kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+        if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
             logger.log("Could not delete file " + filename + " from old parent " + parentpath_str, LOGGER_WARN);
             res.set_code(303);
@@ -1460,7 +1411,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         }
 
         // put file into new parent
-        if (!kv_successful(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
+        if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
         {
             logger.log("Could not add file " + filename + " to new parent " + newparent, LOGGER_WARN);
             res.set_code(303);
@@ -1490,7 +1441,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
 
             // move folder from parent
@@ -1518,7 +1469,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 logger.log("Rename recursion success", LOGGER_DEBUG);
 
                 // Delete folder from old parent
-                if (!kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
                     logger.log("Could not delete file " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
                     res.set_code(303);
@@ -1527,7 +1478,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
 
                 // put file into new parent
-                if (!kv_successful(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
+                if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
                 {
                     logger.log("Could not add file " + foldername + " to new parent " + newparent, LOGGER_WARN);
                     res.set_code(303);
