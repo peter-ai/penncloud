@@ -16,9 +16,6 @@
 /// @param res HttpResponse object
 void signup_handler(const HttpRequest &req, HttpResponse &res)
 {
-    // TODO: VALIDATE THAT INPUT IS LOWER CASE
-    // VALIDATE THAT PASSWORD IS WITHIN LENGTH REQUIREMENTS
-
     // Setup logger
     Logger logger("SignUp Handler");
     logger.log("Received POST request", LOGGER_INFO);
@@ -375,6 +372,7 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
 
     // get cookies
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
     if (cookies.count("user") && cookies.count("sid"))
     {
         FeUtils::set_cookies(res, cookies["user"], cookies["sid"]);
@@ -804,7 +802,7 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
 
             // set response headers
             res.set_header("Content-Type", "text/html");
-            res.set_header("Location", "/update_success"); // TODO: Validate
+            res.set_header("Location", "/update_success");
         }
         // otherwise send them back to login page
         else
@@ -843,7 +841,7 @@ bool validate_password(int kvs_fd, std::string &username, std::string &password)
     const std::vector<char> kvs_res = FeUtils::kv_get(
         kvs_fd,
         row_key,
-        std::vector<char>({'p', 'a', 's', 's'})); // TODO: RETRY???
+        std::vector<char>({'p', 'a', 's', 's'})); 
 
     // if good response from KVS
     if (FeUtils::kv_success(kvs_res))
@@ -877,7 +875,6 @@ bool validate_password(int kvs_fd, std::string &username, std::string &password)
     else
     {
         return false;
-        // TODO: RETRY??? -- while loop?; need a function to just call to get latest info from coordinator and refresh global map, close stale socket and create new one
     }
 }
 

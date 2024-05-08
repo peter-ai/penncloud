@@ -221,7 +221,7 @@ void BackendServer::handle_coord_comm()
             BeUtils::write_with_crlf(coord_sock_fd, ping);
 
             // wait for a potential broadcast message
-            if (BeUtils::wait_for_events({coord_sock_fd}, 1) >= 0)
+            if (BeUtils::wait_for_events({coord_sock_fd}, 1000) >= 0)
             {
                 be_logger.log("Received broadcast from coordinator", 20);
 

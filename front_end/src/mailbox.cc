@@ -549,7 +549,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Email Handler");
 	logger.log("Received POST request", LOGGER_INFO);
-	logger.log("Received POST request", LOGGER_INFO);
 	logger.log("Path is: " + request.path, LOGGER_INFO);
 
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
@@ -645,7 +644,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 
 		if (startsWith(kvsResponse, "+OK"))
 		{
-			response.set_code(200); // OK
+			// OK
 			// get rid of "+OK "
 			// response.append_body_bytes(kvsResponse.data() + 4,
 			// 						   kvsResponse.size() - 4);
@@ -711,7 +710,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 						   "<h1 class='display-6'>Inbox</h1>"
 						   "</div>"
 						   "<div class='col-2 text-center'>"
-						   "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#composeModal' style='width: 80%;' disabled>"
+						   "<button type='button' class='btn btn-primary text-center' style='width: 80%;' onclick=\"location.href='../compose'\">"
 						   "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-pencil-square' viewBox='0 0 16 16'>"
 						   "<path d='M15.502 1.94a.5.5 0 0 1 0 .706L14.459 3.69l-2-2L13.502.646a.5.5 0 0 1 .707 0l1.293 1.293zm-1.75 2.456-2-2L4.939 9.21a.5.5 0 0 0-.121.196l-.805 2.414a.25.25 0 0 0 .316.316l2.414-.805a.5.5 0 0 0 .196-.12l6.813-6.814z'/>"
 						   "<path fill-rule='evenodd' d='M1 13.5A1.5 1.5 0 0 0 2.5 15h11a1.5 1.5 0 0 0 1.5-1.5v-6a.5.5 0 0 0-1 0v6a.5.5 0 0 1-.5.5h-11a.5.5 0 0 1-.5-.5v-11a.5.5 0 0 1 .5-.5H9a.5.5 0 0 0 0-1H2.5A1.5 1.5 0 0 0 1 2.5z'/>"
@@ -882,6 +881,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 						   "</script>"
 						   "</body>"
 						   "</html>";
+			response.set_code(200);
 			response.append_body_str(page);
 			response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
 			response.set_header("Pragma", "no-cache");
@@ -909,4 +909,165 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 	}
 
 	// end of handler --> http server sends response back to client
+}
+
+void compose_email(const HttpRequest &request, HttpResponse &response)
+{
+	Logger logger("Compose Email");
+	logger.log("Checking details", LOGGER_INFO);
+
+	// get cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+	if (cookies.count("user") && cookies.count("sid"))
+	{
+		FeUtils::set_cookies(response, cookies["user"], cookies["sid"]);
+
+		std::string page =
+			"<!doctype html>"
+			"<html lang='en' data-bs-theme='dark'>"
+			"<head>"
+			"<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+			"<meta content='utf-8' http-equiv='encoding'>"
+			"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+			"<meta name='description' content='CIS 5050 Spr24'>"
+			"<meta name='keywords' content='SignUp'>"
+			"<title>Sign Up - PennCloud.com</title>"
+			"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
+			"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
+			"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
+			"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+			"</head>"
+
+			"<body onload='setTheme()'>"
+			"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
+			"<div class='container-fluid'>"
+			"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
+			"<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
+			"class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
+			"<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
+			"</svg>"
+			"PennCloud"
+			"</span>"
+			"<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
+			"<span class='navbar-toggler-icon'></span>"
+			"</button>"
+			"<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
+			"<div class='navbar-nav'>"
+			"<a class='nav-link' href='/home'>Home</a>"
+			"<a class='nav-link' href='/drive/" +
+			cookies["user"] + "/'>Drive</a>"
+							  "<a class='nav-link active' aria-current='page' href='/" +
+			cookies["user"] + "/mbox'>Email</a>"
+							  "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+							  "<a class='nav-link' href='/account'>Account</a>"
+							  "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+							  "<input type='hidden' />"
+							  "<button class='btn nav-link' type='submit'>Logout</button>"
+							  "</form>"
+							  "</div>"
+							  "</div>"
+							  "<div class='form-check form-switch form-check-reverse'>"
+							  "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+							  "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+							  "</div>"
+							  "</div>"
+							  "</nav>"
+
+							  "<div class='container-fluid'>"
+							  "<div class='row mx-2 mt-3 mb-4'>"
+							  "<div class='col-11'>"
+							  "<h1 class='display-6'>"
+							  "Compose new email"
+							  "</h1>"
+							  "</div>"
+							  "<div class='col-1'>"
+							  "<h1 class='display-6'>"
+							  "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' fill='currentColor' class='bi bi-check2-circle' viewBox='0 0 16 16'>"
+							  "<path d='M2.5 8a5.5 5.5 0 0 1 8.25-4.764.5.5 0 0 0 .5-.866A6.5 6.5 0 1 0 14.5 8a.5.5 0 0 0-1 0 5.5 5.5 0 1 1-11 0'/>"
+							  "<path d='M15.354 3.354a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0z'/>"
+							  "</svg>"
+							  "</h1>"
+							  "</div>"
+							  "</div>"
+							  "<div class='row mt-2 mx-2'>"
+							  "<div class='col-2'></div>"
+							  "<div class='col-8'>"
+							  "<form id='sendEmailForm' action='' method='POST' enctype='multipart/form-data'>"
+							  "<div class='form-group'>"
+							  "<div class='mb-3'>"
+							  "<div class='form-floating mb-2'>"
+							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='emails' required multiple placeholder=''>"
+							  "<label for='to' class='form-label'>To:</label>"
+							  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
+							  "</div>"
+							  "<div class='form-floating mb-2'>"
+							  "<input type='text' class='form-control' id='subject' name='subject' required placeholder=''>"
+							  "<label for='subject' class='form-label'>Subject:</label>"
+							  "</div>"
+							  "<div class='form-floating'>"
+							  "<textarea id='body' name='body' class='form-control' placeholder='' form='sendEmailForm' rows='15' style='height:100%;' required></textarea>"
+							  "<label for='body'>Body:</label>"
+							  "</div>"
+							  "</div>"
+							  "<div class='col-12'>"
+							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit'>Send</button>"
+							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" + cookies["user"] + "/mbox\"'>Back</button>"
+							  "</div>"
+							  "</div>"
+							  "</form>"
+							  "</div>"
+							  "<div class='col-2'></div>"
+							  "</div>"
+							  "</div>"
+
+							  "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+							  "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+							  "crossorigin='anonymous'></script>"
+							  "<script>"
+							  "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+							  "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+							  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+							  "$('#switchLabel').html('Light Mode');"
+							  "sessionStorage.setItem('data-bs-theme', 'light');"
+							  ""
+							  "}"
+							  "else {"
+							  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+							  "$('#switchLabel').html('Dark Mode');"
+							  "sessionStorage.setItem('data-bs-theme', 'dark');"
+							  "}"
+							  "});"
+							  "</script>"
+							  "<script>"
+							  "function setTheme() {"
+							  "var theme = sessionStorage.getItem('data-bs-theme');"
+							  "if (theme !== null) {"
+							  "if (theme === 'dark') {"
+							  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+							  "$('#switchLabel').html('Dark Mode');"
+							  "$('#flexSwitchCheckReverse').attr('checked', true);"
+							  "}"
+							  "else {"
+							  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+							  "$('#switchLabel').html('Light Mode');"
+							  "$('#flexSwitchCheckReverse').attr('checked', false);"
+							  "}"
+							  "}"
+							  "};"
+							  "</script>"
+							  "</body>";
+
+		response.set_code(200);
+		response.append_body_str(page);
+		response.set_header("Content-Type", "text/html");
+		response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+		response.set_header("Pragma", "no-cache");
+		response.set_header("Expires", "0");
+	}
+	// unauthorized
+	else
+	{
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
 }

@@ -51,5 +51,6 @@ void deleteEmail_handler(const HttpRequest& request, HttpResponse& response);
 void sendEmail_handler(const HttpRequest& request, HttpResponse& response);
 void email_handler(const HttpRequest& request, HttpResponse& response);
 void mailbox_handler(const HttpRequest& request, HttpResponse& response);
+void compose_email(const HttpRequest& request, HttpResponse& response);
 
 #endif // EMAIL_SERVER_H
