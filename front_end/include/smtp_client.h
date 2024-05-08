@@ -51,5 +51,5 @@ private:
 public:
     static int sock;             // between your SMTP client and the SMTP server. It represents the live connection stream through which your client sends and receives data
 
-    static bool sendEmail(const std::string &domain, const EmailData &email);
+    static bool sendEmail(const std::string &recipientEmail, const std::string &domain, const EmailData &email);
 };

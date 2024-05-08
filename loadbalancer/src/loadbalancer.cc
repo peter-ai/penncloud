@@ -210,6 +210,7 @@ namespace LoadBalancer
         }
     }
 
+    //TO DO: change server map to ordered map on Key {8000 : ..., 8001 : ..., .... : ....}
     void lb_to_admin(int admin_port)
     {
         int sock = socket(AF_INET, SOCK_STREAM, 0);
