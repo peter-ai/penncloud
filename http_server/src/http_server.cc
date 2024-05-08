@@ -157,12 +157,19 @@ void HttpServer::accept_and_handle_clients()
                 continue;
             }
 
+            if (is_dead)
+            {
+                close(client_fd);
+                continue;
+            }
+
             // extract port from client connection and initialize Client object
             int client_port = ntohs(client_addr.sin_port);
-            http_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
 
             // initialize Client object
             Client client(client_fd);
+
+            http_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
             pthread_t client_thread;
             pthread_create(&client_thread, nullptr, client_thread_adapter, &client);
 
@@ -412,7 +419,7 @@ void HttpServer::start_heartbeat_thread(int lb_port, int server_port)
         while (true) {
             if (!is_dead) {
                 send_heartbeat(lb_port, server_port);
-                std::this_thread::sleep_for(std::chrono::seconds(1));  // send a heartbeat every 10 seconds
+                std::this_thread::sleep_for(std::chrono::seconds(1));  // send a heartbeat every second
             }
         } })
             .detach();

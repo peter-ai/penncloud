@@ -19,9 +19,9 @@ namespace LoadBalancer
 {
     using namespace std;
 
-    std::unordered_map<int, ServerData> servers;
+    std::map<int, ServerData> servers;
     std::vector<int> activeServers;
-    std::unordered_map<int, std::mutex> serverMutexes;
+    std::map<int, std::mutex> serverMutexes;
     std::mutex server_mutex;
     int client_listen_port;
     int server_listen_port;
@@ -94,9 +94,9 @@ namespace LoadBalancer
                 serverMutexes.at(server.first).lock(); // Lock server for reading
                 auto &data = server.second;
                 auto duration = std::chrono::duration_cast<std::chrono::seconds>(now - data.lastHeartbeat);
-                if (duration.count() > 5)
+                if (duration.count() > 2)
                 {
-                    data.isActive = false; // Mark server as down if no heartbeat in last 5 seconds.
+                    data.isActive = false; // Mark server as down if no heartbeat in last 2 seconds.
                 }
                 else
                 {
@@ -161,6 +161,8 @@ namespace LoadBalancer
     {
         server_mutex.lock(); // Lock active servers for thread safety
 
+        loadbalancer_logger.log("Number of active servers - " + std::to_string(activeServers.size()), LOGGER_INFO);
+
         // Check if no active servers exist
         if (activeServers.empty())
         {
@@ -173,27 +175,9 @@ namespace LoadBalancer
         std::uniform_int_distribution<> dis(0, activeServers.size() - 1);
         int randomIndex = dis(generator);
 
-        loadbalancer_logger.log("index is " + std::to_string(randomIndex) + ")", 20);
-
         // Retrieve the server associated with the random index
         int server_port = activeServers.at(randomIndex);
         server_mutex.unlock(); // unlock active servers
-
-        // // Ensure the iterator is valid
-        // if (current_server == activeServers.end())
-        // {
-        //     current_server = activeServers.begin(); // Reset to start if at the end
-        // }
-
-        // // Select the current server
-        // int server_port = *current_server; // Dereference iterator to get current server port
-
-        // // Move to the next server for the next call
-        // ++current_server;
-        // if (current_server == activeServers.end())
-        // {
-        //     current_server = activeServers.begin(); // Wrap around if at the end
-        // }
 
         // Return the port number of the current server as a string
         return std::to_string(server_port);
@@ -201,8 +185,6 @@ namespace LoadBalancer
 
     void client_handler(const HttpRequest &request, HttpResponse &response)
     {
-        loadbalancer_logger.log("Entering client handler", 20); // DEBUG
-
         {
             // client is assigned a server that is alive
             std::string server = select_server();
