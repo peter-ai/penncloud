@@ -57,6 +57,7 @@ public:
             {404, "Not Found"},
             {405, "Method Not Allowed"},
             {409, "Conflict"}, // request conflict with current state of resource (e.g., signing up as a user that already exists)
+            {500, "Internal Server Error"},
             {501, "Not Implemented"},
             {502, "Bad Gateway"}, // for email relay
             {503, "Service Unavailable"},

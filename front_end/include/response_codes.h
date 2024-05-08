@@ -1,6 +1,16 @@
 #include "../utils/include/fe_utils.h"
 #include "../../http_server/include/http_server.h"
 
+/// @brief 502 internal server error
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void error_502_page(const HttpRequest &req, HttpResponse &res);
+
+/// @brief 500 internal server error
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void error_500_page(const HttpRequest &req, HttpResponse &res);
+
 /// @brief 409 conflict page
 /// @param req HttpRequest object
 /// @param res HttpResponse object
