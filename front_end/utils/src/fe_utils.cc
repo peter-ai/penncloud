@@ -37,9 +37,6 @@ size_t writeto_kvs(std::vector<char> &msg, int fd)
         total_bytes_sent += bytes_sent;
     }
 
-    // logging message
-    fe_utils_logger.log("Message Sent to KVS (" + std::to_string(total_bytes_sent) + " bytes) - " + std::string(msg.begin(), msg.end()), LOGGER_INFO);
-
     return total_bytes_sent;
 }
 
@@ -288,7 +285,7 @@ std::vector<char> FeUtils::kv_del(int fd, std::vector<char> row, std::vector<cha
     insert_arg(fn_string, col);
     std::vector<char> response = {};
 
-    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_INFO);
 
     // send message to kvs and check for error
     if (writeto_kvs(fn_string, fd) == 0)
@@ -511,7 +508,7 @@ std::vector<char> FeUtils::kv_del_row(int fd, std::vector<char> row)
     fn_string.push_back('\b');
     std::vector<char> response = {};
 
-    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_INFO);
 
     // send message to kvs and check for error
     if (writeto_kvs(fn_string, fd) == 0)
@@ -536,16 +533,12 @@ std::vector<char> FeUtils::kv_rename_row(int fd, std::vector<char> oldrow, std::
     std::string cmd = "RNMR";
     std::vector<char> fn_string(cmd.begin(), cmd.end());
 
-    fe_utils_logger.log("RNMR", LOGGER_DEBUG);
-    fe_utils_logger.log("old row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
-    fe_utils_logger.log("new row" + std::string(oldrow.begin(), oldrow.end()), LOGGER_DEBUG);
-
     insert_arg(fn_string, oldrow);
     insert_arg(fn_string, newrow);
     // fn_string.push_back('\b');
     std::vector<char> response = {};
 
-    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_INFO);
 
     // send message to kvs and check for error
     if (writeto_kvs(fn_string, fd) == 0)
@@ -575,7 +568,7 @@ std::vector<char> FeUtils::kv_rename_col(int fd, std::vector<char> row, std::vec
     // fn_string.push_back('\b');
     std::vector<char> response = {};
 
-    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_DEBUG);
+    fe_utils_logger.log("Sending message:" + std::string(fn_string.begin(), fn_string.end()), LOGGER_INFO);
 
     // send message to kvs and check for error
     if (writeto_kvs(fn_string, fd) == 0)

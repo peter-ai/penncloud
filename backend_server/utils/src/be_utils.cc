@@ -182,7 +182,7 @@ int BeUtils::wait_for_events(const std::vector<int> &fds, int timeout_ms)
         // timeout occurred
         else if (result == 0)
         {
-            be_utils_logger.log("Timeout occurred while polling", 20);
+            // be_utils_logger.log("Timeout occurred while polling", 20);
             return -1;
         }
         else

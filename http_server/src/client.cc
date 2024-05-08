@@ -41,6 +41,7 @@ void Client::read_from_network()
                         construct_response();
                     }
                     send_response();
+
                     if (close_connection)
                     {
                         break;
@@ -103,7 +104,7 @@ void Client::parse_req(std::string &client_stream)
     // check if http message has a body
     std::vector<std::string> content_length_vals = req.get_header("content-length");
     // TODO make sure this isn't messing other stuff up
-    remaining_body_len = 0; // default remaining body length in case one wasn't provided
+    // remaining_body_len = 0; // default remaining body length in case one wasn't provided
     if (content_length_vals.size() != 0)
     {
         // multiple content length values are stored

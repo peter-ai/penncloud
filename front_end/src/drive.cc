@@ -165,7 +165,6 @@ bool delete_folder(int fd, vector<char> parent_folder)
 {
     // check parent name
     string pfolder(parent_folder.begin(), parent_folder.end());
-    logger.log("parent folder: " + pfolder, LOGGER_INFO);
 
     // get row
     vector<char> folder_content = FeUtils::kv_get_row(fd, parent_folder);
@@ -187,7 +186,6 @@ bool delete_folder(int fd, vector<char> parent_folder)
             // Check if the element is a file
             if (!is_folder(col_name))
             {
-                logger.log("Found file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
                 // If it's a file, delete it
                 if (kv_successful(FeUtils::kv_del(fd, parent_folder, col_name)))
                 {
@@ -204,24 +202,18 @@ bool delete_folder(int fd, vector<char> parent_folder)
                 // get row of folder
                 vector<char> child_folder = parent_folder;
                 child_folder.insert(child_folder.end(), col_name.begin(), col_name.end());
-
-                logger.log("Found subfolder: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
-                logger.log("Subfolder path is: " + string(child_folder.begin(), child_folder.end()), LOGGER_INFO);
-
                 delete_folder(fd, child_folder);
             }
         }
     }
-    logger.log("Deleting parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
+
     // After deleting all contents, delete the folder itself
     if (kv_successful(FeUtils::kv_del_row(fd, parent_folder)))
     {
-        logger.log("Deleted parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
         return true;
     }
     else
     {
-        logger.log("Could not delete parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_CRITICAL);
         return false;
     }
 }
@@ -294,7 +286,6 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
 {
     // check parent name
     string pfolder(parent_folder.begin(), parent_folder.end());
-    logger.log("parent folder: " + pfolder, LOGGER_INFO);
 
     // get row
     vector<char> folder_content = FeUtils::kv_get_row(fd, parent_folder);
@@ -305,7 +296,6 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
 
     if (!contents.empty())
     {
-        logger.log("Parent folder " + string(parent_folder.begin(), parent_folder.end()) + " not empty", LOGGER_INFO);
         // Iterate through each element in the formatted contents
         for (auto col_name : contents)
         {
@@ -402,8 +392,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         {
 
             vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
-
-            logger.log("Folder content is=" + string(folder_content.begin(), folder_content.end()), LOGGER_DEBUG);
 
             if (kv_successful(folder_content))
             {
@@ -519,8 +507,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
                 folders.push_back(']');
                 files.push_back(']');
-                logger.log(folders, LOGGER_DEBUG);
-                logger.log(files, LOGGER_DEBUG);
 
                 std::vector<std::string> path_elems = Utils::split(childpath_str, "/");
                 std::string drive = "";
@@ -800,7 +786,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // set response status code
                 res.set_code(303);
                 // set response headers / redirect to 400 error
-                logger.log("603 setting 400", LOGGER_DEBUG);
                 res.set_header("Location", "/400");
                 FeUtils::expire_cookies(res, username, sid);
             }
@@ -817,7 +802,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             // get file content
             std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
-
             if (kv_successful(file_content))
             {
                 // get binary from 4th char onward (ignore +OK<sp>)
@@ -845,7 +829,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 res.set_code(303);
 
                 // set response headers / redirect to 400 error
-                logger.log("647 setting 400", LOGGER_DEBUG);
                 res.set_header("Location", "/400");
                 FeUtils::expire_cookies(res, username, sid);
             }
@@ -946,7 +929,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         {
             res.set_code(303);
             // set cookies on response
-            logger.log("748 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             FeUtils::expire_cookies(res, username, valid_session_id);
             close(sockfd);
@@ -967,7 +949,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         else
         {
             res.set_code(303); // Bad Request
-            logger.log("771 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             FeUtils::expire_cookies(res, username, valid_session_id);
             // maybe retry? tbd
@@ -977,7 +958,6 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
     {
         // No body found in the request
         res.set_code(303); // Bad Request
-        logger.log("781 setting 400", LOGGER_DEBUG);
         res.set_header("Location", "/400");
     }
 
@@ -1041,7 +1021,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         if (elements.size() < 1)
         {
             res.set_code(303);
-            logger.log("845 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             // res.set_code(400);
             return;
@@ -1064,23 +1043,15 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         {
             // currently returning 400 but not sure what behavior should be
             res.set_code(303);
-            logger.log("868 setting 400", LOGGER_DEBUG);
             res.set_header("Location", "/400");
             // res.set_code(400);
         }
         else
         {
-            logger.log("trying to create folder " + elements[0], LOGGER_DEBUG);
-
             vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
-
-            logger.log("kvs response: " + string(response.begin(), response.end()), LOGGER_DEBUG);
 
             if (kv_successful(response))
             {
-
-                logger.log("create folder " + elements[0] + " success", LOGGER_DEBUG);
-
                 // create new column for row
                 vector<char> folder_row = row_name;
                 folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
@@ -1104,9 +1075,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
             }
             else
             {
-
-                logger.log("create folder " + elements[0] + " failed", LOGGER_DEBUG);
-                logger.log("894 setting 400", LOGGER_DEBUG);
                 res.set_code(303);
                 res.set_header("Location", "/400");
                 // res.set_code(400);
@@ -1115,7 +1083,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("903 setting 400", LOGGER_DEBUG);
         res.set_code(303);
         res.set_header("Location", "/400");
     }
@@ -1183,7 +1150,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else
         {
-            logger.log("970 setting 400", LOGGER_DEBUG);
             res.set_code(303);
             res.set_header("Location", "/400");
         }
@@ -1207,33 +1173,22 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
                 // get parent path
                 // get folder name
                 string foldername;
-
-                logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
                 vector<string> split_filepath = Utils::split(childpath_str, "/");
                 string parentpath_str = split_parent_filename(split_filepath, foldername);
 
                 foldername += '/';
-
-                logger.log("Parent path is " + parentpath_str, LOGGER_DEBUG);
-                logger.log("Folder name is " + foldername, LOGGER_DEBUG);
-
                 vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
                 vector<char> folder_name_vec(foldername.begin(), foldername.end());
-
-                logger.log("Deleting folder from parent:" + foldername, LOGGER_DEBUG);
 
                 // dleete the folder from the parent folder
                 if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
-                    logger.log("Deleted folder from parent:" + foldername, LOGGER_DEBUG);
-
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/drive/" + parentpath_str);
                 }
                 else
                 {
-                    logger.log("Could not delete folder from parent:" + foldername, LOGGER_CRITICAL);
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/400");
@@ -1242,8 +1197,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else
         {
-
-            logger.log("Retreiving folder " + childpath_str + " failed.", LOGGER_WARN);
             res.set_code(303);
             res.set_header("Location", "/400");
         }
@@ -1322,8 +1275,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     string newname = FeUtils::urlDecode(formParams["new-name"]);
     vector<char> newname_vec(newname.begin(), newname.end());
 
-    logger.log("New name is:" + newname, LOGGER_DEBUG);
-
     // construct child path
     string childpath_str = parent_path_str + oldname;
 
@@ -1340,11 +1291,10 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         {
 
             res.set_code(303);
-            res.set_header("Location", "/drive/" + childpath_str);
+            res.set_header("Location", "/drive/" + parent_path_str);
         }
         else
         {
-            logger.log("970 setting 400", LOGGER_DEBUG);
             res.set_code(303);
             res.set_header("Location", "/400");
         }
@@ -1356,28 +1306,13 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
-
         if (kv_successful(folder_content))
         {
 
             newname += '/';
-
-            // delete folder from parent
-            // get parent path
-            // get folder name
-
-            // string foldername; @PA
             string foldername = oldname;
 
-            logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
             vector<string> split_filepath = Utils::split(childpath_str, "/");
-            // string parentpath_str = split_parent_filename(split_filepath, foldername); @PA
-
-
-            logger.log("Parent path is " + parent_path_str, LOGGER_DEBUG);
-            logger.log("Folder name is " + foldername, LOGGER_DEBUG);
-
             vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
             newname_vec.push_back('/');
@@ -1385,25 +1320,18 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             vector<char> new_folderpath = parent_path_vec;
             new_folderpath.insert(new_folderpath.end(), newname_vec.begin(), newname_vec.end());
 
-            logger.log("New child path is: " + string(new_folderpath.begin(), new_folderpath.end()), LOGGER_DEBUG);
-
             // recursively delete the folders children
             if (rename_subfolders(sockfd, child_path, new_folderpath))
             {
-                logger.log("Rename recursion success", LOGGER_DEBUG);
-                logger.log("Renaming folder'" + foldername + "' to " + newname, LOGGER_DEBUG);
                 // dleete the folder from the parent folder
                 if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
                 {
-                    logger.log("renamed folder'" + foldername + "' to " + newname, LOGGER_DEBUG);
-
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/drive/" + parent_path_str);
                 }
                 else
                 {
-                    logger.log("Could not delete folder from parent:" + foldername, LOGGER_CRITICAL);
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/400");
@@ -1412,8 +1340,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else
         {
-
-            logger.log("Retreiving folder " + childpath_str + " failed.", LOGGER_WARN);
             res.set_code(303);
             res.set_header("Location", "/400");
         }
