@@ -16,6 +16,11 @@ void error_500_page(const HttpRequest &req, HttpResponse &res);
 /// @param res HttpResponse object
 void error_409_page(const HttpRequest &req, HttpResponse &res);
 
+/// @brief 404 not found (valid request)
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void error_404_page(const HttpRequest &req, HttpResponse &res);
+
 /// @brief 401 unauthorized page
 /// @param req HttpRequest object
 /// @param res HttpResponse object
