@@ -30,79 +30,6 @@ std::string parseEmailField(const std::string &emailContents, const std::string 
 	return "";
 }
 
-//URL Decoding: creates column value based off UIDL
-
-std::string urlEncode(const std::string &value) {
-    std::ostringstream escaped;
-    escaped.fill('0');
-    escaped << std::hex;
-
-    for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i) {
-        std::string::value_type c = (*i);
-
-        // keep alphanumeric and other accepted characters as is
-        if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~') {
-            escaped << c;
-            continue;
-        }
-
-        // remaining characters are percent-encoded
-        escaped << std::uppercase;
-        escaped << '%' << std::setw(2) << int((unsigned char) c);
-        escaped << std::nouppercase;
-    }
-
-    return escaped.str();
-}
-
-//URL Decoding: takes URL value and decodes it
-
-std::string urlDecode(const std::string &str) {
-    std::ostringstream decoded; // This will hold the decoded result
-
-    //loop over each character in the string
-    for (size_t i = 0; i < str.size(); ++i) {
-        char c = str[i]; //get the current character
-
-        if (c == '+') { //'+' in URLs represents a space
-            decoded << ' ';
-        } else if (c == '%' && i + 2 < str.size()) {
-            //if '%' is found and there are at least two characters after it
-            std::string hexValue = str.substr(i + 1, 2); //extract the next two characters
-            int charValue; //store the converted hexadecimal value
-            std::istringstream(hexValue) >> std::hex >> charValue; //cnvert hex to int
-            decoded << static_cast<char>(charValue); //cast the int to char and add to the stream
-            i += 2; //skip the next two characters that were part of the hex value
-        } else {
-            decoded << c; //add the character as is if it's not a special case char
-        }
-    }
-
-    return decoded.str(); //convert stream to string
-}
-
-
-// EmailData parseEmail(const std::vector<char> &source)
-// {
-// 	std::string emailContents(source.begin(), source.end());
-// 	size_t forwardPos = emailContents.find("---------- Forwarded message ---------");
-// 	size_t limit = (forwardPos != std::string::npos) ? forwardPos : emailContents.length();
-
-// 	EmailData data;
-// 	data.time = parseEmailField(emailContents, "time: ", limit);
-// 	data.to = parseEmailField(emailContents, "to: ", limit);
-// 	data.from = parseEmailField(emailContents, "from: ", limit);
-// 	data.subject = parseEmailField(emailContents, "subject: ", limit);
-// 	data.body = parseEmailField(emailContents, "body: ", limit);
-
-// 	if (forwardPos != std::string::npos)
-// 	{
-// 		// If there is a forwarded message, capture it
-// 		data.oldBody = emailContents.substr(forwardPos);
-// 	}
-// 	return data;
-// }
-
 vector<char> charifyEmailContent(const EmailData &email)
 {
 	string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
@@ -165,87 +92,89 @@ std::vector<std::vector<char>> split_vec_first_delim_mbox(const std::vector<char
 
 EmailData parseEmailFromMailForm(const HttpRequest &req)
 {
-    EmailData emailData;
+	EmailData emailData;
 
-    // Check if the request contains a body
-    if (!req.body_as_bytes().empty())
-    {
-        // Find form boundary
-        std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
-        std::string header_str(headers[0]);
+	// Check if the request contains a body
+	if (!req.body_as_bytes().empty())
+	{
+		Logger email_logger("Mailbox");
+		email_logger.log(req.body_as_bytes().data(), LOGGER_DEBUG);
+		// Find form boundary
+		std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
+		std::string header_str(headers[0]);
 
-        // boundary provided by form
-        std::vector<std::string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
-        std::string boundary = "--" + find_boundary.back(); // Prepend with -- to match the actual boundary
-        std::vector<char> bound_vec(boundary.begin(), boundary.end());
+		// boundary provided by form
+		std::vector<std::string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
+		std::string boundary = "--" + find_boundary.back(); // Prepend with -- to match the actual boundary
+		std::vector<char> bound_vec(boundary.begin(), boundary.end());
 
-        std::vector<char> line_feed = {'\r', '\n'};
+		std::vector<char> line_feed = {'\r', '\n'};
 
-        // split body on boundary
-        std::vector<std::vector<char>> parts = split_vector_mbox(req.body_as_bytes(), bound_vec);
+		// split body on boundary
+		std::vector<std::vector<char>> parts = split_vector_mbox(req.body_as_bytes(), bound_vec);
 
-        // Skip the first and the last part as they are the boundary preamble and closing
-        for (size_t i = 1; i < parts.size() - 1; ++i)
-        {
-            std::vector<char> double_line_feed = {'\r', '\n', '\r', '\n'}; // Correct delimiter for headers and body separation
+		// Skip the first and the last part as they are the boundary preamble and closing
+		for (size_t i = 1; i < parts.size() - 1; ++i)
+		{
+			std::vector<char> double_line_feed = {'\r', '\n', '\r', '\n'}; // Correct delimiter for headers and body separation
 
-            std::vector<std::vector<char>> header_and_body = split_vec_first_delim_mbox(parts[i], double_line_feed);
+			std::vector<std::vector<char>> header_and_body = split_vec_first_delim_mbox(parts[i], double_line_feed);
 
-            if (header_and_body.size() < 2)
-                continue; // In case of any parsing error
+			if (header_and_body.size() < 2)
+				continue; // In case of any parsing error
 
-            std::string headers(header_and_body[0].begin(), header_and_body[0].end());
-            std::string body(header_and_body[1].begin(), header_and_body[1].end());
+			std::string headers(header_and_body[0].begin(), header_and_body[0].end());
+			std::string body(header_and_body[1].begin(), header_and_body[1].end());
 
-            headers = Utils::trim(headers);
-            body = Utils::trim(body);
+			headers = Utils::trim(headers);
+			body = Utils::trim(body);
 
-            // Finding the name attribute in the headers
-            auto name_pos = headers.find("name=");
+			// Finding the name attribute in the headers
+			auto name_pos = headers.find("name=");
 
-            if (name_pos != std::string::npos)
-            {
-                size_t start = name_pos + 6; // Skip 'name="'
+			if (name_pos != std::string::npos)
+			{
+				size_t start = name_pos + 6; // Skip 'name="'
 
-                size_t end = headers.find('"', start);
-                std::string name = headers.substr(start, end - start);
+				size_t end = headers.find('"', start);
+				std::string name = headers.substr(start, end - start);
 
-                // Store the corresponding value in the correct field
-                if (name == "time")
-                {
-                    emailData.time = "time: " + body;
-                }
-                else if (name == "from")
-                {
-                    emailData.from = "from: " + body;
-                }
-                else if (name == "to")
-                {
-                    emailData.to = "to: " + body;
-                }
-                else if (name == "subject")
-                {
-                    emailData.subject = "subject: " + body;
-                }
-                else if (name == "body")
-                {
-                    emailData.body = "body: " + body;
-                }
-                else if (name == "oldBody")
-                {
-                    emailData.oldBody = "oldBody: " + body;
-                }
-            }
-        }
-    }
-    // std::cout << emailData.time << std::endl;
-    // std::cout << emailData.to << std::endl;
-    // std::cout << emailData.from << std::endl;
-    // std::cout << emailData.subject << std::endl;
-    // std::cout << emailData.body << std::endl;
-    // std::cout << emailData.oldBody << std::endl;
+				// Store the corresponding value in the correct field
+				if (name == "time")
+				{
+					emailData.time = "time: " + body;
+				}
+				else if (name == "from")
+				{
+					emailData.from = "from: " + body;
+				}
+				else if (name == "to")
+				{
+					emailData.to = "to: " + body;
+				}
+				else if (name == "subject")
+				{
+					emailData.subject = "subject: " + body;
+				}
+				else if (name == "body")
+				{
+					emailData.body = "body: " + body;
+				}
+				else if (name == "oldBody")
+				{
+					emailData.oldBody = "oldBody: " + body;
+				}
+			}
+		}
+	}
+	// std::cout << emailData.time << std::endl;
+	// std::cout << emailData.to << std::endl;
+	// std::cout << emailData.from << std::endl;
+	// std::cout << emailData.subject << std::endl;
+	// std::cout << emailData.body << std::endl;
+	// std::cout << emailData.oldBody << std::endl;
 
-    return emailData;
+	return emailData;
 }
 
 /**
@@ -259,7 +188,7 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 
 string parseMailboxPathToRowKey(const string &path)
 {
-    std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
+	std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
 	std::smatch matches;
 
 	// Execute the regex search
@@ -330,7 +259,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 	bool all_forwards_sent = true;
 
 	EmailData emailToForward = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
+	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
@@ -339,7 +268,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
@@ -358,7 +287,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailToForward))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -390,7 +319,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	bool all_responses_sent = true;
 
 	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
+	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
@@ -400,7 +329,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
@@ -419,7 +348,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailResponse))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -452,7 +381,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 	cout << "path: " << request.path << endl;
 
 	string rowKey = parseMailboxPathToRowKey(request.path);
-	
+
 	cout << "row of deletion" << rowKey << endl;
 
 	string emailId = request.get_qparam("uidl");
@@ -481,67 +410,113 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 // sends an email
 void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
 
-	const EmailData email = parseEmailFromMailForm(request);	 // email data
-	string recipients = Utils::split_on_first_delim(email.to, ":")[1]; //parse to:peter@penncloud.com --> peter@penncloud.com
-	cout << "RECIPIENTS: " + recipients << endl;
-	vector<string> recipientsEmails = parseRecipients(recipients);
-	bool all_emails_sent = true;
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
 
-	for (string recipientEmail : recipientsEmails)
-	{
-		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
 
-		// handle local client
-		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		// check if we know already know the KVS server address for user
+		if (present)
 		{
-			string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
-			colKey = urlEncode(colKey); //encode UIDL in URL format for col value
-
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> value = charifyEmailContent(email);
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> col(colKey.begin(), colKey.end());
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-
-			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
-			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to send email locally.");
-				all_emails_sent = false;
-				continue;
-			}
+			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
+		// otherwise get KVS server address from coordinator
 		else
 		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, email))
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		const EmailData email = parseEmailFromMailForm(request);		   // email data
+		string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = parseRecipients(recipients);
+		bool all_emails_sent = true;
+
+		for (string recipientEmail : recipientsEmails)
+		{
+			string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+
+			// handle local client
+			if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to send email externally.");
-				all_emails_sent = false;
-				continue;
+				string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+
+				string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> value = charifyEmailContent(email);
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> col(colKey.begin(), colKey.end());
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+
+				if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_emails_sent = false;
+					continue;
+				}
+			}
+			else
+			{
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, email))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_emails_sent = false;
+					continue;
+				}
 			}
 		}
-	}
 
-	// check if all emails were sent
-	if (all_emails_sent)
+		// check if all emails were sent
+		if (all_emails_sent)
+		{
+			response.set_code(303); // Success
+			response.set_header("Location", "/" + username + "/mbox");
+			FeUtils::set_cookies(response, username, valid_session_id);
+		}
+		close(socket_fd);
+	}
+	else
 	{
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email sent successfully.");
-	}
+		// set response status code
+		response.set_code(303);
 
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
+		// set response headers / redirect to 401 error
+		response.set_header("Location", "/401");
+	}
 }
 
 // retrieves an email
@@ -615,17 +590,6 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 
 		// create socket for communication with KVS server
 		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-
-		// int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-		// if (socket_fd < 0)
-		// {
-		// 	response.set_code(501);
-		// 	response.append_body_str("Failed to open socket.");
-		// 	return;
-		// }
-		// path is: /api/mailbox/{username}/
-
-		// string recipientAddress;
 
 		string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
 		if (valid_session_id.empty())
@@ -890,16 +854,10 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		}
 		else
 		{
-			// response.append_body_str("-ER Error processing request.");
-			// response.set_code(400); // Bad request
-
-			// @PETER added
 			response.set_code(303);
 			response.set_header("Location", "/400");
 			FeUtils::expire_cookies(response, username, sid);
 		}
-
-		// response.set_header("Content-Type", "text/html");
 		close(kvs_sock);
 	}
 	else
@@ -907,20 +865,44 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		response.set_code(303);
 		response.set_header("Location", "/401");
 	}
-
-	// end of handler --> http server sends response back to client
 }
 
 void compose_email(const HttpRequest &request, HttpResponse &response)
 {
-	Logger logger("Compose Email");
-	logger.log("Checking details", LOGGER_INFO);
-
 	// get cookies
 	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
 	if (cookies.count("user") && cookies.count("sid"))
 	{
-		FeUtils::set_cookies(response, cookies["user"], cookies["sid"]);
+		string username = cookies["user"];
+		string sid = cookies["sid"];
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
+		{
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		// otherwise get KVS server address from coordinator
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		// create socket for communication with KVS server
+		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
+
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(kvs_sock);
+			return;
+		}
 
 		std::string page =
 			"<!doctype html>"
@@ -992,11 +974,15 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 							  "<div class='row mt-2 mx-2'>"
 							  "<div class='col-2'></div>"
 							  "<div class='col-8'>"
-							  "<form id='sendEmailForm' action='' method='POST' enctype='multipart/form-data'>"
+							  "<form id='sendEmailForm' action='/api/" +
+			cookies["user"] + "/mbox/send' method='POST' enctype='multipart/form-data'>"
 							  "<div class='form-group'>"
 							  "<div class='mb-3'>"
+							  "<div mb-2'><input type='hidden' class='form-control' id='from' name='from' value='" +
+			cookies["user"] + "@penncloud.com'></div>"
+							  "<div mb-2'><input type='hidden' class='form-control' id='time' name='time' value=''></div>"
 							  "<div class='form-floating mb-2'>"
-							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='emails' required multiple placeholder=''>"
+							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='to' required multiple placeholder=''>"
 							  "<label for='to' class='form-label'>To:</label>"
 							  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
 							  "</div>"
@@ -1008,10 +994,12 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 							  "<textarea id='body' name='body' class='form-control' placeholder='' form='sendEmailForm' rows='15' style='height:100%;' required></textarea>"
 							  "<label for='body'>Body:</label>"
 							  "</div>"
+							  "<div mb-2'><input type='hidden' class='form-control' id='oldBody' name='oldBody' value=''></div>"
 							  "</div>"
 							  "<div class='col-12'>"
-							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit'>Send</button>"
-							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" + cookies["user"] + "/mbox\"'>Back</button>"
+							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#sendEmailForm\").submit();'>Send</button>"
+							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+			cookies["user"] + "/mbox\"'>Back</button>"
 							  "</div>"
 							  "</div>"
 							  "</form>"
@@ -1063,6 +1051,7 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 		response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
 		response.set_header("Pragma", "no-cache");
 		response.set_header("Expires", "0");
+		FeUtils::set_cookies(response, username, valid_session_id);
 	}
 	// unauthorized
 	else
