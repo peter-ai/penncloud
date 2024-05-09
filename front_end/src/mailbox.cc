@@ -2,6 +2,8 @@
 
 using namespace std;
 
+Logger mailbox_logger("Mailbox");
+
 // Function to split a vector<char> based on a vector<char> delimiter
 std::vector<std::vector<char>> split_vector_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
 {
@@ -132,24 +134,8 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 		}
 	}
 
-	// std::cout << emailData.time << std::endl;
-	// std::cout << emailData.to << std::endl;
-	// std::cout << emailData.from << std::endl;
-	// std::cout << emailData.subject << std::endl;
-	// std::cout << emailData.body << std::endl;
-	// std::cout << emailData.oldBody << std::endl;
-
 	return emailData;
 }
-
-/**
- * Helper functions
- */
-
-// takes the a path's request and parses it to user mailbox key "user1-mailbox/"
-// needs to parse both:
-// /api/peter/mbox/delete?
-// /peter/mbox?
 
 string parseMailboxPathToRowKey(const string &path)
 {
@@ -173,125 +159,243 @@ string parseMailboxPathToRowKey(const string &path)
 
 void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
-	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
-	bool all_forwards_sent = true;
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
 
-	EmailData emailToForward = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
-	for (string recipientEmail : recipientsEmails)
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
-		// handle local client
-		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
+
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
 		{
-			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
-			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = FeUtils::charifyEmailContent(emailToForward);
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
-
-			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to forward email.");
-				all_forwards_sent = false;
-				continue; // if one recipient fails, try to forward email to remaining recipients
-			}
+			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
+		// otherwise get KVS server address from coordinator
 		else
 		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+		bool all_forwards_sent = true;
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		EmailData emailToForward = parseEmailFromMailForm(request);
+		string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
+		for (string recipientEmail : recipientsEmails)
+		{
+			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+			// handle local client
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to reply to email externally.");
-				all_forwards_sent = false;
-				continue;
+				string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+				vector<char> col(colKey.begin(), colKey.end());
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
+
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_forwards_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				if (!FeUtils::kv_success(kvsResponse))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_forwards_sent = false;
+					continue;
+				}
+			}
+			else
+			{
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_forwards_sent = false;
+					continue;
+				}
+			}
+			// check if all emails were sent
+			if (all_forwards_sent)
+			{
+				response.set_code(303); // Success
+				response.set_header("Location", "/" + username + "/mbox");
+				FeUtils::set_cookies(response, username, valid_session_id);
 			}
 		}
-		// check if all emails were sent
-		if (all_forwards_sent)
-		{
-			response.set_code(200); // Success
-			response.append_body_str("+OK Email sent successfully.");
-		}
+		response.set_header("Content-Type", "text/html");
+		close(socket_fd);
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
+	else
+	{
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
 }
 
 // responds to an email
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Reply");
-	logger.log(request.body_as_bytes().data(), LOGGER_DEBUG);
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
+
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		response.set_code(501);
-		response.append_body_str("-ER Failed to open socket.");
-		return;
-	}
-	bool all_responses_sent = true;
 
-	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:user@penncloud.com --> user@penncloud.com
-	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
 
-	for (string recipientEmail : recipientsEmails)
-	{
-		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
 
-		// handle local client
-		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		// check if we know already know the KVS server address for user
+		if (present)
 		{
-			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
-
-			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = FeUtils::charifyEmailContent(emailResponse);
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
-			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to reply to email internally.");
-				all_responses_sent = false;
-				continue; // if one recipient fails, try to send response to remaining recipients
-			}
+			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
+		// otherwise get KVS server address from coordinator
 		else
 		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+		bool all_responses_sent = true;
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		EmailData emailResponse = parseEmailFromMailForm(request);
+
+		string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
+
+		for (string recipientEmail : recipientsEmails)
+		{
+			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+
+			// handle local client
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to reply to email externally.");
-				all_responses_sent = false;
-				continue;
+				string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+
+				vector<char> col(colKey.begin(), colKey.end());
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> value = FeUtils::charifyEmailContent(emailResponse); //
+
+				logger.log(value.data(), LOGGER_DEBUG);
+
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_responses_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				if (!FeUtils::kv_success(kvsResponse))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_responses_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+			}
+			else
+			{
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_responses_sent = false;
+					continue;
+				}
+			}
+			// check if all emails were sent
+			if (all_responses_sent)
+			{
+				response.set_code(303); // Success
+				response.set_header("Location", "/" + username + "/mbox");
+				FeUtils::set_cookies(response, username, valid_session_id);
 			}
 		}
-		// check if all emails were sent
-		if (all_responses_sent)
-		{
-			response.set_code(200); // Success
-			response.append_body_str("+OK Email sent successfully.");
-		}
+		response.set_header("Content-Type", "text/html");
+		close(socket_fd);
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
+	else
+	{
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
 }
 
 // deletes an email
@@ -443,9 +547,19 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 				vector<char> value = FeUtils::charifyEmailContent(email);
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> col(colKey.begin(), colKey.end());
-				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
-				if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_emails_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
 					response.set_header("Location", "/500");
@@ -560,7 +674,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
 				"</head>"
 
-				"<body onload='setTheme()'>"
+				"<body onload='setTheme(); $(\"#reply\").click(setTimeout(function(){$(\"#reply\").click();$(\"#reply\").removeClass(\"active\");$(\"#submitButton\").hide();}, 5));'>"
 				"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
 				"<div class='container-fluid'>"
 				"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
@@ -610,14 +724,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "</svg> Reply"
 						   "</button>"
 						   "</div>"
-						   "<!--<div class='col-2'>"
-						   "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
-						   "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
-						   "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
-						   "</svg> Reply All"
-						   "</button>"
-						   "</div>-->"
 						   "<div class='col-2'>"
 						   "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
 						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
@@ -633,7 +739,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
 						   "<div class='form-group mb-3'>"
 						   "<div class='mb-3'>"
-
 						   "<div class='mb-3'>"
 						   "<label for='time' class='form-label'>Received:</label>"
 						   "<input type='text' class='form-control' id='time' name='time' value='" +
@@ -662,15 +767,14 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 								"</div>"
 								"<div>"
 								"<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
-								"-------------------------------------------------------------------------------------------------\n"
 								"Time: " +
-				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" //+email["body"]+
-																														 "</textarea>"
-																														 "</div>"
-																														 "</div>"
-																														 "<div class='col-12 mb-2'>"
-																														 "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
-																														 "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] + "\n---------------------------------\n" + email["oldBody"] +
+				"</textarea>"
+				"</div>"
+				"</div>"
+				"<div class='col-12 mb-2'>"
+				"<button id='submitButton' class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
+				"<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
 				username + "/mbox\"'>Back</button>"
 						   "</div>"
 						   "</div>"
@@ -694,78 +798,85 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				email["subject"] + "';"
 								   "var uidl='" +
 				colKey + "';"
-						 "$('#reply').on('click', function(){"
+						 "$('#reply').on('click', function () {"
 						 "if ($(this).hasClass('active')) {"
-						 "if ($('#forward').hasClass('active'))"
-						 "{"
+						 "if ($('#forward').hasClass('active')) {"
 						 "$('#forward').removeClass('active');"
 						 "$('#forward').attr('aria-pressed', 'false');"
 						 "$('#subject').val($('#subject').val().replace('FWD: ', ''));"
 						 "}"
 
+						 "$('#submitButton').show();"
 						 "$('label[for=time], input#time').hide();"
 						 "$('#to').attr('readonly', false);"
 						 "$('#to').val(from);"
-						 "$('#subject').val('RE: '+$('#subject').val());"
 						 "$('#subject').attr('readonly', false);"
-						 "$('label[for=from], input#from').hide();"
-						 "$('#body').attr('readonly', false);"
-						 "$('#body').text('');"
-						 "$('#body').addClass('mb-3');"
-						 "$('#oldBody').css('display', '');"
-						 "$('#emailForm').attr('action', '/api/" +
-				username + "/mbox/reply?uidl='+uidl);"
-						   "}"
-						   "else"
-						   "{"
-						   "$('label[for=time], input#time').show();"
-						   "$('#to').attr('readonly', true);"
-						   "$('#to').val(to);"
-						   "$('#subject').val(subject);"
-						   "$('#subject').attr('readonly', true);"
-						   "$('label[for=from], input#from').show();"
-						   "$('#body').attr('readonly', true);"
-						   "$('#body').text(body);"
-						   "$('#body').removeClass('mb-3');"
-						   "$('#oldBody').css('display', 'none');"
-						   "}"
-						   "});"
-
-						   "$('#forward').on('click', function(){"
-						   "if ($(this).hasClass('active')) {"
-						   "if ($('#reply').hasClass('active'))"
-						   "if ($('#reply').hasClass('active'))"
-						   "{"
-						   "$('#reply').removeClass('active');"
-						   "$('#reply').attr('aria-pressed', 'false');"
-						   "$('#subject').val($('#subject').val().replace('RE: ', ''));"
-						   "}"
-
-						   "$('label[for=time], input#time').hide();"
-						   "$('#to').attr('readonly', false);"
-						   "$('#to').val('');"
-						   "$('#subject').val('FWD: '+$('#subject').val());"
-						   "$('#subject').prop('readonly', false);"
+						 "$('#subject').val('RE: ' + $('#subject').val());"
+						 "$('#from').val('" +
+				username + "@penncloud.com');"
 						   "$('label[for=from], input#from').hide();"
 						   "$('#body').attr('readonly', false);"
 						   "$('#body').text('');"
 						   "$('#body').addClass('mb-3');"
 						   "$('#oldBody').css('display', '');"
 						   "$('#emailForm').attr('action', '/api/" +
-				username + "/mbox/forward?uidl='+uidl);"
+				username + "/mbox/reply?uidl=' + uidl);"
 						   "}"
-						   "else"
-						   "{"
+						   "else {"
+						   "$('#submitButton').hide();"
 						   "$('label[for=time], input#time').show();"
-						   "$('#to').attr('readonly', true);"
 						   "$('#to').val(to);"
+						   "$('#to').attr('readonly', true);"
 						   "$('#subject').val(subject);"
 						   "$('#subject').attr('readonly', true);"
+						   "$('#from').val(from);"
 						   "$('label[for=from], input#from').show();"
-						   "$('#body').attr('readonly', true);"
 						   "$('#body').text(body);"
 						   "$('#body').removeClass('mb-3');"
+						   "$('#body').attr('readonly', true);"
 						   "$('#oldBody').css('display', 'none');"
+						   "$('#emailForm').attr('action', '');"
+						   "}"
+						   "});"
+
+						   "$('#forward').on('click', function () {"
+						   "if ($(this).hasClass('active')) {"
+						   "if ($('#reply').hasClass('active')) {"
+						   "$('#reply').removeClass('active');"
+						   "$('#reply').attr('aria-pressed', 'false');"
+						   "$('#subject').val($('#subject').val().replace('RE: ', ''));"
+						   "}"
+
+						   "$('#submitButton').show();"
+						   "$('label[for=time], input#time').hide();"
+						   "$('#to').attr('readonly', false);"
+						   "$('#to').val('');"
+						   "$('#subject').attr('readonly', false);"
+						   "$('#subject').val('FWD: ' + $('#subject').val());"
+						   "$('#from').val('" +
+				username + "@penncloud.com');"
+						   "$('label[for=from], input#from').hide();"
+						   "$('#body').attr('readonly', false);"
+						   "$('#body').text('');"
+						   "$('#body').addClass('mb-3');"
+						   "$('#oldBody').css('display', '');"
+						   "$('#emailForm').attr('action', '/api/" +
+				username + "/mbox/forward?uidl=' + uidl);"
+						   "}"
+						   "else {"
+						   "$('#submitButton').hide();"
+						   "$('label[for=time], input#time').show();"
+						   "$('#to').val(to);"
+						   "$('#to').attr('readonly', true);"
+						   "$('#subject').val(subject);"
+						   "$('#subject').attr('readonly', true);"
+						   "$('#from').val(from);"
+						   "$('label[for=from], input#from').show();"
+						   "$('#body').text(body);"
+						   "$('#body').removeClass('mb-3');"
+						   "$('#body').attr('readonly', true);"
+						   "$('#oldBody').css('display', 'none');"
+						   "$('#emailForm').attr('action', '');"
 						   "}"
 						   "});"
 						   "</script>"
@@ -1087,7 +1198,8 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				"$('#emailTable').dataTable({"
 				"'oLanguage': {"
 				"'sEmptyTable': 'Your inbox is empty'"
-				"}"
+				"},"
+				"order: [[2, 'asc']]"
 				"});"
 				"});"
 				"</script>"
@@ -1371,11 +1483,11 @@ std::unordered_map<std::string, std::string> parseEmailBody(std::vector<char> kv
 	body_idx = email.find("body:");
 	oldBody_idx = email.find("oldBody:");
 	time = Utils::split_on_first_delim(email.substr(time_idx, from_idx), ":")[1].substr(1);
-	from = Utils::split(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
-	to = Utils::split(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
-	subject = Utils::split(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
-	body = Utils::split(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
-	oldBody = Utils::split(email.substr(oldBody_idx), ":")[1].substr(1);
+	from = Utils::split_on_first_delim(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
+	to = Utils::split_on_first_delim(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
+	subject = Utils::split_on_first_delim(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
+	body = Utils::split_on_first_delim(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
+	oldBody = Utils::split_on_first_delim(email.substr(oldBody_idx), ":")[1].substr(1);
 	time.pop_back();
 	from.pop_back();
 	to.pop_back();

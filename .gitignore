@@ -20,3 +20,4 @@ loadbalancer/loadbalancer_main
 
 # Ignore macOS specific files
 .DS_Store
+front_end/src/test.js

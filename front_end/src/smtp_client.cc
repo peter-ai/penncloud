@@ -287,6 +287,9 @@ bool SMTPClient::sendEmail(const std::string &recipientEmail, const std::string 
         }
     }
     message += ".\r\n";
+    
+    Logger logger("SMTP TEST");
+    logger.log(message, LOGGER_DEBUG);
 
     send_data(message);
     if (receive_data().find("250") != 0)
