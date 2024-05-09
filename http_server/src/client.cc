@@ -437,14 +437,7 @@ void Client::send_response()
 
     // log request metadata (reconstruct request line from parsed parameters to ensure correct parsing)
     std::string log_str = req.method + " " + req.path + " " + std::to_string(res.code) + " - " + std::to_string(res.body.size());
-    if (req.is_static)
-    {
-        http_client_logger.log("[static] " + log_str, 20);
-    }
-    else
-    {
-        http_client_logger.log("[dynamic] " + log_str, 20);
-    }
+    req.is_static ? http_client_logger.log("[static] " + log_str, 20) : http_client_logger.log("[dynamic] " + log_str, 20);
 
     std::ostringstream response_msg;
 

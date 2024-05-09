@@ -91,8 +91,8 @@ vector<char> format_folder_contents(vector<vector<char>> &vec)
     for (size_t i = 0; i < vec.size() - 1; ++i)
     {
         output.insert(output.end(), (vec[i]).begin(), (vec[i]).end());
-        output.push_back(',');
-        output.push_back(' ');
+        output.push_back('\r');
+        output.push_back('\n');
     }
 
     output.insert(output.end(), (vec.back()).begin(), (vec.back()).end());
@@ -136,10 +136,11 @@ bool delete_folder(int fd, vector<char> parent_folder)
             // Check if the element is a file
             if (!is_folder(col_name))
             {
+                std::string file = FeUtils::urlDecode(std::string(col_name.begin(), col_name.end()));
                 // If it's a file, delete it
-                if (FeUtils::kv_success(FeUtils::kv_del(fd, parent_folder, col_name)))
+                if (FeUtils::kv_success(FeUtils::kv_del(fd, parent_folder, std::vector<char>(file.begin(), file.end()))))
                 {
-                    logger.log("Deleted file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
+                    logger.log("Deleted file: " + file, LOGGER_INFO);
                 }
                 else
                 {
@@ -342,7 +343,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                 // folder processing
                 std::string folder_contents(formatted_content.begin(), formatted_content.end());
-                std::vector<std::string> folder_items = Utils::split(folder_contents, ", ");
+                logger.log(folder_contents, LOGGER_DEBUG);
+                std::vector<std::string> folder_items = Utils::split(folder_contents, "\r\n");
                 sort(folder_items.begin(), folder_items.end()); // sort items
                 std::string folders = "[";
                 std::string files = "[";
@@ -377,7 +379,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                         // folder processing
                         std::string grandparent_contents(aunt_items.begin(), aunt_items.end());
-                        std::vector<std::string> grandparent_items = Utils::split(grandparent_contents, ", ");
+                        std::vector<std::string> grandparent_items = Utils::split(grandparent_contents, "\r\n");
 
                         for (auto colname : grandparent_items)
                         {
@@ -408,7 +410,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
                                 // folder processing
                                 std::string sibling_contents(neice_items.begin(), neice_items.end());
-                                std::vector<std::string> sibling_cols = Utils::split(sibling_contents, ", ");
+                                std::vector<std::string> sibling_cols = Utils::split(sibling_contents, "\r\n");
 
                                 for (auto colname : sibling_cols)
                                 {
@@ -460,18 +462,18 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                             folder_html +=
                                 "<div class='col-4 text-center text-wrap'>"
                                 "<a href='" +
-                                item + "' target='_blank' style='color: inherit;' download>"
-                                       "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
-                                       "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
-                                       "</svg>"
-                                       "</a>"
-                                       "<p class='text-break'>"
-                                       "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" +
-                                item + "' data-bs-path='" + childpath_str + "'>"
-                                                                            "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
-                                                                            "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
-                                                                            "</svg>"
-                                                                            "</a>" +
+                                FeUtils::urlEncode(item) + "' target='_blank' style='color: inherit;' download>"
+                                                           "<svg xmlns='http://www.w3.org/2000/svg' width='100%' height='100%' fill='currentColor' class='bi bi-file-earmark-fill' viewBox='0 0 16 16'>"
+                                                           "<path d='M4 0h5.293A1 1 0 0 1 10 .293L13.707 4a1 1 0 0 1 .293.707V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2m5.5 1.5v2a1 1 0 0 0 1 1h2z'/>"
+                                                           "</svg>"
+                                                           "</a>"
+                                                           "<p class='text-break'>"
+                                                           "<a class='delete' data-bs-toggle='modal' data-bs-target='#deleteModal' href='#deleteModal' data-bs-name='" +
+                                FeUtils::urlEncode(item) + "' data-bs-path='" + childpath_str + "'>"
+                                                                                                "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-x text-danger' viewBox='0 0 16 16'>"
+                                                                                                "<path d='M4.646 4.646a.5.5 0 0 1 .708 0L8 7.293l2.646-2.647a.5.5 0 0 1 .708.708L8.707 8l2.647 2.646a.5.5 0 0 1-.708.708L8 8.707l-2.646 2.647a.5.5 0 0 1-.708-.708L7.293 8 4.646 5.354a.5.5 0 0 1 0-.708'/>"
+                                                                                                "</svg>"
+                                                                                                "</a>" +
                                 item +
                                 "</p>"
                                 "</div>";
@@ -687,7 +689,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                     "<div class='mb-3'>"
                                     "<label for='item-old-name' class='col-form-label'>Item:</label>"
                                     "<select name='old-name' class='form-select' aria-label='Default select example' id='item-old-name' form='renameFolderForm' required>"
-                                    "<option hidden disabled selected value> Select an item </option>" +
+                                    "<option hidden disabled selected value>Select an item</option>" +
                     options +
                     "</select>"
                     "<label for='new-item-name' class='col-form-label'>New name:</label>"
@@ -717,12 +719,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                     "<div class='mb-3'>"
                                     "<label for='item-chosen' class='col-form-label'>Item:</label>"
                                     "<select name='moving' class='form-select' aria-label='Default select example' id='item-chosen' form='moveItemForm' required>"
-                                    "<option hidden disabled selected value> Select an item </option>" +
+                                    "<option hidden disabled selected value>Select an item</option>" +
                     options +
                     "</select>"
                     "<label for='moving-to' class='col-form-label'>Destination:</label>"
                     "<select name='newparent' class='form-select' aria-label='Default select example' id='moving-to' form='moveItemForm' required>"
-                    "<option hidden disabled selected value> Select the folder to move to </option>" +
+                    "<option hidden disabled selected value>Select a destination folder</option>" +
                     move_options +
                     "</select>"
                     "</div>"
@@ -731,91 +733,90 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<div class='modal-footer'>"
                     "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
                     "<button type='submit' class='btn btn-primary' onclick='var blacklist = " +
-                    blacklist + "; if ($(\"#moveItemForm\")[0].checkValidity()) {"
+                    blacklist + ";"
+                                "blacklist.push($(\"#moving-to\").val().substr($(\"#moving-to\").val().indexOf(\"/\")+1));"
                                 "var firstItemValue = $(\"#moveItemForm\")[0][0].value;"
-                                "var secondItemValue = $(\"#moveItemForm\")[0][1].value;"
-                                "var gparent = \"" +
-                    grandparent_path + "\";"
-                                       "var childpath = \"" +
-                    childpath_str + "\";"
-                                    "if (firstItemValue == secondItemValue || blacklist.includes(firstItemValue)) {"
-                                    "$(\"#moveItemForm\")[0][1].setCustomValidity(\"Item already exists.\");"
-                                    "$(\"#moveItemForm\")[0].reportValidity();"
-                                    "} else {"
-                                    " $(\"#moveItemForm\").submit();"
-                                    "}}'>Move</button>"
-                                    "</div>"
-                                    "</div>"
-                                    "</div>"
-                                    "</div>"
+                                "if (blacklist.includes(firstItemValue)) {"
+                                "blacklist.pop();"
+                                "$(\"#moveItemForm\")[0][1].setCustomValidity(\"Item already exists.\");"
+                                "$(\"#moveItemForm\")[0].reportValidity();"
+                                "}"
+                                "else {"
+                                "blacklist.pop();"
+                                "$(\"#moveItemForm\").submit();"
+                                "}'>Move</button>"
+                                "</div>"
+                                "</div>"
+                                "</div>"
+                                "</div>"
 
-                                    "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                                    "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                                    "crossorigin='anonymous'></script>"
-                                    "<script>"
-                                    "$('.delete').on('click', function() {"
-                                    "    $('#deleteModal').modal('show');"
-                                    "});"
+                                "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                                "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                                "crossorigin='anonymous'></script>"
+                                "<script>"
+                                "$('.delete').on('click', function() {"
+                                "    $('#deleteModal').modal('show');"
+                                "});"
 
-                                    "$('#deleteModal').on('show.bs.modal', function(e) {"
-                                    "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-                                    "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-                                    "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-                                    "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                                    "});"
-                                    "</script>"
-                                    "<script>"
-                                    "$('#item-old-name').on('change', function (e) {"
-                                    "var selection = $(this).find('option:selected').text();"
+                                "$('#deleteModal').on('show.bs.modal', function(e) {"
+                                "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                                "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                                "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                                "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                                "});"
+                                "</script>"
+                                "<script>"
+                                "$('#item-old-name').on('change', function (e) {"
+                                "var selection = $(this).find('option:selected').text();"
 
-                                    "if (selection.slice(-1)=== '/') {"
-                                    "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
-                                    "if($('#renameHelp').length==0) {"
-                                    "console.log(selection);"
-                                    "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
-                                    "}"
-                                    "}"
-                                    "else {"
-                                    "$('#renameHelp').remove();"
-                                    "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
-                                    "}"
-                                    "})"
-                                    "</script>"
+                                "if (selection.slice(-1)=== '/') {"
+                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
+                                "if($('#renameHelp').length==0) {"
+                                "console.log(selection);"
+                                "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
+                                "}"
+                                "}"
+                                "else {"
+                                "$('#renameHelp').remove();"
+                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
+                                "}"
+                                "})"
+                                "</script>"
 
-                                    "<script>"
-                                    "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                                    "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                    "$('#switchLabel').html('Light Mode');"
-                                    "sessionStorage.setItem('data-bs-theme', 'light');"
-                                    ""
-                                    "}"
-                                    "else {"
-                                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                    "$('#switchLabel').html('Dark Mode');"
-                                    "sessionStorage.setItem('data-bs-theme', 'dark');"
-                                    "}"
-                                    "});"
-                                    "</script>"
-                                    "<script>"
-                                    "function setTheme() {"
-                                    "var theme = sessionStorage.getItem('data-bs-theme');"
-                                    "if (theme !== null) {"
-                                    "if (theme === 'dark') {"
-                                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                    "$('#switchLabel').html('Dark Mode');"
-                                    "$('#flexSwitchCheckReverse').attr('checked', true);"
-                                    "}"
-                                    "else {"
-                                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                    "$('#switchLabel').html('Light Mode');"
-                                    "$('#flexSwitchCheckReverse').attr('checked', false);"
-                                    "}"
-                                    "}"
-                                    "};"
-                                    "</script>"
-                                    "</body>"
-                                    "</html>";
+                                "<script>"
+                                "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                                "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                "$('#switchLabel').html('Light Mode');"
+                                "sessionStorage.setItem('data-bs-theme', 'light');"
+                                ""
+                                "}"
+                                "else {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                "$('#switchLabel').html('Dark Mode');"
+                                "sessionStorage.setItem('data-bs-theme', 'dark');"
+                                "}"
+                                "});"
+                                "</script>"
+                                "<script>"
+                                "function setTheme() {"
+                                "var theme = sessionStorage.getItem('data-bs-theme');"
+                                "if (theme !== null) {"
+                                "if (theme === 'dark') {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                "$('#switchLabel').html('Dark Mode');"
+                                "$('#flexSwitchCheckReverse').attr('checked', true);"
+                                "}"
+                                "else {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                "$('#switchLabel').html('Light Mode');"
+                                "$('#flexSwitchCheckReverse').attr('checked', false);"
+                                "}"
+                                "}"
+                                "};"
+                                "</script>"
+                                "</body>"
+                                "</html>";
 
                 // @PETER ADDED - reset cookies of user
                 res.append_body_str(page);
