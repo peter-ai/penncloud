@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <strings.h>
 #include <stdlib.h>
+#include <sstream>
 #include "../../http_server/include/http_server.h"
 #include "../../front_end/utils/include/fe_utils.h"
 #include "../../utils/include/utils.h"
@@ -41,47 +42,84 @@ unordered_map<string, vector<string>> kvs_servergroup; // server groups to names
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
 // tablet data
-vector<string> row_data;    // all rows for the selected tablet
-vector<string> col_data;    // all columns for the selected row within a tablet
-vector<char> row_col_value; // the given value for the character
+vector<string> row_data; // all rows for the selected tablet
+vector<string> col_data; // all columns for the selected row within a tablet
+vector<string> row_col_value;    // the given value for the character
 
 int server_loops = 0;
 
-void iterateUnorderedMapOfStringToInt(const std::unordered_map<std::string, int> &myMap)
+void iterateUnorderedMapOfStringToInt(const unordered_map<string, int> &myMap)
 {
     for (const auto &pair : myMap)
     {
-        std::cout << "Key: " << pair.first << ", Value: " << pair.second << std::endl;
+        cout << "Key: " << pair.first << ", Value: " << pair.second << endl;
     }
 }
 
-void iterateMapOfStringToVectorOfString(const std::unordered_map<std::string, std::vector<std::string>> &myMap)
+void iterateMapOfStringToVectorOfString(const unordered_map<string, vector<string>> &myMap)
 {
     for (const auto &pair : myMap)
     {
-        std::cout << "Key: " << pair.first << ", Values:" << std::endl;
+        cout << "Key: " << pair.first << ", Values:" << endl;
         for (const auto &value : pair.second)
         {
-            std::cout << "- " << value << std::endl;
+            cout << "- " << value << endl;
         }
     }
 }
 
-// Function to convert vector to JSON array string manually
-std::string vectorToJson(const std::vector<std::string> &vec)
+// helper for  escape chars in json
+string escape_json_chars(const string &input)
 {
-    std::stringstream ss;
-    ss << "[";
+    ostringstream escaped;
+    for (char c : input)
+    {
+        switch (c)
+        {
+        case '\"':
+            escaped << "\\\"";
+            break;
+        case '\\':
+            escaped << "\\\\";
+            break;
+        case '\b':
+            escaped << "\\b";
+            break;
+        case '\f':
+            escaped << "\\f";
+            break;
+        case '\n':
+            escaped << "\\n";
+            break;
+        case '\r':
+            escaped << "\\r";
+            break;
+        case '\t':
+            escaped << "\\t";
+            break;
+        default:
+            escaped << c;
+            break;
+        }
+    }
+    return escaped.str();
+}
+
+// convert cpp vector<string> to json object
+string vector_to_json(const vector<string> &vec)
+{
+    ostringstream oss;
+    oss << "[";
     for (size_t i = 0; i < vec.size(); ++i)
     {
-        if (i > 0)
+        oss << "\"" << escape_json_chars(vec[i]) << "\"";
+        if (i != vec.size() - 1)
         {
-            ss << ",";
+            oss << ",";
         }
-        ss << "\"" << vec[i] << "\"";
     }
-    ss << "]";
-    return ss.str();
+    oss << "]";
+    return oss.str();
 }
 
 /*
@@ -90,32 +128,32 @@ Handler that deals with toggling servers on and off
 void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
 {
     // Extract form parameters (status and component id) from the HTTP request body
-    std::string requestBody = req.body_as_string();
-    std::unordered_map<std::string, std::string> formParams;
+    string requestBody = req.body_as_string();
+    unordered_map<string, string> formParams;
 
     // Parse the request body to extract form parameters
     size_t pos = 0;
-    while ((pos = requestBody.find('&')) != std::string::npos)
+    while ((pos = requestBody.find('&')) != string::npos)
     {
-        std::string token = requestBody.substr(0, pos);
+        string token = requestBody.substr(0, pos);
         size_t equalPos = token.find('=');
-        std::string key = token.substr(0, equalPos);
-        std::string value = token.substr(equalPos + 1);
+        string key = token.substr(0, equalPos);
+        string value = token.substr(equalPos + 1);
         formParams[key] = value;
         requestBody.erase(0, pos + 1);
     }
     // Handle the last parameter
     size_t equalPos = requestBody.find('=');
-    std::string key = requestBody.substr(0, equalPos);
-    std::string value = requestBody.substr(equalPos + 1);
+    string key = requestBody.substr(0, equalPos);
+    string value = requestBody.substr(equalPos + 1);
     formParams[key] = value;
 
     // Extract status and component ID from form parameters
-    std::string status_str = formParams["status"];
-    std::string servername = formParams["component_id"];
+    string status_str = formParams["status"];
+    string servername = formParams["component_id"];
 
     // Convert status to integer
-    int status = std::stoi(status_str);
+    int status = stoi(status_str);
 
     string msg = "";
     string cmd = "KILL";
@@ -134,11 +172,8 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
     if (kvs_servers.find(servername) != kvs_servers.end())
     {
         int port = kvs_servers[servername];
-        // int fd = FeUtils::open_socket("127.0.0.1", port);
-
-        //   ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
-        // temp: @todo uncomment
-        ssize_t bytes_sent = 5;
+        int fd = FeUtils::open_socket("127.0.0.1", port);
+        ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to KVS server at port " + to_string(port), LOGGER_ERROR);
@@ -149,17 +184,13 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         }
         server_status[servername] = status;
         logger.log("Server status of " + servername + " is now  " + to_string(server_status[servername]), LOGGER_INFO);
-        // close(fd)
+        close(fd);
     }
     else if (lb_servers.find(servername) != lb_servers.end())
     {
         int port = lb_servers[servername];
-        // int fd = FeUtils::open_socket("127.0.0.1", port);
-
-        // ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
-
-        // temp: @todo uncomment
-        ssize_t bytes_sent = 5;
+        int fd = FeUtils::open_socket("127.0.0.1", port);
+        ssize_t bytes_sent = send(fd, msg.c_str(), msg.size(), 0);
         if (bytes_sent < 0)
         {
             logger.log(cmd + " command could not be sent to FE server at port " + to_string(port), LOGGER_ERROR);
@@ -170,7 +201,7 @@ void toggle_component_handler(const HttpRequest &req, HttpResponse &res)
         }
         server_status[servername] = status;
         logger.log("Server status of " + servername + "is now=" + to_string(server_status[servername]), LOGGER_INFO);
-        // close(fd)
+        close(fd);
     }
     else
     {
@@ -185,9 +216,9 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 {
     logger.log("In dashboard handler", LOGGER_DEBUG);
     //@todo get user from cookies -- Ask B, P, M
-    std::string user = "example"; // Extract user information from cookies if needed
+    string user = "example"; // Extract user information from cookies if needed
 
-    std::string page =
+    string page =
         "<!doctype html>"
         "<html lang='en' data-bs-theme='dark'>"
         "<head>"
@@ -202,16 +233,16 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
         "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
         "<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
         "<style>"
-        "/* Custom CSS for toggle switch */"
+        /* Custom CSS for toggle switch */
         ".toggle-switch {"
-        "    width: 30px; /* Adjust width as needed */"
-        "    height: 15px; /* Adjust height as needed */"
+        "    width: 30px; "  /* Adjust width as needed */
+        "    height: 15px; " /* Adjust height as needed */
         "}"
         ""
         ".form-check-label::after {"
-        "    width: 15px; /* Adjust width of the switch */"
-        "    height: 15px; /* Adjust height of the switch */"
-        "    border-radius: 50%; /* Make the switch round */"
+        "    width: 15px; "        /* Adjust width of the switch */
+        "    height: 15px; "       /* Adjust height of the switch */
+        "    border-radius: 50%; " /* Make the switch round */
         "}"
         "</style>"
         "</head>"
@@ -298,25 +329,95 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
 
     // Paginated Table
     page += "<div class='mt-4'><h2>Tablets in Memory</h2>";
-    page += "<div class='btn-group'>";
+    page += "<div class='btn-group d-flex justify-content-center'> <h6 class='align-self-center'>Select Server: \t \t \t</h6>";
+
     // Generating dynamic buttons from keys of kvs_server map
     for (auto server : kvs_servers)
     {
         page += "<button type='button' class='btn btn-primary table-server-button' data-server='" + server.first + "'>" + server.first + "</button>";
     }
     page += "</div>";
-    page += "<table class='table table-bordered mt-3' id='dataTable'>"
-            //"< thead >"
+    // page += "<table class='table table-bordered mt-3' id='dataTable'>"
+    //         //"< thead >"
+    //         "<tr>"
+    //         "<th> Name</ th>"
+    //         "<th> Details</ th>"
+    //         " </ tr>"
+    //         " </ thead>"
+    //         "<tbody id = 'dataBody'>"
+    //         "<!--Initially, the skeleton is loaded here-->"
+    //         "<tr><td colspan = '2'> Loading... </ td> </ tr>"
+    //         "</ tbody>"
+    //         "</ table>"
+
+    page += "<style>"
+        "table {"
+        "  width: 100%;"
+        "}"
+        "#dataTable1 tbody tr, #dataTable2 tbody tr {"
+        "  cursor: pointer;"
+        "}"
+        "#dataTable1 tbody tr:hover, #dataTable2 tbody tr:hover {"
+        "  background-color: #f0f0f0; /* Change background color on hover */"
+        "  font-weight: bold; /* Make text bold for clicked rows */"
+        "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
+        "  color: #333; /* Darker text color for clicked row */"
+
+        "}"
+        "#dataTable1 tbody tr.clicked, #dataTable2 tbody tr.clicked {"
+        "  background-color: #f8f8f8; /* Lighter background color for clicked row */"
+        "  font-weight: bold; /* Make text bold for clicked rows */"
+        "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
+        "  color: #333; /* Darker text color for clicked row */"
+        "}"
+        "#dataTable1 thead th, #dataTable2 thead th {"
+        "  font-weight: bold; /* Make header text bold */"
+        "}"
+        "</style>";
+
+
+    page += "<div class='row'>"
+            //<!-- First Table (1/4 of the space) -->
+            "<div class='col-md-6'>"
+            "<table class='table table-bordered mt-5' id='dataTable1'>"
+            "<thead>"
+            " <tr>"
+            "<th>Rows from Server</th>"
+            "</tr>"
+            "</thead>"
+            "<tbody id='dataBody1'>"
+            //<!-- Data rows will be dynamically populated here -->
+            "</tbody>"
+            "</table>"
+            "</div>"
+            //<!-- Second Table (3/4 of the space) -->
+            "<div class='col-md-3'>"
+            "<table class='table table-bordered mt-5' id='dataTable2'>"
+            "<thead>"
             "<tr>"
-            "<th> Name</ th>"
-            "<th> Details</ th>"
-            " </ tr>"
-            " </ thead>"
-            "<tbody id = 'dataBody'>"
-            "<!--Initially, the skeleton is loaded here-->"
-            "<tr><td colspan = '2'> Loading... </ td> </ tr>"
-            "</ tbody>"
-            "</ table>"
+            "<th>Columns</th>"
+            "</tr>"
+            "</thead>"
+            " <tbody id='dataBody2'>"
+            "<tr><td colspan='2'>Select an entry from the first table to view details.</td></tr>"
+            "</tbody>"
+            "</table>"
+            "</div>"
+            // Third table 
+            "<div class='col-md-3'>"
+            "<table class='table table-bordered mt-5' id='dataTable3'>"
+            "<thead>"
+            "<tr>"
+            "<th>Value</th>"
+            "</tr>"
+            "</thead>"
+            " <tbody id='dataBody3'>"
+            "<tr><td colspan='2'>Select a server, row and column to view a value.</td></tr>"
+            "</tbody>"
+            "</table>"
+            "</div>"
+            "</div>"
+
             //"< / div >"
 
             // scripts start here
@@ -380,82 +481,165 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             "  name: 'component_id',"
             " value: serverName"
             "}).appendTo(form);"
-
             // Append the form to the body and submit it
             "form.appendTo('body').submit();"
             " });"
             "});"
             "</script>";
 
-    // Convert row_data to a JSON array string
-    std::string json_string = vectorToJson(row_data);
-    cout << "row data size = " << row_data.size() << endl;
+    // Assuming you have a function to convert vector to JSON string
+    string row_json = vector_to_json(row_data);
+    string col_json = vector_to_json(col_data);
+    string value_json = vector_to_json(row_col_value);
+    cout << "Row data size = " << row_data.size() << endl;
+    cout << "Col data size = " << col_data.size() << endl;
 
     page += "<script>"
-            "$(document).ready(function() {"
-            "$('.table-server-button').click(function() {"
-            "var serverName = $(this).data('server');"
-            "var selectedServer = sessionStorage.getItem('selectedServer');"
-            "if (serverName !== selectedServer) {"
-            "submitServerForm(serverName);"
-            "}"
-            "});"
-            "var selectedServer = sessionStorage.getItem('selectedServer');"
-            "if (selectedServer) {"
-            "submitServerForm(selectedServer);"
-            "}"
-            "});"
+        "$(document).ready(function() {"
+        "   var row_data = " + row_json + ";"
+        "   var col_data = " + col_json + ";"
+        "   var value = " + value_json + ";"
 
-            "function submitServerForm(serverName) {"
-            "var selectedServer = sessionStorage.getItem('selectedServer');"
-            "if (serverName !== selectedServer) {"
-            "var form = $('<form>', {"
-            "'action': '/admin/table/getrows',"
-            "'method': 'POST'"
-            "});"
-            "$('<input>').attr({"
-            "'type': 'hidden',"
-            "'name': 'server',"
-            "'value': serverName"
-            "}).appendTo(form);"
-            "form.appendTo('body').submit();"
-            "sessionStorage.setItem('selectedServer', serverName);" // Store selected server in sessionStorage
-            "}"
-            "}"
-            "</script>";
+        "   var selectedServer = sessionStorage.getItem('selectedServer');"
 
-    page += "<script>"
-            "var row_data = " +
-            json_string + ";"
-                          "<script>"
-                          "$(document).ready(function() {"
-                          "$('#loadData').click(function(e) {"
-                          "e.preventDefault();"
-                          "fetchAndRenderData();" // Function to fetch data and render the table
-                          "});"
+        "   renderTable1(row_data, selectedServer);"
+        "   renderTable2(col_data, selectedServer);"
+        "   renderTable3(value);"
 
-                          "function fetchAndRenderData() {"
-                          // Simulating data fetching by waiting for a moment before rendering
-                          "setTimeout(() => {"
-                          "var row_data = <?= json_encode($row_data) ?>;" // Assume $yourDataFromCpp is your C++ data array converted to JSON
-                          "renderTable(row_data);"
-                          "}, 1000);" // Delay to simulate fetching
-                          "}"
+        "   $('.table-server-button').click(function() {"
+        "       var serverName = $(this).data('server');"
+        "       if (serverName !== selectedServer) {"
+        "           submitServerForm(serverName);"
+        "           sessionStorage.removeItem('selectedRow');"
+        "           sessionStorage.removeItem('selectedCol');"
+        "       }"
+        "       $('.table-server-button').removeClass('clicked');"
+        "       $(this).addClass('clicked');"
+        "   });"
 
-                          "function renderTable(row_data) {"
-                          "const tbody = $('#dataBody');"
-                          "tbody.empty();" // Clear previous rows or skeleton
 
-                          "if (!row_data.length) {"
-                          "$('<tr>').append($('<td>').attr('colspan', '2').text('No data available')).appendTo(tbody);"
-                          "} else {"
-                          "row_data.forEach((row) => {"
-                          "$('<tr>').append($('<td>').text(row.name), $('<td>').text(row.details)).appendTo(tbody);"
-                          " });"
-                          "}"
-                          "}"
-                          "});"
-                          "</script>";
+        "   function renderTable1(data, selectedServer) {"
+        "       const tbody = $('#dataBody1');"
+        "       tbody.empty();"
+        "       if (!data.length && !selectedServer) {"
+        "           $('<tr>').append($('<td>').text('No server selected')).appendTo(tbody);"
+        "       } else if (!data.length && selectedServer) {"
+        "           $('<tr>').append($('<td>').text('No rows found on server')).appendTo(tbody);"
+        "       } else {"
+        "           data.forEach(function(row) {"
+        "               $('<tr>').append($('<td>').text(row)).click(function(){"
+        "                   handleRowClick(row, selectedServer);"
+        "               }).appendTo(tbody);"
+        "           });"
+        "       }"
+        "   }"
+
+        "   function renderTable2(data, selectedServer) {"
+        "       const tbody = $('#dataBody2');"
+        "       tbody.empty();"
+        "   var selectedRow = sessionStorage.getItem('selectedRow');"
+        "       if (!data.length && !selectedRow) {"
+        "           $('<tr>').append($('<td>').text('No row selected')).appendTo(tbody);"
+        "       } else if (!data.length && selectedServer) {"
+        "           $('<tr>').append($('<td>').text('No columns in row')).appendTo(tbody);"
+        "       } else {"
+        "           data.forEach(function(row) {"
+        "               $('<tr>').append($('<td>').text(row)).click(function() {"
+        "                   handleColClick(row, selectedRow, selectedServer);"
+        "               }).appendTo(tbody);"
+        "           });"
+        "       }"
+        "   }"
+
+        "   function renderTable3(data) {"
+        "       const tbody = $('#dataBody3');"
+        "       tbody.empty();"
+        "   var selectedCol = sessionStorage.getItem('selectedCol');"
+        "       if (!data.length && !selectedCol) {"
+        "           $('<tr>').append($('<td>').text('No column selected')).appendTo(tbody);"
+        "       } else if (!data.length && selectedCol) {"
+        "           $('<tr>').append($('<td>').text('Empty value')).appendTo(tbody);"
+        "       } else {"
+        "           data.forEach(function(row) {"
+        "               $('<tr>').append($('<td>').text(row)).appendTo(tbody);"
+        "           });"
+        "       }"
+        "   }"
+
+        "   function handleRowClick(row, serverName) {"
+        "   var selectedRow = sessionStorage.getItem('selectedRow');"
+        "       if (row !== selectedRow) {"
+        "           submitGetRowForm(serverName, row);"
+        "           $('tr').removeClass('clicked');"
+        "           $(this).addClass('clicked');"
+        "       }"
+        "   }"
+
+        "   function handleColClick(col, row, serverName) {"
+        "   var selectedCol = sessionStorage.getItem('selectedCol');"
+        "       if (col !== selectedCol) {"
+        "           submitGetValueForm(serverName, row, col);"
+        "           $('tr').removeClass('clicked');"
+        "           $(this).addClass('clicked');"
+        "       }"
+        "   }"
+
+        "   function submitGetRowForm(serverName, row) {"
+        "       var form = $('<form>', {"
+        "           action: '/admin/table/rowvalues',"
+        "           method: 'POST'"
+        "       });"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'server',"
+        "           value: serverName"
+        "       }).appendTo(form);"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'row',"
+        "           value: row"
+        "       }).appendTo(form);"
+        "       form.appendTo('body').submit();"
+        "       sessionStorage.setItem('selectedRow', row);"
+        "   }"
+        "   function submitGetValueForm(serverName, row, col) {"
+        "       var form = $('<form>', {"
+        "           action: '/admin/table/colvalues',"
+        "           method: 'POST'"
+        "       });"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'server',"
+        "           value: serverName"
+        "       }).appendTo(form);"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'row',"
+        "           value: row"
+        "       }).appendTo(form);"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'col',"
+        "           value: col"
+        "       }).appendTo(form);"
+        "       form.appendTo('body').submit();"
+        "       sessionStorage.setItem('selectedCol', col);"
+        "   }"
+        "   function submitServerForm(serverName) {"
+        "       var form = $('<form>', {"
+        "           action: '/admin/table/getrows',"
+        "           method: 'POST'"
+        "       });"
+        "       $('<input>', {"
+        "           type: 'hidden',"
+        "           name: 'server',"
+        "           value: serverName"
+        "       }).appendTo(form);"
+        "       form.appendTo('body').submit();"
+        "       sessionStorage.setItem('selectedServer', serverName);"
+        "   }"
+        "});"
+        "</script>";
 
     page += "</body>"
             "</html>";
@@ -464,7 +648,7 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     res.append_body_str(page);
     res.set_header("Content-Type", "text/html");
 
-    iterateUnorderedMapOfStringToInt(server_status);
+    // iterateUnorderedMapOfStringToInt(server_status);
 
     logger.log("Returned reponse for GET dashboard", LOGGER_DEBUG);
 }
@@ -509,8 +693,8 @@ void parse_coord_msg(string &msg)
 
     // if msg not malformed, update global bool
     coord_init = !kvs_servers.empty();
-    iterateUnorderedMapOfStringToInt(kvs_servers);
-    iterateMapOfStringToVectorOfString(kvs_servergroup);
+    // iterateUnorderedMapOfStringToInt(kvs_servers);
+    // iterateMapOfStringToVectorOfString(kvs_servergroup);
 }
 
 /*
@@ -628,39 +812,205 @@ Handler to get the rows for a given kvs server
 void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
 {
     // Extract form parameters (status and component id) from the HTTP request body
-    std::string requestBody = req.body_as_string();
-    std::unordered_map<std::string, std::string> formParams;
+    string requestBody = req.body_as_string();
+    unordered_map<string, string> formParams;
 
     // Parse the request body to extract form parameters
     size_t pos = 0;
-    while ((pos = requestBody.find('&')) != std::string::npos)
+    while ((pos = requestBody.find('&')) != string::npos)
     {
-        std::string token = requestBody.substr(0, pos);
+        string token = requestBody.substr(0, pos);
         size_t equalPos = token.find('=');
-        std::string key = token.substr(0, equalPos);
-        std::string value = token.substr(equalPos + 1);
+        string key = token.substr(0, equalPos);
+        string value = token.substr(equalPos + 1);
         formParams[key] = value;
         requestBody.erase(0, pos + 1);
     }
     // Handle the last parameter
     size_t equalPos = requestBody.find('=');
-    std::string key = requestBody.substr(0, equalPos);
-    std::string value = requestBody.substr(equalPos + 1);
+    string key = requestBody.substr(0, equalPos);
+    string value = requestBody.substr(equalPos + 1);
     formParams[key] = value;
 
     // Extract server name from form parameters
-    std::string servername = formParams["server"];
+    string servername = formParams["server"];
 
-    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+    // sending as client
+    int port = kvs_servers[servername] - 3000;
+
+    logger.log("Server selected: " + servername + " and port: " + to_string(port), LOGGER_DEBUG);
 
     // temp
 
+    row_data.clear();
+
+    // for (int i = 1; i <= 5; ++i)
+    // { // Assuming two KVS servers
+    //     string kvs_key = "row num " + to_string(i) + ", some value";
+    //     row_data.push_back(kvs_key);
+    // }
+
+
+    // @todo: uncomment
+
+    logger.log("Sending mesage to kvs server at port " + to_string(port), 20);
+
     // writing to port 12000++ to get rows
     // open socket to
-    int server_fd = FeUtils::open_socket("127.0.0.1", kvs_servers[servername]);
+    int server_fd = FeUtils::open_socket("127.0.0.1", port);
 
     vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+    logger.log("Recieved message back " + to_string(port), 20);
+
     row_data = FeUtils::parse_all_rows(row_vector_raw);
+
+
+    close(server_fd);
+
+    // get rid of variables
+
+
+    col_data.clear();
+    row_col_value.clear();
+
+    res.set_code(303); // OK
+    res.set_header("Location", "/admin/dashboard");
+}
+
+/*
+Handler to get the columns for a given row on a specific kvs server
+*/
+void table_select_row_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Extract form parameters (status and component id) from the HTTP request body
+    string requestBody = req.body_as_string();
+    unordered_map<string, string> formParams;
+
+    // Parse the request body to extract form parameters
+    size_t pos = 0;
+    while ((pos = requestBody.find('&')) != string::npos)
+    {
+        string token = requestBody.substr(0, pos);
+        size_t equalPos = token.find('=');
+        string key = token.substr(0, equalPos);
+        string value = token.substr(equalPos + 1);
+        formParams[key] = value;
+        requestBody.erase(0, pos + 1);
+    }
+    // Handle the last parameter
+    size_t equalPos = requestBody.find('=');
+    string key = requestBody.substr(0, equalPos);
+    string value = requestBody.substr(equalPos + 1);
+    formParams[key] = value;
+
+    // Extract server name from form parameters
+    string servername = formParams["server"];
+    string row_str = formParams["row"];
+
+    row_str = FeUtils::urlDecode(row_str);
+
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+    logger.log("Row selected: " + row_str, LOGGER_DEBUG);
+
+    vector<char> row_vec(row_str.begin(), row_str.end());
+
+    // temp
+
+    // for (int i = 0; i < 5; ++i)
+    // { // Assuming two KVS servers
+    //     char c = 'a' + i;
+    //     string kvs_key = "col name ";
+    //     kvs_key.push_back(c); // Append the character to the string
+    //     col_data.push_back(kvs_key);
+    // }
+
+    // @todo: uncomment
+
+    // writing to port 12000++ to get rows
+    // open socket to
+
+    // sending as client
+    int port = kvs_servers[servername] - 3000;
+    int server_fd = FeUtils::open_socket("127.0.0.1", port);
+
+    vector<char> response = FeUtils::kv_get_row(server_fd, row_vec);
+    if (FeUtils::kv_success(response)){
+       vector<char> col_response(response.begin() + 4, response.end());
+       vector<vector<char>> col_vec = FeUtils::split_vector(col_response, {'\b'});
+       for (auto vec : col_vec){
+        string col_name(vec.begin(), vec.end());
+        col_data.push_back(col_name);
+       }
+    } else {
+
+        logger.log("Could not get row" + row_str + "from KVS " + servername, LOGGER_ERROR);
+    }
+
+    close(server_fd);
+
+    row_col_value.clear();
+
+    res.set_code(303); // OK
+    res.set_header("Location", "/admin/dashboard");
+}
+
+/*
+Handler to get the columns for a given row on a specific kvs server
+*/
+void table_select_col_handler(const HttpRequest &req, HttpResponse &res)
+{
+    // Extract form parameters (status and component id) from the HTTP request body
+    string requestBody = req.body_as_string();
+    unordered_map<string, string> formParams;
+
+    // Parse the request body to extract form parameters
+    size_t pos = 0;
+    while ((pos = requestBody.find('&')) != string::npos)
+    {
+        string token = requestBody.substr(0, pos);
+        size_t equalPos = token.find('=');
+        string key = token.substr(0, equalPos);
+        string value = token.substr(equalPos + 1);
+        formParams[key] = value;
+        requestBody.erase(0, pos + 1);
+    }
+    // Handle the last parameter
+    size_t equalPos = requestBody.find('=');
+    string key = requestBody.substr(0, equalPos);
+    string value = requestBody.substr(equalPos + 1);
+    formParams[key] = value;
+
+    // Extract server name from form parameters
+    string servername = formParams["server"];
+    string row_str = formParams["row"];
+    string col_str = formParams["col"];
+
+    row_str = FeUtils::urlDecode(row_str);
+    col_str = FeUtils::urlDecode(col_str);
+
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+    logger.log("Row selected: " + row_str + " and col selected: " + col_str, LOGGER_DEBUG);
+
+    vector<char> row_vec(row_str.begin(), row_str.end());
+    vector<char> col_vec(col_str.begin(), col_str.end());
+
+    // temp
+
+    // @todo: uncomment
+
+    // writing to port 12000++ to get rows
+    // open socket to
+    int port = kvs_servers[servername] - 3000; // write as client
+    int server_fd = FeUtils::open_socket("127.0.0.1", port);
+
+    vector<char> response = FeUtils::kv_get(server_fd, row_vec,col_vec);
+    if (FeUtils::kv_success(response)){
+       vector<char> value_vec(response.begin() + 4, response.end());
+       string row_col_value(value_vec.begin(), value_vec.end());
+    } else {
+
+        logger.log("Could not get value from row " + row_str + " and col " + col_str + " in KVS " + servername, LOGGER_ERROR);
+    }
 
     close(server_fd);
 
@@ -673,12 +1023,9 @@ Redirect to load balancer if user wants a different page
 */
 void redirect_handler(const HttpRequest &req, HttpResponse &res)
 {
-    cout << "in redirect" << endl;
     int server = 7500;
-    logger.log("abc", LOGGER_DEBUG);
     // Format the server address properly assuming HTTP protocol and same host
-    std::string redirectUrl = "http://localhost:" + to_string(server);
-    cout << "redirect Url is :" << redirectUrl << endl;
+    string redirectUrl = "http://localhost:" + to_string(server);
 
     // Set the response code to redirect and set the location header to the port of the frontend server it picked response.set_code(307);
     res.set_header("Location", redirectUrl); // Redirect to the server at the specified port response. set header ("Content-Type", "text/html");
@@ -696,7 +1043,7 @@ int main()
     int listen_sock = socket(PF_INET, SOCK_STREAM, 0);
     if (listen_sock == -1)
     {
-        std::cerr << "Socket creation failed\n";
+        cerr << "Socket creation failed\n";
         return 1;
     }
 
@@ -704,7 +1051,7 @@ int main()
     int enable = 1;
     if (setsockopt(listen_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
     {
-        std::cerr << "Setsockopt failed for port 8080\n";
+        cerr << "Setsockopt failed for port 8080\n";
         return 1;
     }
 
@@ -720,7 +1067,7 @@ int main()
     // bind socket to port
     if (bind(listen_sock, (const struct sockaddr *)&servaddr, servaddr_size) == -1)
     {
-        std::string msg = "Cannot bind socket to port #" + std::to_string(listen_port) + " (" + strerror(errno) + ")";
+        string msg = "Cannot bind socket to port #" + to_string(listen_port) + " (" + strerror(errno) + ")";
         logger.log(msg, LOGGER_CRITICAL);
         return 1;
     }
@@ -728,24 +1075,23 @@ int main()
     // Listen for incoming connections
     if (listen(listen_sock, 3) < 0)
     {
-        std::cerr << "Listen failed\n";
+        cerr << "Listen failed\n";
         return 1;
     }
 
     // Accept incoming connections and handle them in separate threads
-    while (server_loops < 2)
+    while (server_loops < 1)
     {
-        // if we got messages from both coord and lb, exit loop
-        if (lb_init) // @todo add this once confirmed kvs && coord_init
-        {
-            cout << "lb init done" << endl;
-            break;
-        }
+        // // if we got messages from both coord and lb, exit loop
+        // if (lb_init && coord_init) // @todo add this once confirmed kvs && coord_init
+        // {
+        //     break;
+        // }
 
         int temp_sock = accept(listen_sock, (struct sockaddr *)&servaddr, &servaddr_size);
         if (temp_sock < 0)
         {
-            std::cerr << "Accept failed for port 8080\n";
+            cerr << "Accept failed for port 8080\n";
             return 1;
         }
 
@@ -763,7 +1109,7 @@ int main()
     // }
 
     // // Initialize Key-Value Store (KVS) servers
-    // for (int i = 1; i <= 2; ++i)
+    // for (int i = 1; i <= 5; ++i)
     // { // Assuming two KVS servers
     //     string kvs_key = "KVS" + to_string(i);
     //     int port_number = 9000 + i - 1; // Increment port number for each server
@@ -771,20 +1117,23 @@ int main()
     //     server_status[kvs_key] = 1; // Set status to 1 for each KVS server
     // }
 
+    
+
+
     logger.log("Admin console ready.", LOGGER_INFO);
 
     // // Create socket for port 8081
     // int kvs_sock = socket(AF_INET, SOCK_STREAM, 0);
     // if (kvs_sock == -1)
     // {
-    //     std::cerr << "Socket creation failed\n";
+    //     cerr << "Socket creation failed\n";
     //     return 1;
     // }
 
     // // Set socket option to enable address reuse
     // if (setsockopt(kvs_sock, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(int)) < 0)
     // {
-    //     std::cerr << "Setsockopt failed for port 8081\n";
+    //     cerr << "Setsockopt failed for port 8081\n";
     //     return 1;
     // }
 
@@ -799,7 +1148,7 @@ int main()
     // // bind socket to port
     // if (bind(kvs_sock, (const struct sockaddr *)&kvs_sock_addr, kvs_addr_len) == -1)
     // {
-    //     std::string msg = "Cannot bind socket to port #" + std::to_string(kvs_port) + " (" + strerror(errno) + ")";
+    //     string msg = "Cannot bind socket to port #" + to_string(kvs_port) + " (" + strerror(errno) + ")";
     //     logger.log(msg, LOGGER_CRITICAL);
     //     return 1;
     // }
@@ -807,7 +1156,7 @@ int main()
     // // Listen for incoming connections
     // if (listen(kvs_sock, 3) < 0)
     // {
-    //     std::cerr << "Listen failed\n";
+    //     cerr << "Listen failed\n";
     //     return 1;
     // }
 
@@ -817,8 +1166,8 @@ int main()
     HttpServer::get("/admin/dashboard", dashboard_handler);                // Display admin dashboard
     HttpServer::post("/admin/component/toggle", toggle_component_handler); // Handle component toggle requests
     HttpServer::post("/admin/table/getrows", table_select_kvs_handler);    // handles table requests for a specific kvs server
-    // HttpServer::post("/admin/table/rowvalues", table_select_row_handler);  // handles table requests to get the row values for a kvs
-    // HttpServer::post("/admin/table/colvalues", table_select_col_handler);  // handles table requests to get value for given column
+    HttpServer::post("/admin/table/rowvalues", table_select_row_handler);  // handles table requests to get the row values for a kvs
+    HttpServer::post("/admin/table/colvalues", table_select_col_handler);  // handles table requests to get value for given column
 
     // @todo add redirect to LB
     HttpServer::get("*", redirect_handler);

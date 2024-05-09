@@ -55,4 +55,8 @@ void email_handler(const HttpRequest& request, HttpResponse& response);
 void mailbox_handler(const HttpRequest& request, HttpResponse& response);
 void compose_email(const HttpRequest& request, HttpResponse& response);
 
+//
+std::string get_time_and_date();
+
+
 #endif // EMAIL_SERVER_H

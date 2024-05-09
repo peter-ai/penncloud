@@ -152,6 +152,12 @@ void BackendServer::accept_and_handle_clients()
                 continue;
             }
 
+            if (is_dead)
+            {
+                close(client_fd);
+                continue;
+            }
+
             // extract port from client connection and initialize KVS_Client object
             int client_port = ntohs(client_addr.sin_port);
             be_logger.log("Accepted connection from client on port " + std::to_string(client_port), 20);
@@ -241,6 +247,14 @@ void BackendServer::handle_coord_comm()
                     // set primary port
                     primary_port = std::stoi(new_servers.at(0).substr(IP.length()));
                     be_logger.log("New primary at " + std::to_string(primary_port), 20);
+                    // check if the primary port supplied by the coordinator is your group port
+                    // if so, this server takes on the role of the primary
+                    if (primary_port == group_port)
+                    {
+                        is_primary = true;
+                        // now that this server is the primary, it must update it's initiating checkpoint number to the last checkpoint
+                        checkpoint_version = last_checkpoint;
+                    }
 
                     // clear secondary ports in preparation for new secondaries
                     secondary_ports_lock.lock();
@@ -252,9 +266,16 @@ void BackendServer::handle_coord_comm()
                     {
                         for (size_t i = 1; i < new_servers.size(); i++)
                         {
-                            std::string secondary_port = new_servers.at(i).substr(IP.length());
-                            secondary_ports.insert(std::stoi(secondary_port));
-                            secondaries += secondary_port + " ";
+                            int secondary_port = std::stoi(new_servers.at(i).substr(IP.length()));
+                            secondary_ports.insert(secondary_port);
+
+                            // check if the secondary port that was sent was a port in recovery
+                            // If so, this means the server finished recovering and it should be removed from the recovery list
+                            if (ports_in_recovery.count(secondary_port) != 0)
+                            {
+                                ports_in_recovery.erase(secondary_port);
+                            }
+                            secondaries += std::to_string(secondary_port) + " ";
                         }
                     }
                     secondary_ports_lock.unlock();
@@ -464,6 +485,13 @@ void BackendServer::accept_and_handle_group_comm(int group_comm_sock_fd)
                 continue;
             }
 
+            // server blocked above on accept - it should close this connection and jump out
+            if (is_dead && !is_recovering)
+            {
+                close(group_server_fd);
+                continue;
+            }
+
             // extract port from group server connection and initialize KVSGroupServer object
             int group_server_port = ntohs(group_server_addr.sin_port);
             be_logger.log("Accepted connection from group server on port " + std::to_string(group_server_port), 20);
@@ -655,7 +683,6 @@ void BackendServer::admin_live()
     // extract primary from coord_response
     std::string contact_primary(coord_response.byte_stream.begin(), coord_response.byte_stream.end());
     int contact_primary_port = std::stoi(contact_primary.substr(IP.length()));
-    be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 20);
 
     // construct message to primary - RECO<SP>CP# SEQ# (no space between CP# and SEQ#)
     std::vector<char> recovery_msg = {'R', 'E', 'C', 'O', ' '};
@@ -672,7 +699,7 @@ void BackendServer::admin_live()
     std::unordered_map<std::string, std::vector<char>> downloaded_logs;
     for (std::string &tablet_range : tablet_ranges)
     {
-        std::string log_filename = tablet_range + "_log";
+        std::string log_filename = disk_dir + tablet_range + "_log";
 
         // download logs
         downloaded_logs[tablet_range] = BeUtils::read_from_file_into_vec(log_filename);
@@ -688,12 +715,15 @@ void BackendServer::admin_live()
     // Place yourself in recovery mode - allows you to accept group connections, but NOT client connections
     is_recovering = true;
 
+    be_logger.log("Primary is at " + std::to_string(contact_primary_port) + ". Contacting for checkpoint and logs.", 20);
+
     // open connection with primary server and write recovery message to server
     // sending this recovery message means primary will add this server to their list of recovering servers - this server will now be part of the 2PC protocol for updates
     int contact_primary_fd = BeUtils::open_connection(contact_primary_port);
     BeUtils::write_with_size(contact_primary_fd, recovery_msg);
     // read recovery response from primary
     BeUtils::ReadResult primary_recovery_response = BeUtils::read_with_size(contact_primary_fd);
+    be_logger.log("Primary completed recovery assist - updating tablet state", 20);
 
     // Primary will send back a stream of data
     // The first letter will indicate if checkpoints were included (C or N)
@@ -703,11 +733,19 @@ void BackendServer::admin_live()
 
     std::vector<char> &stream = primary_recovery_response.byte_stream;
 
+    // across all log replays, take the max sequence number in case you become primary again and have to initiate with that seq num
+    seq_num_lock.lock();
+    uint32_t max_seq_num_from_replay = seq_num;
+    seq_num_lock.unlock();
+    be_logger.log("Sequence number before log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
+
     // loop through the number of tablets. For each one, you can expect the following:
     // Log - First 4 bytes are a number, and the next x bytes are the number of corresponding bytes
     // If first letter was NOT a C, then in each case, all you have to do is deserialize your checkpoint file for this tablet, and then read the logs
     for (std::string &tablet_range : tablet_ranges)
     {
+        be_logger.log("Recovering " + tablet_range + " tablet", 20);
+
         // initialize a tablet using the default constructor and add it to the vector of live tablets
         server_tablets.push_back(std::make_shared<Tablet>());
         std::shared_ptr<Tablet> tablet = server_tablets.back();
@@ -725,7 +763,6 @@ void BackendServer::admin_live()
 
             // initialize tablet from stream
             tablet->deserialize_from_stream(checkpoint_data);
-
             be_logger.log("Built " + tablet_range + " tablet from primary checkpoint data", 20);
         }
         // otherwise, deserialize from your checkpoint file
@@ -738,26 +775,30 @@ void BackendServer::admin_live()
 
             // replay your downloaded logs
             be_logger.log("Replaying local " + tablet_range + " logs to fast forward tablet", 20);
-            tablet->replay_log_from_stream(downloaded_logs.at(tablet_range));
+            max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_stream(downloaded_logs.at(tablet_range)));
         }
 
         // Extract the log next and replay it
         // read 4 characters to get the size of the log
         uint32_t log_file_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
-
         // extract the log data and remove it from the stream
         std::vector<char> log_data(stream.begin(), stream.begin() + log_file_size);
         stream.erase(stream.begin(), stream.begin() + log_file_size);
 
         // replay the log to update the tablet
         be_logger.log("Replaying " + tablet_range + " logs from primary to fast forward tablet", 20);
-        tablet->replay_log_from_stream(log_data);
+        max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_stream(log_data));
 
         // replay your log to ensure you're up to date on any update operations that occurred while you were in recovery mode
         be_logger.log("Replaying " + tablet_range + " logs created while in recovery", 20);
-        tablet->replay_log_from_file(tablet->log_filename);
+        max_seq_num_from_replay = std::max(max_seq_num_from_replay, tablet->replay_log_from_file(BackendServer::disk_dir + tablet->log_filename));
     }
+
+    seq_num_lock.lock();
+    seq_num = std::max(seq_num, max_seq_num_from_replay);
+    seq_num_lock.unlock();
+    be_logger.log("Sequence number after log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
 
     // set flag to false to indicate server is now alive
     is_recovering = false;
@@ -785,11 +826,11 @@ void BackendServer::coordinate_checkpoint()
     {
         // initiate checkpoint as long as the server is alive and it's a primary
         // Only primary can initiate checkpointing - other servers loop here until they become primary servers (possible if primary fails)
+
+        // Sleep for 60 seconds between each checkpoint
+        std::this_thread::sleep_for(std::chrono::seconds(60));
         if (!is_dead && is_primary)
         {
-            // Sleep for 30 seconds between each checkpoint
-            std::this_thread::sleep_for(std::chrono::seconds(60));
-
             // Begin checkpointing
             checkpoint_version++; // increment checkpoint version number
             // prepare version number as vector for message sending

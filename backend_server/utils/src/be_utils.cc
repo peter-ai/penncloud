@@ -366,12 +366,20 @@ std::vector<char> BeUtils::read_from_file_into_vec(std::string &filename)
     std::streampos file_size = file.tellg();
     file.seekg(0, std::ios::beg);
 
-    // Read the file into a vector
-    std::vector<char> file_data(file_size);
-    file.read(file_data.data(), file_size);
+    if (file_size > 0)
+    {
+        // Read the file into a vector
+        std::vector<char> file_data(file_size);
+        file.read(file_data.data(), file_size);
 
-    // Close the file
-    file.close();
-
-    return file_data;
+        // Close the file
+        file.close();
+        return file_data;
+    }
+    else
+    {
+        // return empty vector
+        std::vector<char> file_data;
+        return file_data;
+    }
 }
