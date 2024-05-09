@@ -171,10 +171,9 @@ bool delete_folder(int fd, vector<char> parent_folder)
 // Recursive helper function to rename folder and subfolder paths
 bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername, vector<char> moving_folder)
 {
-    logger.log("In move subfolders", LOGGER_DEBUG);
+    
     // check parent name
     string pfolder(parent_folder.begin(), parent_folder.end());
-    logger.log("parent folder: " + pfolder, LOGGER_INFO);
 
     // get row
     vector<char> folder_content = FeUtils::kv_get_row(fd, parent_folder);
@@ -185,7 +184,6 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
 
     if (!contents.empty())
     {
-        logger.log("Parent folder " + string(parent_folder.begin(), parent_folder.end()) + " not empty", LOGGER_INFO);
         // Iterate through each element in the formatted contents
         for (auto col_name : contents)
         {
@@ -203,9 +201,6 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
                 vector<char> old_rowname = parent_folder;
                 old_rowname.insert(old_rowname.end(), col_name.begin(), col_name.end());
 
-                logger.log("Old row name is " + string(old_rowname.begin(), old_rowname.end()), LOGGER_DEBUG);
-                logger.log("New row name is " + string(new_rowname.begin(), new_rowname.end()), LOGGER_DEBUG);
-
                 // the new row name should be new folder name + col : ie : user/newname/column/
 
                 move_subfolders(fd, old_rowname, new_rowname, col_name);
@@ -217,7 +212,7 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
     new_rowname.insert(new_rowname.end(), moving_folder.begin(), moving_folder.end());
     string new_parent_str(new_rowname.begin(), new_rowname.end());
 
-    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) + " to " + new_parent_str, LOGGER_INFO);
+   
     // After deleting all contents, delete the folder itself
     if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
     {
@@ -263,8 +258,6 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
                 vector<char> old_rowname = parent_folder;
                 old_rowname.insert(old_rowname.end(), col_name.begin(), col_name.end());
 
-                logger.log("Old row name is " + string(old_rowname.begin(), old_rowname.end()), LOGGER_DEBUG);
-                logger.log("New row name is " + string(new_rowname.begin(), new_rowname.end()), LOGGER_DEBUG);
 
                 // the new row name should be new folder name + col : ie : user/newname/column/
 
@@ -272,7 +265,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
             }
         }
     }
-    logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
+    
     // After deleting all contents, delete the folder itself
     if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
     {
@@ -372,10 +365,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 vector<string> path_pieces = Utils::split(childpath_str, "/");
                 std::string grandparent_path = split_parent_filename(path_pieces, curr_folder);
 
-                logger.log("path oeices = " + to_string(path_pieces.size()), 20);
-                logger.log("child path = " + childpath_str, 20);
-                logger.log("grandparent path = " + grandparent_path, 20);
-
+                
                 if (path_pieces.size() > 1)
                 {
                     
@@ -437,8 +427,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                             blacklist.pop_back();
                         }
                         blacklist += ']';
-                        logger.log("Blacklist is:" + blacklist, 20);
-                        logger.log("Move items is:" + move_options, 20);
+                        
 
                         // start row
                         if (row_count % 9 == 0)
@@ -1158,7 +1147,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
 // deletes file or folder
 void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    logger.log("In delete filefolder", LOGGER_DEBUG);
+    
     // of type /api/drive/delete/* where child directory is being served
     string childpath_str = req.path.substr(18);
     string username = get_username(childpath_str);
@@ -1220,12 +1209,10 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("Identified delete folder", LOGGER_DEBUG);
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
         if (FeUtils::kv_success(folder_content))
         {
@@ -1364,7 +1351,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("Identified rename folder", LOGGER_DEBUG);
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
@@ -1418,8 +1404,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 // post with form attribtue newparent
 void move_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-
-    logger.log("In rename filefolder", LOGGER_DEBUG);
     // of type /api/drive/move/* where child directory is being served
     string parentpath_str = req.path.substr(16);
     string username = get_username(parentpath_str);
@@ -1491,8 +1475,6 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
     vector<char> newparent_vec(newparent.begin(), newparent.end());
 
-    logger.log("New parent is:" + newparent, LOGGER_DEBUG);
-
     // if we are trying to move a filde
     if (!is_folder(child_path))
     {
@@ -1510,7 +1492,6 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         // if error, return
         if (!FeUtils::kv_success(file_content))
         {
-            logger.log("1378 setting 400", LOGGER_DEBUG);
             res.set_code(303);
             res.set_header("Location", "/400");
             return;
@@ -1556,12 +1537,10 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-        logger.log("Identified move folder", LOGGER_DEBUG);
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
         if (FeUtils::kv_success(folder_content))
         {
@@ -1571,24 +1550,20 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
             // get folder name
             string foldername;
 
-            logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
+            
             vector<string> split_filepath = Utils::split(childpath_str, "/");
             string parentpath_str = split_parent_filename(split_filepath, foldername);
 
             foldername += '/';
 
-            logger.log("Parent path is " + parentpath_str, LOGGER_DEBUG);
-            logger.log("Folder name is " + foldername, LOGGER_DEBUG);
-
             vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
             vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
-            logger.log("Moving folder to new parent by renaming subfolders", LOGGER_DEBUG);
 
             // recursively delete the folders children
             if (move_subfolders(sockfd, child_path, newparent_vec, folder_name_vec))
             {
-                logger.log("Rename recursion success", LOGGER_DEBUG);
+               
 
                 // Delete folder from old parent
                 if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
