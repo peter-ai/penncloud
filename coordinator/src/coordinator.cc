@@ -899,8 +899,7 @@ bool send_kvs_reco(struct kvs_args &kvs)
     }
     else
     {
-        if (VERBOSE)
-            logger.log("Sent recovery message to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
+        logger.log("Sent recovery message to <" + kvs.server_addr + ">: " + response, LOGGER_INFO);
     }
 
     return successful;
