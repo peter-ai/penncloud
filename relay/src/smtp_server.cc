@@ -112,7 +112,7 @@ void SMTPServer::store_external_email(EmailData &email)
 
             smtp_server_logger.log("Response from KVS: " + rowCheckMsg, 10);
 
-            if (!FeUtils::startsWith(rowCheck, "+OK"))
+            if (FeUtils::kv_success(rowCheck))
             {
                 smtp_server_logger.log("User " + recipientEmail + " does not exist in the PennCloud system.", 40);
                 all_emails_sent = false;
@@ -123,7 +123,7 @@ void SMTPServer::store_external_email(EmailData &email)
 
             vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
-            if (!FeUtils::startsWith(kvsResponse, "+OK"))
+            if (FeUtils::kv_success(kvsResponse))
             {
                 smtp_server_logger.log("Failed to store external email in KVS for row: " + rowKey, 40);
                 all_emails_sent = false;
