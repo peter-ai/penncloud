@@ -228,7 +228,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
 				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-				if (FeUtils::kv_success(kvsResponse))
+				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
 					response.set_header("Location", "/500");
@@ -646,7 +646,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
 				"</head>"
 
-				"<body onload='setTheme()'>"
+				"<body onload='setTheme(); $(\"#reply\").click(setTimeout(function(){$(\"#reply\").click();$(\"#reply\").removeClass(\"active\");$(\"#submitButton\").hide();}, 5));'>"
 				"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
 				"<div class='container-fluid'>"
 				"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
@@ -696,14 +696,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "</svg> Reply"
 						   "</button>"
 						   "</div>"
-						   "<!--<div class='col-2'>"
-						   "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
-						   "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
-						   "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
-						   "</svg> Reply All"
-						   "</button>"
-						   "</div>-->"
 						   "<div class='col-2'>"
 						   "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
 						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
@@ -719,7 +711,6 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
 						   "<div class='form-group mb-3'>"
 						   "<div class='mb-3'>"
-
 						   "<div class='mb-3'>"
 						   "<label for='time' class='form-label'>Received:</label>"
 						   "<input type='text' class='form-control' id='time' name='time' value='" +
@@ -749,12 +740,12 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 								"<div>"
 								"<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
 								"Time: " +
-				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] +
+				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] +"\n---------------------------------\n" + email["oldBody"] +
 				"</textarea>"
 				"</div>"
 				"</div>"
 				"<div class='col-12 mb-2'>"
-				"<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
+				"<button id='submitButton' class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
 				"<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
 				username + "/mbox\"'>Back</button>"
 						   "</div>"
@@ -786,12 +777,13 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						 "$('#forward').attr('aria-pressed', 'false');"
 						 "$('#subject').val($('#subject').val().replace('FWD: ', ''));"
 						 "}"
-
+						 
+						 "$('#submitButton').show();"
 						 "$('label[for=time], input#time').hide();"
 						 "$('#to').attr('readonly', false);"
 						 "$('#to').val(from);"
-						 "$('#subject').val('RE: ' + $('#subject').val());"
 						 "$('#subject').attr('readonly', false);"
+						 "$('#subject').val('RE: ' + $('#subject').val());"
 						 "$('#from').val('" +
 				username + "@penncloud.com');"
 						   "$('label[for=from], input#from').hide();"
@@ -803,16 +795,17 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				username + "/mbox/reply?uidl=' + uidl);"
 						   "}"
 						   "else {"
+						   "$('#submitButton').hide();"
 						   "$('label[for=time], input#time').show();"
-						   "$('#to').attr('readonly', true);"
 						   "$('#to').val(to);"
+							"$('#to').attr('readonly', true);"
 						   "$('#subject').val(subject);"
 						   "$('#subject').attr('readonly', true);"
 						   "$('#from').val(from);"
 						   "$('label[for=from], input#from').show();"
-						   "$('#body').attr('readonly', true);"
 						   "$('#body').text(body);"
 						   "$('#body').removeClass('mb-3');"
+						   "$('#body').attr('readonly', true);"
 						   "$('#oldBody').css('display', 'none');"
 						   "$('#emailForm').attr('action', '');"
 						   "}"
@@ -826,11 +819,12 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "$('#subject').val($('#subject').val().replace('RE: ', ''));"
 						   "}"
 
+							"$('#submitButton').show();"
 						   "$('label[for=time], input#time').hide();"
 						   "$('#to').attr('readonly', false);"
 						   "$('#to').val('');"
-						   "$('#subject').val('FWD: ' + $('#subject').val());"
 						   "$('#subject').attr('readonly', false);"
+						   "$('#subject').val('FWD: ' + $('#subject').val());"
 						   "$('#from').val('" +
 				username + "@penncloud.com');"
 						   "$('label[for=from], input#from').hide();"
@@ -842,16 +836,17 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				username + "/mbox/forward?uidl=' + uidl);"
 						   "}"
 						   "else {"
+						   "$('#submitButton').hide();"
 						   "$('label[for=time], input#time').show();"
-						   "$('#to').attr('readonly', true);"
 						   "$('#to').val(to);"
+						   "$('#to').attr('readonly', true);"
 						   "$('#subject').val(subject);"
 						   "$('#subject').attr('readonly', true);"
 						   "$('#from').val(from);"
 						   "$('label[for=from], input#from').show();"
-						   "$('#body').attr('readonly', true);"
 						   "$('#body').text(body);"
 						   "$('#body').removeClass('mb-3');"
+						   "$('#body').attr('readonly', true);"
 						   "$('#oldBody').css('display', 'none');"
 						   "$('#emailForm').attr('action', '');"
 						   "}"
@@ -1175,7 +1170,8 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				"$('#emailTable').dataTable({"
 				"'oLanguage': {"
 				"'sEmptyTable': 'Your inbox is empty'"
-				"}"
+				"},"
+				"order: [[2, 'asc']]"
 				"});"
 				"});"
 				"</script>"
