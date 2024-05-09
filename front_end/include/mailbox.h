@@ -35,14 +35,9 @@
  * Definitions and utility functions for handling email operations over HTTP.
  */
 
+//helper functions for mailbox 
 // Parses a path to extract the mailbox row key in the format "user1-mbox/"
 std::string parseMailboxPathToRowKey(const std::string& path);
-
-// Checks if the vector starts with the given prefix
-bool startsWith(const std::vector<char>& vec, const std::string& prefix);
-
-// Retrieves a query parameter value from a given HttpRequest
-std::string get_query_parameter(const HttpRequest& request, const std::string& key);
 
 // Handlers for different email operations
 void forwardEmail_handler(const HttpRequest& request, HttpResponse& response);
@@ -52,9 +47,5 @@ void sendEmail_handler(const HttpRequest& request, HttpResponse& response);
 void email_handler(const HttpRequest& request, HttpResponse& response);
 void mailbox_handler(const HttpRequest& request, HttpResponse& response);
 void compose_email(const HttpRequest& request, HttpResponse& response);
-
-//
-std::string get_time_and_date();
-
 
 #endif // EMAIL_SERVER_H

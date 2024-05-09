@@ -6,7 +6,7 @@ TARGETS = relay_main
 
 all: $(TARGETS)
 
-loadbalancer_main: ./src/relay_main.cc
+relay_main: ./src/relay_main.cc ./src/smtp_server.cc ../utils/src/utils.cc ../front_end/utils/src/fe_utils.cc
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	rm -f *o
 

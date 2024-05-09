@@ -638,3 +638,65 @@ std::string FeUtils::urlDecode(const std::string value) {
 
     return decoded.str(); //cnvert stream to string
 }
+
+// ### MAILBOX/SMTPSERVER UTILS ###
+std::string FeUtils::extractUsernameFromEmailAddress(const std::string &emailAddress)
+{
+	size_t atPosition = emailAddress.find('@');
+	if (atPosition == std::string::npos)
+	{
+		std::cerr << "Invalid email address." << std::endl;
+		// Exit the program with an error code
+	}
+	else
+	{
+		// Extract the username part
+		std::string username = emailAddress.substr(0, atPosition);
+		return username;
+	}
+}
+
+// when sending, responding to, and forwarding an email
+std::vector<std::string> FeUtils::parseRecipients(const std::string &recipients)
+{
+	std::vector<std::string> result;
+	std::istringstream ss(recipients);
+	std::string recipient;
+
+	while (getline(ss, recipient, ','))
+	{
+		recipient.erase(remove_if(recipient.begin(), recipient.end(), ::isspace), recipient.end()); // Trim spaces
+		recipient = Utils::trim(recipient);
+		result.push_back(recipient);
+	}
+
+	return result;
+}
+
+std::string FeUtils::extractDomain(const std::string &email)
+{
+	size_t at_pos = email.find('@');
+	std::string domain = email.substr(at_pos + 1);
+	return domain;
+}
+
+bool FeUtils::isLocalDomain(const std::string &domain)
+{
+	return domain == "penncloud.com" || domain == "localhost";
+}
+
+bool FeUtils::startsWith(const std::vector<char> &vec, const std::string &prefix)
+{
+	if (vec.size() < prefix.size())
+		return false;
+	return std::string(vec.begin(), vec.begin() + prefix.size()) == prefix;
+}
+
+std::vector<char> FeUtils::charifyEmailContent(const EmailData &email)
+{
+	std::string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
+	std::vector<char> char_vector(data.begin(), data.end());
+	return char_vector;
+}
+
+

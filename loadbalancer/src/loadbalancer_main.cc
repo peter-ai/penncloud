@@ -14,7 +14,6 @@ int main(int argc, char **argv)
 
     // 1. Populate map of servers and server mutexes
     LoadBalancer::initialize_servers(numServers, startingPort);
-
     // Send list of FE servers to Admin Console that sits on port 8080
     LoadBalancer::lb_to_admin(8080);
 

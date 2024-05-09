@@ -2,134 +2,6 @@
 
 using namespace std;
 
-// Relay
-string extractDomain(const string &email)
-{
-	size_t at_pos = email.find('@');
-	string domain = email.substr(at_pos + 1);
-	return domain;
-}
-
-bool isLocalDomain(const string &domain)
-{
-	return domain == "penncloud.com" || domain == "localhost";
-}
-
-std::string parseEmailField(const std::string &emailContents, const std::string &field, size_t limit)
-{
-	size_t startPos = emailContents.find(field);
-	if (startPos != std::string::npos && startPos < limit)
-	{
-		startPos += field.length(); // Move past the field name and colon
-		size_t endPos = emailContents.find('\n', startPos);
-		if (endPos != std::string::npos && endPos < limit)
-		{
-			return emailContents.substr(startPos, endPos - startPos);
-		}
-	}
-	return "";
-}
-
-// URL Decoding: creates column value based off UIDL
-
-std::string urlEncode(const std::string &value)
-{
-	std::ostringstream escaped;
-	escaped.fill('0');
-	escaped << std::hex;
-
-	for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i)
-	{
-		std::string::value_type c = (*i);
-
-		// keep alphanumeric and other accepted characters as is
-		if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
-		{
-			escaped << c;
-			continue;
-		}
-
-		// remaining characters are percent-encoded
-		escaped << std::uppercase;
-		escaped << '%' << std::setw(2) << int((unsigned char)c);
-		escaped << std::nouppercase;
-	}
-
-	return escaped.str();
-}
-
-// URL Decoding: takes URL value and decodes it
-
-std::string urlDecode(const std::string &str)
-{
-	std::ostringstream decoded; // This will hold the decoded result
-
-	// loop over each character in the string
-	for (size_t i = 0; i < str.size(); ++i)
-	{
-		char c = str[i]; // get the current character
-
-		if (c == '+')
-		{ //'+' in URLs represents a space
-			decoded << ' ';
-		}
-		else if (c == '%' && i + 2 < str.size())
-		{
-			// if '%' is found and there are at least two characters after it
-			std::string hexValue = str.substr(i + 1, 2);		   // extract the next two characters
-			int charValue;										   // store the converted hexadecimal value
-			std::istringstream(hexValue) >> std::hex >> charValue; // cnvert hex to int
-			decoded << static_cast<char>(charValue);			   // cast the int to char and add to the stream
-			i += 2;												   // skip the next two characters that were part of the hex value
-		}
-		else
-		{
-			decoded << c; // add the character as is if it's not a special case char
-		}
-	}
-
-	return decoded.str(); // convert stream to string
-}
-
-std::string get_time_and_date() {
-	time_t now = time(0);
-	struct tm timeStruct;
-	char buf[100];
-	timeStruct = *localtime(&now);
-	//Mon Feb 05 23:00:00 2018
-	strftime(buf, sizeof(buf), "%c", &timeStruct);
-	string s = buf;
-	return s;
-}
-
-// EmailData parseEmail(const std::vector<char> &source)
-// {
-// 	std::string emailContents(source.begin(), source.end());
-// 	size_t forwardPos = emailContents.find("---------- Forwarded message ---------");
-// 	size_t limit = (forwardPos != std::string::npos) ? forwardPos : emailContents.length();
-
-// 	EmailData data;
-// 	data.time = parseEmailField(emailContents, "time: ", limit);
-// 	data.to = parseEmailField(emailContents, "to: ", limit);
-// 	data.from = parseEmailField(emailContents, "from: ", limit);
-// 	data.subject = parseEmailField(emailContents, "subject: ", limit);
-// 	data.body = parseEmailField(emailContents, "body: ", limit);
-
-// 	if (forwardPos != std::string::npos)
-// 	{
-// 		// If there is a forwarded message, capture it
-// 		data.oldBody = emailContents.substr(forwardPos);
-// 	}
-// 	return data;
-// }
-
-vector<char> charifyEmailContent(const EmailData &email)
-{
-	string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
-	std::vector<char> char_vector(data.begin(), data.end());
-	return char_vector;
-}
-
 // Function to split a vector<char> based on a vector<char> delimiter
 std::vector<std::vector<char>> split_vector_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
 {
@@ -159,25 +31,25 @@ std::vector<std::vector<char>> split_vector_mbox(const std::vector<char> &data, 
 	return result;
 }
 
-// Function to split a vector<char> based on the first occurrence of a vector<char> delimiter
+// function to split a vector<char> based on the first occurrence of a vector<char> delimiter
 std::vector<std::vector<char>> split_vec_first_delim_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
 {
 	std::vector<std::vector<char>> result;
 	size_t start = 0;
 
-	// Find the first occurrence of delimiter in data
+	// find the first occurrence of delimiter in data
 	auto pos = std::search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
 
 	if (pos == data.end())
 	{
-		// No delimiter found, return the whole vector as a single part
+		// no delimiter found, return the whole vector as a single part
 		result.emplace_back(data.begin(), data.end());
 	}
 	else
 	{
-		// Delimiter found, split at the delimiter
-		result.emplace_back(data.begin() + start, pos);			 // Part before the delimiter
-		result.emplace_back(pos + delimiter.size(), data.end()); // Part after the delimiter
+		// delimiter found, split at the delimiter
+		result.emplace_back(data.begin() + start, pos);			 // part before the delimiter
+		result.emplace_back(pos + delimiter.size(), data.end()); // part after the delimiter
 	}
 
 	return result;
@@ -187,10 +59,10 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 {
 	EmailData emailData;
 
-	// Check if the request contains a body
+	// check if the request contains a body
 	if (!req.body_as_bytes().empty())
 	{
-		// Find form boundary
+		// find form boundary
 		std::vector<std::string> headers = req.get_header("Content-Type"); // retrieve content-type header
 		std::string header_str(headers[0]);
 
@@ -220,7 +92,7 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 			headers = Utils::trim(headers);
 			body = Utils::trim(body);
 
-			// Finding the name attribute in the headers
+			// finding the name attribute in the headers
 			auto name_pos = headers.find("name=");
 
 			if (name_pos != std::string::npos)
@@ -230,11 +102,12 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 				size_t end = headers.find('"', start);
 				std::string name = headers.substr(start, end - start);
 
-				// Store the corresponding value in the correct field
-
-				emailData.time = "time: " + get_time_and_date();
-
-				if (name == "from")
+				// store the corresponding value in the correct field
+				if (name == "time")
+				{
+					emailData.time = "time: " + body;
+				}
+				else if (name == "from")
 				{
 					emailData.from = "from: " + body;
 				}
@@ -257,6 +130,7 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 			}
 		}
 	}
+
 	// std::cout << emailData.time << std::endl;
 	// std::cout << emailData.to << std::endl;
 	// std::cout << emailData.from << std::endl;
@@ -281,56 +155,15 @@ string parseMailboxPathToRowKey(const string &path)
 	std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
 	std::smatch matches;
 
-	// Execute the regex search
-	// Execute the regex search
+	// execute the regex search
 	if (std::regex_search(path, matches, pattern))
 	{
 		if (matches.size() > 1)
-		{										   // Check if there is a capturing group
-			return matches[1].str() + "-mailbox/"; // Return the captured username
+		{										   
+			return matches[1].str() + "-mailbox/";
 		}
 	}
 	return ""; // Return empty string if no username is found
-}
-
-string extractUsernameFromEmailAddress(const string &emailAddress)
-{
-	size_t atPosition = emailAddress.find('@');
-	if (atPosition == std::string::npos)
-	{
-		std::cerr << "Invalid email address." << std::endl;
-		// Exit the program with an error code
-	}
-	else
-	{
-		// Extract the username part
-		string username = emailAddress.substr(0, atPosition);
-		return username;
-	}
-}
-
-// when sending, responding to, and forwarding an email
-vector<string> parseRecipients(const string &recipients)
-{
-	vector<std::string> result;
-	istringstream ss(recipients);
-	string recipient;
-
-	while (getline(ss, recipient, ','))
-	{
-		recipient.erase(remove_if(recipient.begin(), recipient.end(), ::isspace), recipient.end()); // Trim spaces
-		recipient = Utils::trim(recipient);
-		result.push_back(recipient);
-	}
-
-	return result;
-}
-
-bool startsWith(const std::vector<char> &vec, const std::string &prefix)
-{
-	if (vec.size() < prefix.size())
-		return false;
-	return std::string(vec.begin(), vec.begin() + prefix.size()) == prefix;
 }
 
 /**
@@ -350,21 +183,21 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 
 	EmailData emailToForward = parseEmailFromMailForm(request);
 	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	vector<string> recipientsEmails = parseRecipients(recipients);
+	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
-		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
 		// handle local client
-		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = charifyEmailContent(emailToForward);
+			vector<char> value = FeUtils::charifyEmailContent(emailToForward);
 			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
 
 			{
 				response.set_code(501); // Internal Server Error
@@ -377,7 +210,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailToForward))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -409,24 +242,24 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	bool all_responses_sent = true;
 
 	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	vector<string> recipientsEmails = parseRecipients(recipients);
+	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:user@penncloud.com --> user@penncloud.com
+	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 	for (string recipientEmail : recipientsEmails)
 	{
-		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
 
 		// handle local client
-		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
 			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = charifyEmailContent(emailResponse);
+			vector<char> value = FeUtils::charifyEmailContent(emailResponse);
 			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
 			{
 				response.set_code(501); // Internal Server Error
 				response.append_body_str("-ER Failed to reply to email internally.");
@@ -438,7 +271,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailResponse))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -483,7 +316,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 
 	vector<char> kvsResponse = FeUtils::kv_del(socket_fd, row, col);
 
-	if (!kvsResponse.empty() && startsWith(kvsResponse, "+OK"))
+	if (!kvsResponse.empty() && FeUtils::startsWith(kvsResponse, "+OK"))
 	{
 		response.set_code(200); // Success
 		response.append_body_str("+OK Email deleted successfully.");
@@ -511,26 +344,26 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 	const EmailData email = parseEmailFromMailForm(request);		   // email data
 	string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	cout << "RECIPIENTS: " + recipients << endl;
-	vector<string> recipientsEmails = parseRecipients(recipients);
+	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 	bool all_emails_sent = true;
 
 	for (string recipientEmail : recipientsEmails)
 	{
-		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
 
 		// handle local client
-		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> value = charifyEmailContent(email);
+			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+			vector<char> value = FeUtils::charifyEmailContent(email);
 			vector<char> row(rowKey.begin(), rowKey.end());
 			vector<char> col(colKey.begin(), colKey.end());
 			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
-			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
 			{
 				response.set_code(501); // Internal Server Error
 				response.append_body_str("-ER Failed to send email locally.");
@@ -587,7 +420,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 	logger.log("Fetching email at ROW " + rowKey + " and COLUMN " + colKey, LOGGER_DEBUG); // DEBUG
 	vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
 
-	if (startsWith(kvsResponse, "+OK"))
+	if (FeUtils::startsWith(kvsResponse, "+OK"))
 	{
 		response.set_code(200); // OK
 		// get rid of "+OK "
@@ -661,7 +494,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		vector<char> row(rowKey.begin(), rowKey.end());
 		vector<char> kvsResponse = FeUtils::kv_get_row(kvs_sock, row);
 
-		if (startsWith(kvsResponse, "+OK"))
+		if (FeUtils::startsWith(kvsResponse, "+OK"))
 		{
 			// OK
 			// get rid of "+OK "

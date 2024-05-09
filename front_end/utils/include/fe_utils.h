@@ -15,8 +15,10 @@
 #include <poll.h> // For poll
 #include <sstream>
 #include <iomanip>
+#include <sstream>
 #include "../../../http_server/include/http_request.h"
 #include "../../../utils/include/utils.h"
+#include "../../include/email_data.h"
 
 const std::string SERVADDR = "127.0.0.1";
 const int SERVPORT = 6000;
@@ -104,6 +106,23 @@ namespace FeUtils
     std::string urlEncode(const std::string value);
 
     std::string urlDecode(const std::string value);
+
+    // ### MAILBOX/SMTPSERVER UTILS ###
+    std::string extractUsernameFromEmailAddress(const std::string &emailAddress);
+
+    std::vector<std::string> parseRecipients(const std::string &recipients);
+
+    std::vector<char> charifyEmailContent(const EmailData &email);
+
+    bool startsWith(const std::vector<char> &vec, const std::string &prefix);
+
+    std::vector<char> charifyEmailContent(const EmailData &email);
+    
+    // Relay specific
+    std::string extractDomain(const std::string &email);
+
+    bool isLocalDomain(const std::string &domain);
+
 }
 
 #endif
