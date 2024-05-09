@@ -768,7 +768,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 								"<div>"
 								"<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
 								"Time: " +
-				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] +"\n---------------------------------\n" + email["oldBody"] +
+				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] + "\n---------------------------------\n" + email["oldBody"] +
 				"</textarea>"
 				"</div>"
 				"</div>"
@@ -805,7 +805,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						 "$('#forward').attr('aria-pressed', 'false');"
 						 "$('#subject').val($('#subject').val().replace('FWD: ', ''));"
 						 "}"
-						 
+
 						 "$('#submitButton').show();"
 						 "$('label[for=time], input#time').hide();"
 						 "$('#to').attr('readonly', false);"
@@ -826,7 +826,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "$('#submitButton').hide();"
 						   "$('label[for=time], input#time').show();"
 						   "$('#to').val(to);"
-							"$('#to').attr('readonly', true);"
+						   "$('#to').attr('readonly', true);"
 						   "$('#subject').val(subject);"
 						   "$('#subject').attr('readonly', true);"
 						   "$('#from').val(from);"
@@ -847,7 +847,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 						   "$('#subject').val($('#subject').val().replace('RE: ', ''));"
 						   "}"
 
-							"$('#submitButton').show();"
+						   "$('#submitButton').show();"
 						   "$('label[for=time], input#time').hide();"
 						   "$('#to').attr('readonly', false);"
 						   "$('#to').val('');"

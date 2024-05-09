@@ -42,9 +42,9 @@ unordered_map<string, vector<string>> kvs_servergroup; // server groups to names
 unordered_map<string, int> server_status;              // @todo easier to do typing with ints? check js
 
 // tablet data
-vector<string> row_data; // all rows for the selected tablet
-vector<string> col_data; // all columns for the selected row within a tablet
-vector<string> row_col_value;    // the given value for the character
+vector<string> row_data;      // all rows for the selected tablet
+vector<string> col_data;      // all columns for the selected row within a tablet
+vector<string> row_col_value; // the given value for the character
 
 int server_loops = 0;
 
@@ -351,30 +351,29 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     //         "</ table>"
 
     page += "<style>"
-        "table {"
-        "  width: 100%;"
-        "}"
-        "#dataTable1 tbody tr, #dataTable2 tbody tr {"
-        "  cursor: pointer;"
-        "}"
-        "#dataTable1 tbody tr:hover, #dataTable2 tbody tr:hover {"
-        "  background-color: #f0f0f0; /* Change background color on hover */"
-        "  font-weight: bold; /* Make text bold for clicked rows */"
-        "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
-        "  color: #333; /* Darker text color for clicked row */"
+            "table {"
+            "  width: 100%;"
+            "}"
+            "#dataTable1 tbody tr, #dataTable2 tbody tr {"
+            "  cursor: pointer;"
+            "}"
+            "#dataTable1 tbody tr:hover, #dataTable2 tbody tr:hover {"
+            "  background-color: #f0f0f0; /* Change background color on hover */"
+            "  font-weight: bold; /* Make text bold for clicked rows */"
+            "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
+            "  color: #333; /* Darker text color for clicked row */"
 
-        "}"
-        "#dataTable1 tbody tr.clicked, #dataTable2 tbody tr.clicked {"
-        "  background-color: #f8f8f8; /* Lighter background color for clicked row */"
-        "  font-weight: bold; /* Make text bold for clicked rows */"
-        "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
-        "  color: #333; /* Darker text color for clicked row */"
-        "}"
-        "#dataTable1 thead th, #dataTable2 thead th {"
-        "  font-weight: bold; /* Make header text bold */"
-        "}"
-        "</style>";
-
+            "}"
+            "#dataTable1 tbody tr.clicked, #dataTable2 tbody tr.clicked {"
+            "  background-color: #f8f8f8; /* Lighter background color for clicked row */"
+            "  font-weight: bold; /* Make text bold for clicked rows */"
+            "  text-shadow: 2px 2px 2px rgba(0,0,0,0.5); /* Add shadow to text for clicked rows */"
+            "  color: #333; /* Darker text color for clicked row */"
+            "}"
+            "#dataTable1 thead th, #dataTable2 thead th {"
+            "  font-weight: bold; /* Make header text bold */"
+            "}"
+            "</style>";
 
     page += "<div class='row'>"
             //<!-- First Table (1/4 of the space) -->
@@ -403,7 +402,7 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
             "</tbody>"
             "</table>"
             "</div>"
-            // Third table 
+            // Third table
             "<div class='col-md-3'>"
             "<table class='table table-bordered mt-5' id='dataTable3'>"
             "<thead>"
@@ -495,151 +494,153 @@ void dashboard_handler(const HttpRequest &req, HttpResponse &res)
     cout << "Col data size = " << col_data.size() << endl;
 
     page += "<script>"
-        "$(document).ready(function() {"
-        "   var row_data = " + row_json + ";"
-        "   var col_data = " + col_json + ";"
-        "   var value = " + value_json + ";"
+            "$(document).ready(function() {"
+            "   var row_data = " +
+            row_json + ";"
+                       "   var col_data = " +
+            col_json + ";"
+                       "   var value = " +
+            value_json + ";"
 
-        "   var selectedServer = sessionStorage.getItem('selectedServer');"
+                         "   var selectedServer = sessionStorage.getItem('selectedServer');"
 
-        "   renderTable1(row_data, selectedServer);"
-        "   renderTable2(col_data, selectedServer);"
-        "   renderTable3(value);"
+                         "   renderTable1(row_data, selectedServer);"
+                         "   renderTable2(col_data, selectedServer);"
+                         "   renderTable3(value);"
 
-        "   $('.table-server-button').click(function() {"
-        "       var serverName = $(this).data('server');"
-        "       if (serverName !== selectedServer) {"
-        "           submitServerForm(serverName);"
-        "           sessionStorage.removeItem('selectedRow');"
-        "           sessionStorage.removeItem('selectedCol');"
-        "       }"
-        "       $('.table-server-button').removeClass('clicked');"
-        "       $(this).addClass('clicked');"
-        "   });"
+                         "   $('.table-server-button').click(function() {"
+                         "       var serverName = $(this).data('server');"
+                         "       if (serverName !== selectedServer) {"
+                         "           submitServerForm(serverName);"
+                         "           sessionStorage.removeItem('selectedRow');"
+                         "           sessionStorage.removeItem('selectedCol');"
+                         "       }"
+                         "       $('.table-server-button').removeClass('clicked');"
+                         "       $(this).addClass('clicked');"
+                         "   });"
 
+                         "   function renderTable1(data, selectedServer) {"
+                         "       const tbody = $('#dataBody1');"
+                         "       tbody.empty();"
+                         "       if (!data.length && !selectedServer) {"
+                         "           $('<tr>').append($('<td>').text('No server selected')).appendTo(tbody);"
+                         "       } else if (!data.length && selectedServer) {"
+                         "           $('<tr>').append($('<td>').text('No rows found on server')).appendTo(tbody);"
+                         "       } else {"
+                         "           data.forEach(function(row) {"
+                         "               $('<tr>').append($('<td>').text(row)).click(function(){"
+                         "                   handleRowClick(row, selectedServer);"
+                         "               }).appendTo(tbody);"
+                         "           });"
+                         "       }"
+                         "   }"
 
-        "   function renderTable1(data, selectedServer) {"
-        "       const tbody = $('#dataBody1');"
-        "       tbody.empty();"
-        "       if (!data.length && !selectedServer) {"
-        "           $('<tr>').append($('<td>').text('No server selected')).appendTo(tbody);"
-        "       } else if (!data.length && selectedServer) {"
-        "           $('<tr>').append($('<td>').text('No rows found on server')).appendTo(tbody);"
-        "       } else {"
-        "           data.forEach(function(row) {"
-        "               $('<tr>').append($('<td>').text(row)).click(function(){"
-        "                   handleRowClick(row, selectedServer);"
-        "               }).appendTo(tbody);"
-        "           });"
-        "       }"
-        "   }"
+                         "   function renderTable2(data, selectedServer) {"
+                         "       const tbody = $('#dataBody2');"
+                         "       tbody.empty();"
+                         "   var selectedRow = sessionStorage.getItem('selectedRow');"
+                         "       if (!data.length && !selectedRow) {"
+                         "           $('<tr>').append($('<td>').text('No row selected')).appendTo(tbody);"
+                         "       } else if (!data.length && selectedServer) {"
+                         "           $('<tr>').append($('<td>').text('No columns in row')).appendTo(tbody);"
+                         "       } else {"
+                         "           data.forEach(function(row) {"
+                         "               $('<tr>').append($('<td>').text(row)).click(function() {"
+                         "                   handleColClick(row, selectedRow, selectedServer);"
+                         "               }).appendTo(tbody);"
+                         "           });"
+                         "       }"
+                         "   }"
 
-        "   function renderTable2(data, selectedServer) {"
-        "       const tbody = $('#dataBody2');"
-        "       tbody.empty();"
-        "   var selectedRow = sessionStorage.getItem('selectedRow');"
-        "       if (!data.length && !selectedRow) {"
-        "           $('<tr>').append($('<td>').text('No row selected')).appendTo(tbody);"
-        "       } else if (!data.length && selectedServer) {"
-        "           $('<tr>').append($('<td>').text('No columns in row')).appendTo(tbody);"
-        "       } else {"
-        "           data.forEach(function(row) {"
-        "               $('<tr>').append($('<td>').text(row)).click(function() {"
-        "                   handleColClick(row, selectedRow, selectedServer);"
-        "               }).appendTo(tbody);"
-        "           });"
-        "       }"
-        "   }"
+                         "   function renderTable3(data) {"
+                         "       const tbody = $('#dataBody3');"
+                         "       tbody.empty();"
+                         "   var selectedCol = sessionStorage.getItem('selectedCol');"
+                         "       if (!data.length && !selectedCol) {"
+                         "           $('<tr>').append($('<td>').text('No column selected')).appendTo(tbody);"
+                         "       } else if (!data.length && selectedCol) {"
+                         "           $('<tr>').append($('<td>').text('Empty value')).appendTo(tbody);"
+                         "       } else {"
+                         "           data.forEach(function(row) {"
+                         "               $('<tr>').append($('<td>').text(row)).appendTo(tbody);"
+                         "           });"
+                         "       }"
+                         "   }"
 
-        "   function renderTable3(data) {"
-        "       const tbody = $('#dataBody3');"
-        "       tbody.empty();"
-        "   var selectedCol = sessionStorage.getItem('selectedCol');"
-        "       if (!data.length && !selectedCol) {"
-        "           $('<tr>').append($('<td>').text('No column selected')).appendTo(tbody);"
-        "       } else if (!data.length && selectedCol) {"
-        "           $('<tr>').append($('<td>').text('Empty value')).appendTo(tbody);"
-        "       } else {"
-        "           data.forEach(function(row) {"
-        "               $('<tr>').append($('<td>').text(row)).appendTo(tbody);"
-        "           });"
-        "       }"
-        "   }"
+                         "   function handleRowClick(row, serverName) {"
+                         "   var selectedRow = sessionStorage.getItem('selectedRow');"
+                         "       if (row !== selectedRow) {"
+                         "           submitGetRowForm(serverName, row);"
+                         "           $('tr').removeClass('clicked');"
+                         "           $(this).addClass('clicked');"
+                         "       }"
+                         "   }"
 
-        "   function handleRowClick(row, serverName) {"
-        "   var selectedRow = sessionStorage.getItem('selectedRow');"
-        "       if (row !== selectedRow) {"
-        "           submitGetRowForm(serverName, row);"
-        "           $('tr').removeClass('clicked');"
-        "           $(this).addClass('clicked');"
-        "       }"
-        "   }"
+                         "   function handleColClick(col, row, serverName) {"
+                         "   var selectedCol = sessionStorage.getItem('selectedCol');"
+                         "       if (col !== selectedCol) {"
+                         "           submitGetValueForm(serverName, row, col);"
+                         "           $('tr').removeClass('clicked');"
+                         "           $(this).addClass('clicked');"
+                         "       }"
+                         "   }"
 
-        "   function handleColClick(col, row, serverName) {"
-        "   var selectedCol = sessionStorage.getItem('selectedCol');"
-        "       if (col !== selectedCol) {"
-        "           submitGetValueForm(serverName, row, col);"
-        "           $('tr').removeClass('clicked');"
-        "           $(this).addClass('clicked');"
-        "       }"
-        "   }"
-
-        "   function submitGetRowForm(serverName, row) {"
-        "       var form = $('<form>', {"
-        "           action: '/admin/table/rowvalues',"
-        "           method: 'POST'"
-        "       });"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'server',"
-        "           value: serverName"
-        "       }).appendTo(form);"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'row',"
-        "           value: row"
-        "       }).appendTo(form);"
-        "       form.appendTo('body').submit();"
-        "       sessionStorage.setItem('selectedRow', row);"
-        "   }"
-        "   function submitGetValueForm(serverName, row, col) {"
-        "       var form = $('<form>', {"
-        "           action: '/admin/table/colvalues',"
-        "           method: 'POST'"
-        "       });"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'server',"
-        "           value: serverName"
-        "       }).appendTo(form);"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'row',"
-        "           value: row"
-        "       }).appendTo(form);"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'col',"
-        "           value: col"
-        "       }).appendTo(form);"
-        "       form.appendTo('body').submit();"
-        "       sessionStorage.setItem('selectedCol', col);"
-        "   }"
-        "   function submitServerForm(serverName) {"
-        "       var form = $('<form>', {"
-        "           action: '/admin/table/getrows',"
-        "           method: 'POST'"
-        "       });"
-        "       $('<input>', {"
-        "           type: 'hidden',"
-        "           name: 'server',"
-        "           value: serverName"
-        "       }).appendTo(form);"
-        "       form.appendTo('body').submit();"
-        "       sessionStorage.setItem('selectedServer', serverName);"
-        "   }"
-        "});"
-        "</script>";
+                         "   function submitGetRowForm(serverName, row) {"
+                         "       var form = $('<form>', {"
+                         "           action: '/admin/table/rowvalues',"
+                         "           method: 'POST'"
+                         "       });"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'server',"
+                         "           value: serverName"
+                         "       }).appendTo(form);"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'row',"
+                         "           value: row"
+                         "       }).appendTo(form);"
+                         "       form.appendTo('body').submit();"
+                         "       sessionStorage.setItem('selectedRow', row);"
+                         "   }"
+                         "   function submitGetValueForm(serverName, row, col) {"
+                         "       var form = $('<form>', {"
+                         "           action: '/admin/table/colvalues',"
+                         "           method: 'POST'"
+                         "       });"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'server',"
+                         "           value: serverName"
+                         "       }).appendTo(form);"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'row',"
+                         "           value: row"
+                         "       }).appendTo(form);"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'col',"
+                         "           value: col"
+                         "       }).appendTo(form);"
+                         "       form.appendTo('body').submit();"
+                         "       sessionStorage.setItem('selectedCol', col);"
+                         "   }"
+                         "   function submitServerForm(serverName) {"
+                         "       var form = $('<form>', {"
+                         "           action: '/admin/table/getrows',"
+                         "           method: 'POST'"
+                         "       });"
+                         "       $('<input>', {"
+                         "           type: 'hidden',"
+                         "           name: 'server',"
+                         "           value: serverName"
+                         "       }).appendTo(form);"
+                         "       form.appendTo('body').submit();"
+                         "       sessionStorage.setItem('selectedServer', serverName);"
+                         "   }"
+                         "});"
+                         "</script>";
 
     page += "</body>"
             "</html>";
@@ -836,7 +837,7 @@ void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
     string servername = formParams["server"];
 
     // sending as client
-    int port = kvs_servers[servername] - 3000;
+    int port = kvs_servers[servername] - 6000;
 
     logger.log("Server selected: " + servername + " and port: " + to_string(port), LOGGER_DEBUG);
 
@@ -850,25 +851,27 @@ void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
     //     row_data.push_back(kvs_key);
     // }
 
-
     // @todo: uncomment
 
     logger.log("Sending mesage to kvs server at port " + to_string(port), 20);
 
     // writing to port 12000++ to get rows
     // open socket to
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
 
-    vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
-    logger.log("Recieved message back " + to_string(port), 20);
-
-    row_data = FeUtils::parse_all_rows(row_vector_raw);
-
-
-    close(server_fd);
+    if (server_status.at(servername) == 1)
+    {
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+        vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+        logger.log("Recieved message back " + to_string(port), 20);
+        row_data = FeUtils::parse_all_rows(row_vector_raw);
+        close(server_fd);
+    }
+    else
+    {
+        row_data.push_back("Server down - select live server for data.");
+    }
 
     // get rid of variables
-
 
     col_data.clear();
     row_col_value.clear();
@@ -909,9 +912,6 @@ void table_select_row_handler(const HttpRequest &req, HttpResponse &res)
 
     row_str = FeUtils::urlDecode(row_str);
 
-    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
-    logger.log("Row selected: " + row_str, LOGGER_DEBUG);
-
     vector<char> row_vec(row_str.begin(), row_str.end());
 
     // temp
@@ -930,23 +930,36 @@ void table_select_row_handler(const HttpRequest &req, HttpResponse &res)
     // open socket to
 
     // sending as client
-    int port = kvs_servers[servername] - 3000;
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
+    int port = kvs_servers[servername] - 6000;
+    // clear previous column data to prevent appending
+    col_data.clear();
 
-    vector<char> response = FeUtils::kv_get_row(server_fd, row_vec);
-    if (FeUtils::kv_success(response)){
-       vector<char> col_response(response.begin() + 4, response.end());
-       vector<vector<char>> col_vec = FeUtils::split_vector(col_response, {'\b'});
-       for (auto vec : col_vec){
-        string col_name(vec.begin(), vec.end());
-        col_data.push_back(col_name);
-       }
-    } else {
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+    logger.log("Row selected: " + row_str, LOGGER_DEBUG);
 
-        logger.log("Could not get row" + row_str + "from KVS " + servername, LOGGER_ERROR);
+    if (server_status.at(servername) == 1)
+    {
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+
+        vector<char> response = FeUtils::kv_get_row(server_fd, row_vec);
+        if (FeUtils::kv_success(response))
+        {
+            vector<char> col_response(response.begin() + 4, response.end());
+            vector<vector<char>> col_vec = FeUtils::split_vector(col_response, {'\b'});
+            for (auto vec : col_vec)
+            {
+                string col_name(vec.begin(), vec.end());
+                col_data.push_back(col_name);
+            }
+        }
+        else
+        {
+
+            logger.log("Could not get row" + row_str + "from KVS " + servername, LOGGER_ERROR);
+        }
+
+        close(server_fd);
     }
-
-    close(server_fd);
 
     row_col_value.clear();
 
@@ -988,31 +1001,36 @@ void table_select_col_handler(const HttpRequest &req, HttpResponse &res)
     row_str = FeUtils::urlDecode(row_str);
     col_str = FeUtils::urlDecode(col_str);
 
-    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
-    logger.log("Row selected: " + row_str + " and col selected: " + col_str, LOGGER_DEBUG);
-
     vector<char> row_vec(row_str.begin(), row_str.end());
     vector<char> col_vec(col_str.begin(), col_str.end());
 
-    // temp
-
-    // @todo: uncomment
+    row_col_value.clear();
 
     // writing to port 12000++ to get rows
     // open socket to
-    int port = kvs_servers[servername] - 3000; // write as client
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
+    int port = kvs_servers[servername] - 6000; // write as client
 
-    vector<char> response = FeUtils::kv_get(server_fd, row_vec,col_vec);
-    if (FeUtils::kv_success(response)){
-       vector<char> value_vec(response.begin() + 4, response.end());
-       string row_col_value(value_vec.begin(), value_vec.end());
-    } else {
+    logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
+    logger.log("Row selected: " + row_str + " and col selected: " + col_str, LOGGER_DEBUG);
 
-        logger.log("Could not get value from row " + row_str + " and col " + col_str + " in KVS " + servername, LOGGER_ERROR);
+    if (server_status.at(servername) == 1)
+    {
+
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+        vector<char> response = FeUtils::kv_get(server_fd, row_vec, col_vec);
+        if (FeUtils::kv_success(response))
+        {
+            vector<char> value_vec(response.begin() + 4, response.end());
+            string retrieved_val_str(value_vec.begin(), value_vec.end());
+            row_col_value.push_back(retrieved_val_str);
+        }
+        else
+        {
+            logger.log("Could not get value from row " + row_str + " and col " + col_str + " in KVS " + servername, LOGGER_ERROR);
+        }
+
+        close(server_fd);
     }
-
-    close(server_fd);
 
     res.set_code(303); // OK
     res.set_header("Location", "/admin/dashboard");
@@ -1116,9 +1134,6 @@ int main()
     //     kvs_servers[kvs_key] = port_number;
     //     server_status[kvs_key] = 1; // Set status to 1 for each KVS server
     // }
-
-    
-
 
     logger.log("Admin console ready.", LOGGER_INFO);
 

@@ -171,7 +171,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
 // Recursive helper function to rename folder and subfolder paths
 bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_foldername, vector<char> moving_folder)
 {
-    
+
     // check parent name
     string pfolder(parent_folder.begin(), parent_folder.end());
 
@@ -212,7 +212,6 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
     new_rowname.insert(new_rowname.end(), moving_folder.begin(), moving_folder.end());
     string new_parent_str(new_rowname.begin(), new_rowname.end());
 
-   
     // After deleting all contents, delete the folder itself
     if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
     {
@@ -258,14 +257,13 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
                 vector<char> old_rowname = parent_folder;
                 old_rowname.insert(old_rowname.end(), col_name.begin(), col_name.end());
 
-
                 // the new row name should be new folder name + col : ie : user/newname/column/
 
                 rename_subfolders(fd, old_rowname, new_rowname);
             }
         }
     }
-    
+
     // After deleting all contents, delete the folder itself
     if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
     {
@@ -365,10 +363,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 vector<string> path_pieces = Utils::split(childpath_str, "/");
                 std::string grandparent_path = split_parent_filename(path_pieces, curr_folder);
 
-                
                 if (path_pieces.size() > 1)
                 {
-                    
 
                     vector<char> grandparent_vec(grandparent_path.begin(), grandparent_path.end());
 
@@ -418,16 +414,9 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                 {
                                     blacklist += "\"" + colname + "\",";
                                 }
-                                move_options += option_open + item + option_close;
+                                move_options += option_open + childpath_str + item + option_close;
                             }
                         }
-
-                        if (blacklist.size() > 1)
-                        {
-                            blacklist.pop_back();
-                        }
-                        blacklist += ']';
-                        
 
                         // start row
                         if (row_count % 9 == 0)
@@ -513,6 +502,12 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
                 folders.push_back(']');
                 files.push_back(']');
+
+                if (blacklist.size() > 1)
+                {
+                    blacklist.pop_back();
+                }
+                blacklist += ']';
 
                 std::vector<std::string> path_elems = Utils::split(childpath_str, "/");
                 std::string drive = "";
@@ -679,7 +674,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                               "</div>"
                               "</div>"
 
-                              // WIPPPPPP
                               "<div class='modal fade' id='renameFolderModal' tabindex='-1' aria-labelledby='renameFolderModalLabel' aria-hidden='true'>"
                               "<div class='modal-dialog modal-dialog-centered'>"
                               "<div class='modal-content'>"
@@ -710,12 +704,11 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                                          "</div>"
                                                          "</div>"
 
-                                                         // WIPPPPPP
                                                          "<div class='modal fade' id='moveModal' tabindex='-1' aria-labelledby='moveModalLabel' aria-hidden='true'>"
                                                          "<div class='modal-dialog modal-dialog-centered'>"
                                                          "<div class='modal-content'>"
                                                          "<div class='modal-header'>"
-                                                         "<h1 class='modal-title fs-5' id='moveModalLabel'>Rename an item</h1>"
+                                                         "<h1 class='modal-title fs-5' id='moveModalLabel'>Move item</h1>"
                                                          "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
                                                          "</div>"
                                                          "<div class='modal-body'>"
@@ -727,7 +720,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                     "<option hidden disabled selected value> Select an item </option>" +
                     options +
                     "</select>"
-                    "<label for='moving-to' class='col-form-label'>Item:</label>"
+                    "<label for='moving-to' class='col-form-label'>Destination:</label>"
                     "<select name='newparent' class='form-select' aria-label='Default select example' id='moving-to' form='moveItemForm' required>"
                     "<option hidden disabled selected value> Select the folder to move to </option>" +
                     move_options +
@@ -741,89 +734,88 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     blacklist + "; if ($(\"#moveItemForm\")[0].checkValidity()) {"
                                 "var firstItemValue = $(\"#moveItemForm\")[0][0].value;"
                                 "var secondItemValue = $(\"#moveItemForm\")[0][1].value;"
-                                "var gparent = \"" + grandparent_path +"\";"
-                                "var childpath = \"" + childpath_str +"\";"
-                                "if (firstItemValue == secondItemValue || blacklist.includes(firstItemValue)) {"
-                                "$(\"#moveItemForm\")[0][1].setCustomValidity(\"Item already exists.\");"
-                                "$(\"#moveItemForm\")[0].reportValidity();"
-                                "} else {"
-                                    "if (secondItemValue != gparent) {"
-                                    "$(\"#moveItemForm\")[0][1].value = childpath + secondItemValue;"
+                                "var gparent = \"" +
+                    grandparent_path + "\";"
+                                       "var childpath = \"" +
+                    childpath_str + "\";"
+                                    "if (firstItemValue == secondItemValue || blacklist.includes(firstItemValue)) {"
+                                    "$(\"#moveItemForm\")[0][1].setCustomValidity(\"Item already exists.\");"
+                                    "$(\"#moveItemForm\")[0].reportValidity();"
+                                    "} else {"
+                                    " $(\"#moveItemForm\").submit();"
+                                    "}}'>Move</button>"
+                                    "</div>"
+                                    "</div>"
+                                    "</div>"
+                                    "</div>"
+
+                                    "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                                    "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                                    "crossorigin='anonymous'></script>"
+                                    "<script>"
+                                    "$('.delete').on('click', function() {"
+                                    "    $('#deleteModal').modal('show');"
+                                    "});"
+
+                                    "$('#deleteModal').on('show.bs.modal', function(e) {"
+                                    "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                                    "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                                    "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                                    "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                                    "});"
+                                    "</script>"
+                                    "<script>"
+                                    "$('#item-old-name').on('change', function (e) {"
+                                    "var selection = $(this).find('option:selected').text();"
+
+                                    "if (selection.slice(-1)=== '/') {"
+                                    "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
+                                    "if($('#renameHelp').length==0) {"
+                                    "console.log(selection);"
+                                    "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
                                     "}"
-                                " $(\"#moveItemForm\").submit();"
-                                "}}'>Move</button>"
-                                "</div>"
-                                "</div>"
-                                "</div>"
-                                "</div>"
+                                    "}"
+                                    "else {"
+                                    "$('#renameHelp').remove();"
+                                    "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
+                                    "}"
+                                    "})"
+                                    "</script>"
 
-                                "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                                "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                                "crossorigin='anonymous'></script>"
-                                "<script>"
-                                "$('.delete').on('click', function() {"
-                                "    $('#deleteModal').modal('show');"
-                                "});"
-
-                                "$('#deleteModal').on('show.bs.modal', function(e) {"
-                                "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-                                "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-                                "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-                                "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                                "});"
-                                "</script>"
-                                "<script>"
-                                "$('#item-old-name').on('change', function (e) {"
-                                "var selection = $(this).find('option:selected').text();"
-
-                                "if (selection.slice(-1)=== '/') {"
-                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
-                                "if($('#renameHelp').length==0) {"
-                                "console.log(selection);"
-                                "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
-                                "}"
-                                "}"
-                                "else {"
-                                "$('#renameHelp').remove();"
-                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
-                                "}"
-                                "})"
-                                "</script>"
-
-                                "<script>"
-                                "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                                "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                "$('#switchLabel').html('Light Mode');"
-                                "sessionStorage.setItem('data-bs-theme', 'light');"
-                                ""
-                                "}"
-                                "else {"
-                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                "$('#switchLabel').html('Dark Mode');"
-                                "sessionStorage.setItem('data-bs-theme', 'dark');"
-                                "}"
-                                "});"
-                                "</script>"
-                                "<script>"
-                                "function setTheme() {"
-                                "var theme = sessionStorage.getItem('data-bs-theme');"
-                                "if (theme !== null) {"
-                                "if (theme === 'dark') {"
-                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                "$('#switchLabel').html('Dark Mode');"
-                                "$('#flexSwitchCheckReverse').attr('checked', true);"
-                                "}"
-                                "else {"
-                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                "$('#switchLabel').html('Light Mode');"
-                                "$('#flexSwitchCheckReverse').attr('checked', false);"
-                                "}"
-                                "}"
-                                "};"
-                                "</script>"
-                                "</body>"
-                                "</html>";
+                                    "<script>"
+                                    "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                                    "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                    "$('#switchLabel').html('Light Mode');"
+                                    "sessionStorage.setItem('data-bs-theme', 'light');"
+                                    ""
+                                    "}"
+                                    "else {"
+                                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                    "$('#switchLabel').html('Dark Mode');"
+                                    "sessionStorage.setItem('data-bs-theme', 'dark');"
+                                    "}"
+                                    "});"
+                                    "</script>"
+                                    "<script>"
+                                    "function setTheme() {"
+                                    "var theme = sessionStorage.getItem('data-bs-theme');"
+                                    "if (theme !== null) {"
+                                    "if (theme === 'dark') {"
+                                    "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                    "$('#switchLabel').html('Dark Mode');"
+                                    "$('#flexSwitchCheckReverse').attr('checked', true);"
+                                    "}"
+                                    "else {"
+                                    "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                    "$('#switchLabel').html('Light Mode');"
+                                    "$('#flexSwitchCheckReverse').attr('checked', false);"
+                                    "}"
+                                    "}"
+                                    "};"
+                                    "</script>"
+                                    "</body>"
+                                    "</html>";
 
                 // @PETER ADDED - reset cookies of user
                 res.append_body_str(page);
@@ -1152,7 +1144,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
 // deletes file or folder
 void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    
+
     // of type /api/drive/delete/* where child directory is being served
     string childpath_str = req.path.substr(18);
     string username = get_username(childpath_str);
@@ -1217,7 +1209,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
-
 
         if (FeUtils::kv_success(folder_content))
         {
@@ -1470,10 +1461,12 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
     string newparent = formParams["newparent"];
     string item_tomove = formParams["moving"];
 
-    replace_substring(newparent, "%2F", "/");
+    // replace_substring(newparent, "%2F", "/");
+    newparent = FeUtils::urlDecode(newparent);
     item_tomove = FeUtils::urlDecode(item_tomove);
-    
 
+    logger.log("New parent - " + newparent, LOGGER_DEBUG);
+    logger.log("Item to move - " + item_tomove, LOGGER_DEBUG);
 
     string childpath_str = parentpath_str + item_tomove;
     vector<char> child_path(childpath_str.begin(), childpath_str.end());
@@ -1542,20 +1535,16 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-
         if (FeUtils::kv_success(folder_content))
         {
-
             // move folder from parent
             // get parent path
             // get folder name
             string foldername;
 
-            
             vector<string> split_filepath = Utils::split(childpath_str, "/");
             string parentpath_str = split_parent_filename(split_filepath, foldername);
 
@@ -1564,16 +1553,14 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
             vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
             vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
-
             // recursively delete the folders children
             if (move_subfolders(sockfd, child_path, newparent_vec, folder_name_vec))
             {
-               
 
                 // Delete folder from old parent
                 if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
-                    logger.log("Could not delete file " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
+                    logger.log("Could not delete folder " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
                     res.set_code(303);
                     res.set_header("Location", "/400");
                     return;
@@ -1582,7 +1569,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 // put file into new parent
                 if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
                 {
-                    logger.log("Could not add file " + foldername + " to new parent " + newparent, LOGGER_WARN);
+                    logger.log("Could not add folder " + foldername + " to new parent " + newparent, LOGGER_WARN);
                     res.set_code(303);
                     res.set_header("Location", "/400");
                     // set cookies on response
@@ -1603,7 +1590,6 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else
         {
-
             logger.log("Retreiving folder " + childpath_str + " failed.", LOGGER_WARN);
             res.set_code(303);
             res.set_header("Location", "/400");
