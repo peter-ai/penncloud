@@ -220,11 +220,15 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 				vector<char> col(colKey.begin(), colKey.end());
 				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+
+				std::vector<std::string> recipient_ip = FeUtils::query_coordinator(rowKey);
+				int recipient_fd = FeUtils::open_socket(recipient_ip[0], std::stoi(recipient_ip[1]));
+
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
 
 				// check if row exists using get row to prevent from storing emails of users that don't exist
-				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				std::vector<char> rowCheck = FeUtils::kv_get_row(recipient_fd, row);
 				if (!FeUtils::kv_success(rowCheck))
 				{
 					response.set_code(303); // Internal Server Error
@@ -233,7 +237,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 					continue; // if one recipient fails, try to send response to remaining recipients
 				}
 
-				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				vector<char> kvsResponse = FeUtils::kv_put(recipient_fd, row, col, value);
 				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
@@ -241,6 +245,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 					all_forwards_sent = false;
 					continue;
 				}
+				close(recipient_fd);
 			}
 			else
 			{
@@ -343,13 +348,15 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 
 				vector<char> col(colKey.begin(), colKey.end());
 				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+
+				std::vector<std::string> recipient_ip = FeUtils::query_coordinator(rowKey);
+				int recipient_fd = FeUtils::open_socket(recipient_ip[0], std::stoi(recipient_ip[1]));
+
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> value = FeUtils::charifyEmailContent(emailResponse); //
 
-				logger.log(value.data(), LOGGER_DEBUG);
-
 				// check if row exists using get row to prevent from storing emails of users that don't exist
-				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				std::vector<char> rowCheck = FeUtils::kv_get_row(recipient_fd, row);
 				if (!FeUtils::kv_success(rowCheck))
 				{
 					response.set_code(303); // Internal Server Error
@@ -358,7 +365,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 					continue; // if one recipient fails, try to send response to remaining recipients
 				}
 
-				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				vector<char> kvsResponse = FeUtils::kv_put(recipient_fd, row, col, value);
 				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
@@ -366,6 +373,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 					all_responses_sent = false;
 					continue; // if one recipient fails, try to send response to remaining recipients
 				}
+				close(recipient_fd);
 			}
 			else
 			{
@@ -544,12 +552,16 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
 				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+
+				std::vector<std::string> recipient_ip = FeUtils::query_coordinator(rowKey);
+				int recipient_fd = FeUtils::open_socket(recipient_ip[0], std::stoi(recipient_ip[1]));
+
 				vector<char> value = FeUtils::charifyEmailContent(email);
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> col(colKey.begin(), colKey.end());
 
 				// check if row exists using get row to prevent from storing emails of users that don't exist
-				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				std::vector<char> rowCheck = FeUtils::kv_get_row(recipient_fd, row);
 				if (!FeUtils::kv_success(rowCheck))
 				{
 					response.set_code(303); // Internal Server Error
@@ -558,7 +570,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 					continue; // if one recipient fails, try to send response to remaining recipients
 				}
 
-				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				vector<char> kvsResponse = FeUtils::kv_put(recipient_fd, row, col, value);
 				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
@@ -566,6 +578,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 					all_emails_sent = false;
 					continue;
 				}
+				close(recipient_fd);
 			}
 			else
 			{
