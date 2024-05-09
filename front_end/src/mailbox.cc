@@ -214,19 +214,19 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 
 		EmailData emailToForward = parseEmailFromMailForm(request);
 		string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-		vector<string> recipientsEmails = parseRecipients(recipients);
+		vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 		for (string recipientEmail : recipientsEmails)
 		{
-			string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
 			// handle local client
-			if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
 				string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
 				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 				vector<char> col(colKey.begin(), colKey.end());
-				string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 				vector<char> row(rowKey.begin(), rowKey.end());
-				vector<char> value = charifyEmailContent(emailToForward);
+				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
 				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 				if (FeUtils::kv_success(kvsResponse))
 				{
@@ -270,7 +270,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Reply");
-	
+
 	// parse cookies
 	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
 
