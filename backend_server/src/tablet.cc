@@ -324,8 +324,6 @@ void Tablet::serialize(const std::string &file_name)
         // write row name to file
         file.write(row.first.c_str(), row.first.length());
 
-        tablet_logger.log("SERALIZING ROW NAME - " + row.first, LOGGER_DEBUG);
-
         // get reference to data in current row
         const auto &row_level_column_map = data.at(row.first);
 
@@ -335,13 +333,10 @@ void Tablet::serialize(const std::string &file_name)
         {
             // add size of column name, data it contains, and 8 bytes to store the size of each (4 for each)
             column_data_size += col.first.length() + col.second.size() + 8;
-            tablet_logger.log("SERALIZING + " + std::to_string(col.first.length()) + " BYTES FOR COLUMN <" + col.first + ">", LOGGER_DEBUG);
-            tablet_logger.log("SERALIZING + " + std::to_string(col.second.size()) + " BYTES FOR COLUMN DATA <" + col.first + ">", LOGGER_DEBUG);
         }
         // write column data size to file
         std::vector<uint8_t> column_data_size_vec = BeUtils::host_num_to_network_vector(column_data_size);
         file.write(reinterpret_cast<const char *>(column_data_size_vec.data()), column_data_size_vec.size());
-        tablet_logger.log("SERALIZING + " + std::to_string(column_data_size) + " BYTES FOR ENTIRE ROW'S DATA", LOGGER_DEBUG);
 
         // iterate columns and write each column and its data to the file
         for (const auto &col : row_level_column_map)
@@ -352,15 +347,11 @@ void Tablet::serialize(const std::string &file_name)
             // write col name to file
             file.write(col.first.c_str(), col.first.length());
 
-            tablet_logger.log("SERALIZING COLUMN NAME - " + col.first, LOGGER_DEBUG);
-
             // write size of col data to file
             std::vector<uint8_t> col_data_size = BeUtils::host_num_to_network_vector(col.second.size());
             file.write(reinterpret_cast<const char *>(col_data_size.data()), col_data_size.size());
             // write col data to file
             file.write(col.second.data(), col.second.size());
-
-            tablet_logger.log("SERALIZING + " + std::to_string(col.second.size()) + " BYTES FOR COLUMN", LOGGER_DEBUG);
         }
 
         row_locks.at(row.first).unlock_shared(); // release shared lock on row's mutex
@@ -504,8 +495,6 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
         std::string row_name(row_name_vec.begin(), row_name_vec.end());
         stream.erase(stream.begin(), stream.begin() + row_name_size);
 
-        tablet_logger.log("GETTING CHECKPOINT DATA FOR ROW " + row_name, LOGGER_DEBUG);
-
         // create mutex for row in row_locks
         row_locks[row_name];
         // create row in data map
@@ -516,8 +505,6 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
         // read 4 characters to get the size of all data for this row
         uint32_t row_data_size = BeUtils::network_vector_to_host_num(stream);
         stream.erase(stream.begin(), stream.begin() + 4);
-
-        tablet_logger.log("DESERIALIZING + " + std::to_string(row_data_size) + " BYTES FOR ENTIRE ROW'S DATA", LOGGER_DEBUG);
 
         uint32_t row_data_processed = 0;
         while (row_data_processed < row_data_size)
@@ -533,8 +520,6 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
             stream.erase(stream.begin(), stream.begin() + col_name_size);
             row_data_processed += col_name_size;
 
-            tablet_logger.log("GETTING CHECKPOINT DATA FOR COL " + col_name, LOGGER_DEBUG);
-
             // read 4 characters to get the size of the col data
             uint32_t col_data_size = BeUtils::network_vector_to_host_num(stream);
             stream.erase(stream.begin(), stream.begin() + 4);
@@ -544,8 +529,6 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
             std::vector<char> col_data(stream.begin(), stream.begin() + col_data_size);
             stream.erase(stream.begin(), stream.begin() + col_data_size);
             row_data_processed += col_data_size;
-
-            tablet_logger.log("DESERIALIZING + " + std::to_string(col_data_size) + " BYTES FOR COLUMN'S DATA", LOGGER_DEBUG);
 
             // add col_name and col_data to data map
             row_level_column_map[col_name] = col_data;

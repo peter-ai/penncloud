@@ -857,14 +857,19 @@ void table_select_kvs_handler(const HttpRequest &req, HttpResponse &res)
 
     // writing to port 12000++ to get rows
     // open socket to
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
 
-    vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
-    logger.log("Recieved message back " + to_string(port), 20);
-
-    row_data = FeUtils::parse_all_rows(row_vector_raw);
-
-    close(server_fd);
+    if (server_status.at(servername) == 1)
+    {
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+        vector<char> row_vector_raw = FeUtils::kvs_get_allrows(server_fd);
+        logger.log("Recieved message back " + to_string(port), 20);
+        row_data = FeUtils::parse_all_rows(row_vector_raw);
+        close(server_fd);
+    }
+    else
+    {
+        row_data.push_back("Server down - select live server for data.");
+    }
 
     // get rid of variables
 
@@ -926,30 +931,35 @@ void table_select_row_handler(const HttpRequest &req, HttpResponse &res)
 
     // sending as client
     int port = kvs_servers[servername] - 6000;
+    // clear previous column data to prevent appending
+    col_data.clear();
 
     logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
     logger.log("Row selected: " + row_str, LOGGER_DEBUG);
 
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
-
-    vector<char> response = FeUtils::kv_get_row(server_fd, row_vec);
-    if (FeUtils::kv_success(response))
+    if (server_status.at(servername) == 1)
     {
-        vector<char> col_response(response.begin() + 4, response.end());
-        vector<vector<char>> col_vec = FeUtils::split_vector(col_response, {'\b'});
-        for (auto vec : col_vec)
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+
+        vector<char> response = FeUtils::kv_get_row(server_fd, row_vec);
+        if (FeUtils::kv_success(response))
         {
-            string col_name(vec.begin(), vec.end());
-            col_data.push_back(col_name);
+            vector<char> col_response(response.begin() + 4, response.end());
+            vector<vector<char>> col_vec = FeUtils::split_vector(col_response, {'\b'});
+            for (auto vec : col_vec)
+            {
+                string col_name(vec.begin(), vec.end());
+                col_data.push_back(col_name);
+            }
         }
-    }
-    else
-    {
+        else
+        {
 
-        logger.log("Could not get row" + row_str + "from KVS " + servername, LOGGER_ERROR);
-    }
+            logger.log("Could not get row" + row_str + "from KVS " + servername, LOGGER_ERROR);
+        }
 
-    close(server_fd);
+        close(server_fd);
+    }
 
     row_col_value.clear();
 
@@ -994,9 +1004,7 @@ void table_select_col_handler(const HttpRequest &req, HttpResponse &res)
     vector<char> row_vec(row_str.begin(), row_str.end());
     vector<char> col_vec(col_str.begin(), col_str.end());
 
-    // temp
-
-    // @todo: uncomment
+    row_col_value.clear();
 
     // writing to port 12000++ to get rows
     // open socket to
@@ -1005,20 +1013,24 @@ void table_select_col_handler(const HttpRequest &req, HttpResponse &res)
     logger.log("Server selected: " + servername + " and port: " + to_string(kvs_servers[servername]), LOGGER_DEBUG);
     logger.log("Row selected: " + row_str + " and col selected: " + col_str, LOGGER_DEBUG);
 
-    int server_fd = FeUtils::open_socket("127.0.0.1", port);
-    vector<char> response = FeUtils::kv_get(server_fd, row_vec, col_vec);
-    if (FeUtils::kv_success(response))
-    {
-        vector<char> value_vec(response.begin() + 4, response.end());
-        string row_col_value(value_vec.begin(), value_vec.end());
-    }
-    else
+    if (server_status.at(servername) == 1)
     {
 
-        logger.log("Could not get value from row " + row_str + " and col " + col_str + " in KVS " + servername, LOGGER_ERROR);
-    }
+        int server_fd = FeUtils::open_socket("127.0.0.1", port);
+        vector<char> response = FeUtils::kv_get(server_fd, row_vec, col_vec);
+        if (FeUtils::kv_success(response))
+        {
+            vector<char> value_vec(response.begin() + 4, response.end());
+            string retrieved_val_str(value_vec.begin(), value_vec.end());
+            row_col_value.push_back(retrieved_val_str);
+        }
+        else
+        {
+            logger.log("Could not get value from row " + row_str + " and col " + col_str + " in KVS " + servername, LOGGER_ERROR);
+        }
 
-    close(server_fd);
+        close(server_fd);
+    }
 
     res.set_code(303); // OK
     res.set_header("Location", "/admin/dashboard");
