@@ -2,6 +2,8 @@
 
 using namespace std;
 
+Logger mailbox_logger("Mailbox");
+
 // Function to split a vector<char> based on a vector<char> delimiter
 std::vector<std::vector<char>> split_vector_mbox(const std::vector<char> &data, const std::vector<char> &delimiter)
 {
@@ -132,13 +134,6 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 		}
 	}
 
-	// std::cout << emailData.time << std::endl;
-	// std::cout << emailData.to << std::endl;
-	// std::cout << emailData.from << std::endl;
-	// std::cout << emailData.subject << std::endl;
-	// std::cout << emailData.body << std::endl;
-	// std::cout << emailData.oldBody << std::endl;
-
 	return emailData;
 }
 
@@ -151,7 +146,7 @@ string parseMailboxPathToRowKey(const string &path)
 	if (std::regex_search(path, matches, pattern))
 	{
 		if (matches.size() > 1)
-		{										   
+		{
 			return matches[1].str() + "-mailbox/";
 		}
 	}
@@ -162,7 +157,7 @@ string parseMailboxPathToRowKey(const string &path)
  * HANDLERS
  */
 
-void forwardEmail_handler(const HttpRequest &request, HttpResponse &response) 
+void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	// parse cookies
 	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
@@ -227,6 +222,17 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
+
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_forwards_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+
 				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 				if (FeUtils::kv_success(kvsResponse))
 				{
@@ -259,7 +265,8 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		response.set_header("Content-Type", "text/html");
 		close(socket_fd);
 	}
-	else {
+	else
+	{
 		// set response status code
 		response.set_code(303);
 		response.set_header("Location", "/401");
@@ -319,26 +326,37 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 			return;
 		}
 
-	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
+		EmailData emailResponse = parseEmailFromMailForm(request);
 
-	for (string recipientEmail : recipientsEmails)
-	{
-		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+		string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 
-		// handle local client
-		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		for (string recipientEmail : recipientsEmails)
 		{
-			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+
+			// handle local client
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+			{
+				string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
 				vector<char> col(colKey.begin(), colKey.end());
 				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 				vector<char> row(rowKey.begin(), rowKey.end());
-				vector<char> value = FeUtils::charifyEmailContent(emailResponse);
-				
+				vector<char> value = FeUtils::charifyEmailContent(emailResponse); //
+
 				logger.log(value.data(), LOGGER_DEBUG);
+
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_responses_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
 
 				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 				if (!FeUtils::kv_success(kvsResponse))
@@ -520,17 +538,27 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
 
 			// handle local client
-		  if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
 				string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
 				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
-			  string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			  vector<char> value = FeUtils::charifyEmailContent(email);
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> value = FeUtils::charifyEmailContent(email);
 				vector<char> row(rowKey.begin(), rowKey.end());
 				vector<char> col(colKey.begin(), colKey.end());
-				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
+				// check if row exists using get row to prevent from storing emails of users that don't exist
+				std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+				if (!FeUtils::kv_success(rowCheck))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_emails_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
@@ -599,7 +627,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
-  
+
 		// create socket for communication with KVS server
 		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
