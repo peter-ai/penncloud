@@ -880,13 +880,20 @@ bool send_kvs_reco(struct kvs_args &kvs)
     int sent = 0;
     std::string response = "";
 
-    // construct message
-    for (auto &server : kvs_clusters[kvs.kvs_group])
+    if (kvs_clusters[kvs.kvs_group].empty())
     {
-        if (server.primary)
+        response = kvs.server_addr + "\r\n";
+    }
+    else
+    {
+        // construct message
+        for (auto &server : kvs_clusters[kvs.kvs_group])
         {
-            response = server.server_addr + "\r\n";
-            break;
+            if (server.primary)
+            {
+                response = server.server_addr + "\r\n";
+                break;
+            }
         }
     }
 
