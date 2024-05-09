@@ -443,7 +443,7 @@ void error_401_page(const HttpRequest &req, HttpResponse &res)
         "<h1 class='display-1'>"
         "401 - Unauthorized!"
         "</h1>"
-        "<p class='lead'>Redirecting to login in <span id='counter'>5</span>...</p>"
+        "<p class='lead'>The active session is no longer valid, redirecting to login in <span id='counter'>5</span>...</p>"
         "</div>"
         "</div>"
         "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
