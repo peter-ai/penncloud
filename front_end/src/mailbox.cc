@@ -30,99 +30,6 @@ std::string parseEmailField(const std::string &emailContents, const std::string 
 	return "";
 }
 
-// URL Decoding: creates column value based off UIDL
-
-std::string urlEncode(const std::string &value)
-{
-	std::ostringstream escaped;
-	escaped.fill('0');
-	escaped << std::hex;
-
-	for (std::string::const_iterator i = value.begin(), n = value.end(); i != n; ++i)
-	{
-		std::string::value_type c = (*i);
-
-		// keep alphanumeric and other accepted characters as is
-		if (isalnum(c) || c == '-' || c == '_' || c == '.' || c == '~')
-		{
-			escaped << c;
-			continue;
-		}
-
-		// remaining characters are percent-encoded
-		escaped << std::uppercase;
-		escaped << '%' << std::setw(2) << int((unsigned char)c);
-		escaped << std::nouppercase;
-	}
-
-	return escaped.str();
-}
-
-// URL Decoding: takes URL value and decodes it
-
-std::string urlDecode(const std::string &str)
-{
-	std::ostringstream decoded; // This will hold the decoded result
-
-	// loop over each character in the string
-	for (size_t i = 0; i < str.size(); ++i)
-	{
-		char c = str[i]; // get the current character
-
-		if (c == '+')
-		{ //'+' in URLs represents a space
-			decoded << ' ';
-		}
-		else if (c == '%' && i + 2 < str.size())
-		{
-			// if '%' is found and there are at least two characters after it
-			std::string hexValue = str.substr(i + 1, 2);		   // extract the next two characters
-			int charValue;										   // store the converted hexadecimal value
-			std::istringstream(hexValue) >> std::hex >> charValue; // cnvert hex to int
-			decoded << static_cast<char>(charValue);			   // cast the int to char and add to the stream
-			i += 2;												   // skip the next two characters that were part of the hex value
-		}
-		else
-		{
-			decoded << c; // add the character as is if it's not a special case char
-		}
-	}
-
-	return decoded.str(); // convert stream to string
-}
-
-std::string get_time_and_date() {
-	time_t now = time(0);
-	struct tm timeStruct;
-	char buf[100];
-	timeStruct = *localtime(&now);
-	//Mon Feb 05 23:00:00 2018
-	strftime(buf, sizeof(buf), "%c", &timeStruct);
-	string s = buf;
-	return s;
-}
-
-// EmailData parseEmail(const std::vector<char> &source)
-// {
-// 	std::string emailContents(source.begin(), source.end());
-// 	size_t forwardPos = emailContents.find("---------- Forwarded message ---------");
-// 	size_t limit = (forwardPos != std::string::npos) ? forwardPos : emailContents.length();
-
-// 	EmailData data;
-// 	data.time = parseEmailField(emailContents, "time: ", limit);
-// 	data.to = parseEmailField(emailContents, "to: ", limit);
-// 	data.from = parseEmailField(emailContents, "from: ", limit);
-// 	data.subject = parseEmailField(emailContents, "subject: ", limit);
-// 	data.body = parseEmailField(emailContents, "body: ", limit);
-
-// 	if (forwardPos != std::string::npos)
-// 	{
-// 		// If there is a forwarded message, capture it
-// 		data.oldBody = emailContents.substr(forwardPos);
-// 	}
-// 	return data;
-// }
-
 vector<char> charifyEmailContent(const EmailData &email)
 {
 	string data = email.time + "\n" + email.from + "\n" + email.to + "\n" + email.subject + "\n" + email.body + "\n" + email.oldBody + "\n";
@@ -231,16 +138,17 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 				std::string name = headers.substr(start, end - start);
 
 				// Store the corresponding value in the correct field
-
-				emailData.time = "time: " + get_time_and_date();
-
-				if (name == "from")
+				if (name == "time")
+				{
+					emailData.time = "time: " + body;
+				}
+				else if (name == "from")
 				{
 					emailData.from = "from: " + body;
 				}
 				else if (name == "to")
 				{
-					emailData.to = "to: " + body;
+					emailData.to = "to: " + Utils::to_lowercase(body);
 				}
 				else if (name == "subject")
 				{
@@ -358,7 +266,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
 			vector<char> row(rowKey.begin(), rowKey.end());
@@ -377,7 +285,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailToForward))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -399,6 +307,8 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 // responds to an email
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
+	Logger logger("Reply");
+	logger.log(request.body_as_bytes().data(), LOGGER_DEBUG);
 	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
 	if (socket_fd < 0)
 	{
@@ -411,6 +321,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 	EmailData emailResponse = parseEmailFromMailForm(request);
 	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = parseRecipients(recipients);
+
 	for (string recipientEmail : recipientsEmails)
 	{
 		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
@@ -419,7 +330,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 		{
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
+			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
 			vector<char> col(colKey.begin(), colKey.end());
 			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
@@ -438,7 +349,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 		{
 			// handle external client
 			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientDomain, emailResponse))
+			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
 			{
 				response.set_code(502); // Bad Gateway
 				response.append_body_str("-ER Failed to reply to email externally.");
@@ -460,155 +371,530 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 // deletes an email
 void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
 
-	cout << "path: " << request.path << endl;
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
 
-	string rowKey = parseMailboxPathToRowKey(request.path);
+		// check if we know already know the KVS server address for user
+		if (present)
+		{
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		// otherwise get KVS server address from coordinator
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
 
-	cout << "row of deletion" << rowKey << endl;
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
 
-	string emailId = request.get_qparam("uidl");
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
 
-	cout << "email UIDL to be deleted" << emailId << endl;
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
 
-	vector<char> row(rowKey.begin(), rowKey.end());
-	vector<char> col(emailId.begin(), emailId.end());
+		// get mailbox and email ID
+		string rowKey = parseMailboxPathToRowKey(request.path);
+		string emailId = request.get_qparam("uidl");
 
-	vector<char> kvsResponse = FeUtils::kv_del(socket_fd, row, col);
+		// construct row and column keys
+		vector<char> row(rowKey.begin(), rowKey.end());
+		vector<char> col(emailId.begin(), emailId.end());
 
-	if (!kvsResponse.empty() && startsWith(kvsResponse, "+OK"))
-	{
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email deleted successfully.");
+		// perform delete operation
+		vector<char> kvsResponse = FeUtils::kv_del(socket_fd, row, col);
+		if (FeUtils::kv_success(kvsResponse))
+		{
+			response.set_code(303); // Success
+			response.set_header("Location", "/" + username + "/mbox");
+			FeUtils::set_cookies(response, username, valid_session_id);
+		}
+		else
+		{
+			// set response status code
+			response.set_code(303);
+			response.set_header("Location", "/500");
+		}
+		close(socket_fd);
 	}
 	else
 	{
-		response.set_code(501); // Internal Server Error
-		response.append_body_str("-ER Failed to delete email.");
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
 }
 
 // sends an email
 void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
 
-	const EmailData email = parseEmailFromMailForm(request);		   // email data
-	string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	cout << "RECIPIENTS: " + recipients << endl;
-	vector<string> recipientsEmails = parseRecipients(recipients);
-	bool all_emails_sent = true;
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
 
-	for (string recipientEmail : recipientsEmails)
-	{
-		string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
 
-		// handle local client
-		if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+		// check if we know already know the KVS server address for user
+		if (present)
 		{
-			string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
-			colKey = urlEncode(colKey); // encode UIDL in URL format for col value
-
-			string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> value = charifyEmailContent(email);
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> col(colKey.begin(), colKey.end());
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-
-			if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
-			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to send email locally.");
-				all_emails_sent = false;
-				continue;
-			}
+			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
+		// otherwise get KVS server address from coordinator
 		else
 		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, email))
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		const EmailData email = parseEmailFromMailForm(request);		   // email data
+		string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = parseRecipients(recipients);
+		bool all_emails_sent = true;
+
+		for (string recipientEmail : recipientsEmails)
+		{
+			string recipientDomain = extractDomain(recipientEmail); // extract domain from recipient email
+
+			// handle local client
+			if (isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to send email externally.");
-				all_emails_sent = false;
-				continue;
+				string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+
+				string rowKey = extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> value = charifyEmailContent(email);
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> col(colKey.begin(), colKey.end());
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+
+				if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_emails_sent = false;
+					continue;
+				}
+			}
+			else
+			{
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, email))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_emails_sent = false;
+					continue;
+				}
 			}
 		}
-	}
 
-	// check if all emails were sent
-	if (all_emails_sent)
-	{
-		response.set_code(200); // Success
-		response.append_body_str("+OK Email sent successfully.");
-	}
-
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
-}
-
-// retrieves an email
-void email_handler(const HttpRequest &request, HttpResponse &response)
-{
-	Logger logger("Email Handler");
-	logger.log("Received POST request", LOGGER_INFO);
-	logger.log("Path is: " + request.path, LOGGER_INFO);
-
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
-	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
-	string rowKey = parseMailboxPathToRowKey(request.path);
-	// get UIDL from path query
-	string colKey = request.get_qparam("uidl");
-
-	vector<char> row(rowKey.begin(), rowKey.end());
-	vector<char> col(colKey.begin(), colKey.end());
-	// Fetch the email from KVS
-	logger.log("Fetching email at ROW " + rowKey + " and COLUMN " + colKey, LOGGER_DEBUG); // DEBUG
-	vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
-
-	if (startsWith(kvsResponse, "+OK"))
-	{
-		response.set_code(200); // OK
-		// get rid of "+OK "
-		response.append_body_bytes(kvsResponse.data() + 4,
-								   kvsResponse.size() - 4);
-		logger.log("Successful response from KVS received at email handler", LOGGER_DEBUG); // DEBUG
+		// check if all emails were sent
+		if (all_emails_sent)
+		{
+			response.set_code(303); // Success
+			response.set_header("Location", "/" + username + "/mbox");
+			FeUtils::set_cookies(response, username, valid_session_id);
+		}
+		close(socket_fd);
 	}
 	else
 	{
-		response.append_body_str("-ER Error processing request.");
-		response.set_code(404); // Bad request
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
-	// end of handler --> http server sends response back to client
 }
 
-// gets the entire mailbox of a user
-// TO DO: will need to sort according to which page is shown
+/// @brief handler that retrieves an email of a specific user
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void email_handler(const HttpRequest &request, HttpResponse &response)
+{
+	Logger logger("Email");
+
+	// get cookies
+	unordered_map<string, string> cookies = FeUtils::parse_cookies(request);
+
+	// check if cookies are valid!!
+	if (cookies.count("user") && cookies.count("sid"))
+	{
+		string username = cookies["user"];
+		string sid = cookies["sid"];
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
+		{
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		// otherwise get KVS server address from coordinator
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		// create socket for communication with KVS server
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		// get mailbox and email ID
+		string rowKey = parseMailboxPathToRowKey(request.path);
+		string colKey = request.get_qparam("uidl");
+
+		// construct row and column keys
+		vector<char> row(rowKey.begin(), rowKey.end());
+		vector<char> col(colKey.begin(), colKey.end());
+
+		// fetch the email from KVS
+		vector<char> kvsResponse = FeUtils::kv_get(socket_fd, row, col);
+
+		if (FeUtils::kv_success(kvsResponse))
+		{
+			// parse email body
+			unordered_map<string, string> email = parseEmailBody(kvsResponse);
+
+			std::string page =
+				"<!doctype html>"
+				"<html lang='en' data-bs-theme='dark'>"
+				"<head>"
+				"<meta content='text/html;charset=utf-8' http-equiv='Content-Type'>"
+				"<meta content='utf-8' http-equiv='encoding'>"
+				"<meta name='viewport' content='width=device-width, initial-scale=1'>"
+				"<meta name='description' content='CIS 5050 Spr24'>"
+				"<meta name='keywords' content='SignUp'>"
+				"<title>Email - PennCloud.com</title>"
+				"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
+				"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
+				"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
+				"<link rel='stylesheet' href='https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css'>"
+				"</head>"
+
+				"<body onload='setTheme()'>"
+				"<nav class='navbar navbar-expand-lg bg-body-tertiary'>"
+				"<div class='container-fluid'>"
+				"<span class='navbar-brand mb-0 h1 flex-grow-1'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.2em' height='1.2em' fill='currentColor'"
+				"class='bi bi-cloud-fog2-fill' viewBox='0 0 16 16'>"
+				"<path d='M8.5 3a5 5 0 0 1 4.905 4.027A3 3 0 0 1 13 13h-1.5a.5.5 0 0 0 0-1H1.05a3.5 3.5 0 0 1-.713-1H9.5a.5.5 0 0 0 0-1H.035a3.5 3.5 0 0 1 0-1H7.5a.5.5 0 0 0 0-1H.337a3.5 3.5 0 0 1 3.57-1.977A5 5 0 0 1 8.5 3' />"
+				"</svg>"
+				"PennCloud"
+				"</span>"
+				"<button class='navbar-toggler' type='button' data-bs-toggle='collapse' data-bs-target='#navbarNavAltMarkup' aria-controls='navbarNavAltMarkup' aria-expanded='false' aria-label='Toggle navigation'>"
+				"<span class='navbar-toggler-icon'></span>"
+				"</button>"
+				"<div class='collapse navbar-collapse' id='navbarNavAltMarkup'>"
+				"<div class='navbar-nav'>"
+				"<a class='nav-link' href='/home'>Home</a>"
+				"<a class='nav-link' href='/drive/" +
+				username + "/'>Drive</a>"
+								  "<a class='nav-link active' aria-current='page' href='/" +
+				username + "/mbox'>Email</a>"
+								  "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+								  "<a class='nav-link' href='/account'>Account</a>"
+								  "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+								  "<input type='hidden' />"
+								  "<button class='btn nav-link' type='submit'>Logout</button>"
+								  "</form>"
+								  "</div>"
+								  "</div>"
+								  "<div class='form-check form-switch form-check-reverse'>"
+								  "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+								  "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+								  "</div>"
+								  "</div>"
+								  "</nav>"
+
+								  "<div class='container-fluid'>"
+								  "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
+								  "<div class='col-6'>"
+								  "<h1 class='display-6'>"
+								  "Email"
+								  "</h1>"
+								  "</div>"
+								  "<div class='col-2'>"
+								  "<button id='reply' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+								  "</svg> Reply"
+								  "</button>"
+								  "</div>"
+								  "<!--<div class='col-2'>"
+								  "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+								  "</svg> Reply All"
+								  "</button>"
+								  "</div>-->"
+								  "<div class='col-2'>"
+								  "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
+  								  "<path d='M5.921 11.9 1.353 8.62a.72.72 0 0 1 0-1.238L5.921 4.1A.716.716 0 0 1 7 4.719V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+								  "</svg> Forward"
+								  "</button>"
+								  "</div>"
+								  "<div class='col-2'></div>"
+								  "</div>"
+								  "<div class='row mt-2 mx-2'>"
+								  "<div class='col-2'></div>"
+								  "<div class='col-8 mb-4'>"
+								  "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
+								  "<div class='form-group mb-3'>"
+								  "<div class='mb-3'>"
+									
+								  "<div class='mb-3'>"
+								  "<label for='time' class='form-label'>Received:</label>"
+								  "<input type='text' class='form-control' id='time' name='time' value='"+email["time"]+"' required readonly>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='from' class='form-label'>From:</label>"
+								  "<input type='email' class='form-control' id='from' name='from' value='"+email["from"]+"' multiple required readonly>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='to' class='form-label'>Recipients:</label>"
+								  "<input type='email' class='form-control' id='to' name='to' value='"+email["to"]+"' multiple required readonly>"
+								  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
+								  "</div>"
+								  "<div class='mb-3'>"
+								  "<label for='subject' class='form-label'>Subject:</label>"
+								  "<input type='text' class='form-control' id='subject' name='subject' value='"+email["subject"]+"' required readonly>"
+								  "</div>"
+								  "<div>"
+								  "<label for='body' class='form-label'>Body:</label>"
+								  "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required readonly>"+email["body"]+"</textarea>"
+								  "</div>"
+								  "<div>"
+								  "<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
+								  "-------------------------------------------------------------------------------------------------\n"
+								  "Time: "+email["time"]+"\nFrom: "+email["from"]+"\nTo: "+email["to"]+"\nSubject: "+email["subject"]+"\n" //+email["body"]+
+								  "</textarea>"
+								  "</div>"
+								  "</div>"
+								  "<div class='col-12 mb-2'>"
+								  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
+								  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+				username + "/mbox\"'>Back</button>"
+								  "</div>"
+								  "</div>"
+								  "</form>"
+								  "</div>"
+								  "<div class='col-2'></div>"
+								  "</div>"
+								  "</div>"
+
+								  "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+								  "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+								  "crossorigin='anonymous'></script>"
+								"<script>"
+								"var body=`"+email["body"]+"`;"
+								"var from='"+email["from"]+"';"
+								"var to='"+email["to"]+"';"
+								"var subject='"+email["subject"]+"';"
+								"var uidl='"+colKey+"';"
+								"$('#reply').on('click', function(){"
+									"if ($(this).hasClass('active')) {"
+										"if ($('#forward').hasClass('active'))"
+										"{"
+											"$('#forward').removeClass('active');"
+											"$('#forward').attr('aria-pressed', 'false');"
+											"$('#subject').val($('#subject').val().replace('FWD: ', ''));"
+										"}"
+
+										"$('label[for=time], input#time').hide();"
+										"$('#to').attr('readonly', false);"
+										"$('#to').val(from);"
+										"$('#subject').val('RE: '+$('#subject').val());"
+										"$('#subject').attr('readonly', false);"
+										"$('label[for=from], input#from').hide();"
+										"$('#body').attr('readonly', false);"
+										"$('#body').text('');"
+										"$('#body').addClass('mb-3');"
+										"$('#oldBody').css('display', '');"
+										"$('#emailForm').attr('action', '/api/"+username+"/mbox/reply?uidl='+uidl);"
+									"}"
+									"else"
+									"{"
+										"$('label[for=time], input#time').show();"
+										"$('#to').attr('readonly', true);"
+										"$('#to').val(to);"
+										"$('#subject').val(subject);"
+										"$('#subject').attr('readonly', true);"
+										"$('label[for=from], input#from').show();"
+										"$('#body').attr('readonly', true);"
+										"$('#body').text(body);"
+										"$('#body').removeClass('mb-3');"
+										"$('#oldBody').css('display', 'none');"
+									"}"
+								"});"
+
+								"$('#forward').on('click', function(){"
+									"if ($(this).hasClass('active')) {"
+										"if ($('#reply').hasClass('active'))"
+										"if ($('#reply').hasClass('active'))"
+										"{"
+											"$('#reply').removeClass('active');"
+											"$('#reply').attr('aria-pressed', 'false');"
+											"$('#subject').val($('#subject').val().replace('RE: ', ''));"
+										"}"
+
+										"$('label[for=time], input#time').hide();"
+										"$('#to').attr('readonly', false);"
+										"$('#to').val('');"
+										"$('#subject').val('FWD: '+$('#subject').val());"
+										"$('#subject').prop('readonly', false);"
+										"$('label[for=from], input#from').hide();"
+										"$('#body').attr('readonly', false);"
+										"$('#body').text('');"
+										"$('#body').addClass('mb-3');"
+										"$('#oldBody').css('display', '');"
+										"$('#emailForm').attr('action', '/api/"+username+"/mbox/forward?uidl='+uidl);"
+									"}"
+									"else"
+									"{"
+										"$('label[for=time], input#time').show();"
+										"$('#to').attr('readonly', true);"
+										"$('#to').val(to);"
+										"$('#subject').val(subject);"
+										"$('#subject').attr('readonly', true);"
+										"$('label[for=from], input#from').show();"
+										"$('#body').attr('readonly', true);"
+										"$('#body').text(body);"
+										"$('#body').removeClass('mb-3');"
+										"$('#oldBody').css('display', 'none');"
+									"}"
+								"});"
+								"</script>"
+
+								  "<script>"
+								  "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+								  "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+								  "$('#switchLabel').html('Light Mode');"
+								  "sessionStorage.setItem('data-bs-theme', 'light');"
+								  ""
+								  "}"
+								  "else {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+								  "$('#switchLabel').html('Dark Mode');"
+								  "sessionStorage.setItem('data-bs-theme', 'dark');"
+								  "}"
+								  "});"
+								  "</script>"
+								  "<script>"
+								  "function setTheme() {"
+								  "var theme = sessionStorage.getItem('data-bs-theme');"
+								  "if (theme !== null) {"
+								  "if (theme === 'dark') {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+								  "$('#switchLabel').html('Dark Mode');"
+								  "$('#flexSwitchCheckReverse').attr('checked', true);"
+								  "}"
+								  "else {"
+								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
+								  "$('#switchLabel').html('Light Mode');"
+								  "$('#flexSwitchCheckReverse').attr('checked', false);"
+								  "}"
+								  "}"
+								  "};"
+								  "</script>"
+								  "</body>";
+
+			response.set_code(200);
+			response.append_body_str(page);
+			response.set_header("Content-Type", "text/html");
+			response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
+			response.set_header("Pragma", "no-cache");
+			response.set_header("Expires", "0");
+			FeUtils::set_cookies(response, username, valid_session_id);
+		}
+		else
+		{
+			response.set_code(303);
+			response.set_header("Location", "/404"); // Not found
+		}
+		close(socket_fd);
+	}
+	else
+	{
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
+}
+
+/// @brief handler that displays contents of user mailbox
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 {
+	Logger logger("Mailbox");
+
 	// get cookies
 	unordered_map<string, string> cookies = FeUtils::parse_cookies(request);
 
@@ -635,17 +921,6 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		// create socket for communication with KVS server
 		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
-		// int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-		// if (socket_fd < 0)
-		// {
-		// 	response.set_code(501);
-		// 	response.append_body_str("Failed to open socket.");
-		// 	return;
-		// }
-		// path is: /api/mailbox/{username}/
-
-		// string recipientAddress;
-
 		string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
 		if (valid_session_id.empty())
 		{
@@ -659,14 +934,66 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 
 		string rowKey = parseMailboxPathToRowKey(request.path);
 		vector<char> row(rowKey.begin(), rowKey.end());
-		vector<char> kvsResponse = FeUtils::kv_get_row(kvs_sock, row);
+		vector<char> kvs_response = FeUtils::kv_get_row(kvs_sock, row);
 
-		if (startsWith(kvsResponse, "+OK"))
+		if (FeUtils::kv_success(kvs_response))
 		{
-			// OK
-			// get rid of "+OK "
-			// response.append_body_bytes(kvsResponse.data() + 4,
-			// 						   kvsResponse.size() - 4);
+			// extract individual emails
+			string inbox(kvs_response.begin() + 4, kvs_response.end());
+			vector<string> mailbox = Utils::split(inbox, "\b");
+
+			string table_rows = "";
+			for (auto &email : mailbox)
+			{
+				// decode email
+				string mail = FeUtils::urlDecode(email);
+				vector<string> mail_items = Utils::split(mail, "\r");
+				unordered_map<string, string> email_elements;
+				for (auto &item : mail_items)
+				{
+					int split_idx = item.find(':');
+					email_elements[item.substr(0, split_idx)] = (item.size() > split_idx + 2 ? item.substr(split_idx + 2) : "");
+				}
+				vector<string> recipients = Utils::split(email_elements.at("to"), ",");
+				string recipient_list = "";
+				for (auto &recipient : recipients)
+					recipient_list += recipient + "<br>";
+				if (recipient_list.size() > 1)
+					recipient_list = recipient_list.substr(0, recipient_list.length() - 4);
+
+				table_rows +=
+					"<tr>"
+					"<th scope='row'>" +
+					email_elements.at("subject") + "</th>"
+												   "<td>" +
+					email_elements.at("time") + "</td>"
+												"<td>" +
+					email_elements.at("from") + "</td>"
+												"<td>" +
+					recipient_list + "</td>"
+									 "<td class='text-center'>"
+									 "<a href='/" +
+					username + "/mbox?uidl=" + email + "'>"
+													   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
+													   "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
+													   "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
+													   "</svg>"
+													   "</a>"
+													   "</td>"
+													   "<td class='text-center'>"
+													   "<form role='form' method='POST' action='/api/" +
+					username + "/mbox/delete?uidl=" + email + "'>"
+															  "<input type='hidden' name='test' value='" +
+					email + "' />"
+							"<button class='btn btn-outline-danger' type='submit'>"
+							"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
+							"<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
+							"</svg>"
+							"</button>"
+							"</form>"
+							"</td>"
+							"</tr>";
+			}
 
 			// construct html page
 			std::string page =
@@ -678,7 +1005,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				"<meta name='viewport' content='width=device-width, initial-scale=1'>"
 				"<meta name='description' content='CIS 5050 Spr24'>"
 				"<meta name='keywords' content='Home'>"
-				"<title>Home - PennCloud.com</title>"
+				"<title>Mailbox - PennCloud.com</title>"
 				"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
 				"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
 				"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -743,163 +1070,135 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 						   "<table id='emailTable' class='table table-hover table-sm align-middle'>"
 						   "<thead>"
 						   "<tr>"
-						   "<th scope='col'>Subject</th>"
+						   "<th scope='col' style='width: 25%;'>Subject</th>"
 						   "<th scope='col'>Time</th>"
-						   "<th scope='col'>From</th>"
-						   "<th scope='col'>To</th>"
-						   "<th scope='col' data-dt-order='disable'></th>"
-						   "<th scope='col' data-dt-order='disable'></th>"
-						   "<!-- <th scope='col'></th>"
-						   "<th scope='col'></th> -->"
+						   "<th scope='col' style='width: 20%;'>From</th>"
+						   "<th scope='col' style='width: 20%;'>To</th>"
+						   "<th scope='col' data-dt-order='disable' style='width: 5%;'></th>"
+						   "<th scope='col' data-dt-order='disable' style='width: 5%;'></th>"
 						   "</tr>"
 						   "</thead>"
-						   "<tbody class='table-group-divider'>"
-						   "<tr>"
-						   "<th scope='row'>Some random subject 1</th>"
-						   "<td>Mark</td>"
-						   "<td>Otto</td>"
-						   "<td>@mdo</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
-						   "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
-						   "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
-						   "</svg>"
-						   "</td>"
-						   "<!-- <td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-reply-all' viewBox='0 0 16 16'>"
-						   "<path d='M8.098 5.013a.144.144 0 0 1 .202.134V6.3a.5.5 0 0 0 .5.5c.667 0 2.013.005 3.3.822.984.624 1.99 1.76 2.595 3.876-1.02-.983-2.185-1.516-3.205-1.799a8.7 8.7 0 0 0-1.921-.306 7 7 0 0 0-.798.008h-.013l-.005.001h-.001L8.8 9.9l-.05-.498a.5.5 0 0 0-.45.498v1.153c0 .108-.11.176-.202.134L4.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028zM9.3 10.386q.102 0 .223.006c.434.02 1.034.086 1.7.271 1.326.368 2.896 1.202 3.94 3.08a.5.5 0 0 0 .933-.305c-.464-3.71-1.886-5.662-3.46-6.66-1.245-.79-2.527-.942-3.336-.971v-.66a1.144 1.144 0 0 0-1.767-.96l-3.994 2.94a1.147 1.147 0 0 0 0 1.946l3.994 2.94a1.144 1.144 0 0 0 1.767-.96z'/>"
-						   "<path d='M5.232 4.293a.5.5 0 0 0-.7-.106L.54 7.127a1.147 1.147 0 0 0 0 1.946l3.994 2.94a.5.5 0 1 0 .593-.805L1.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028 4.012-2.954a.5.5 0 0 0 .106-.699'/>"
-						   "</svg>"
-						   "</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-forward-fill' viewBox='0 0 16 16'>"
-						   "<path d='m9.77 12.11 4.012-2.953a.647.647 0 0 0 0-1.114L9.771 5.09a.644.644 0 0 0-.971.557V6.65H2v3.9h6.8v1.003c0 .505.545.808.97.557'/>"
-						   "</svg>"
-						   "</td> -->"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
-						   "<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
-						   "</svg>"
-						   "</td>"
-						   "</tr>"
-						   "<tr>"
-						   "<th scope='row'>Some random subject 2</th>"
-						   "<td>Jacob</td>"
-						   "<td>Thornton</td>"
-						   "<td>@fat</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
-						   "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
-						   "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
-						   "</svg>"
-						   "</td>"
-						   "<!-- <td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-reply-all' viewBox='0 0 16 16'>"
-						   "<path d='M8.098 5.013a.144.144 0 0 1 .202.134V6.3a.5.5 0 0 0 .5.5c.667 0 2.013.005 3.3.822.984.624 1.99 1.76 2.595 3.876-1.02-.983-2.185-1.516-3.205-1.799a8.7 8.7 0 0 0-1.921-.306 7 7 0 0 0-.798.008h-.013l-.005.001h-.001L8.8 9.9l-.05-.498a.5.5 0 0 0-.45.498v1.153c0 .108-.11.176-.202.134L4.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028zM9.3 10.386q.102 0 .223.006c.434.02 1.034.086 1.7.271 1.326.368 2.896 1.202 3.94 3.08a.5.5 0 0 0 .933-.305c-.464-3.71-1.886-5.662-3.46-6.66-1.245-.79-2.527-.942-3.336-.971v-.66a1.144 1.144 0 0 0-1.767-.96l-3.994 2.94a1.147 1.147 0 0 0 0 1.946l3.994 2.94a1.144 1.144 0 0 0 1.767-.96z'/>"
-						   "<path d='M5.232 4.293a.5.5 0 0 0-.7-.106L.54 7.127a1.147 1.147 0 0 0 0 1.946l3.994 2.94a.5.5 0 1 0 .593-.805L1.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028 4.012-2.954a.5.5 0 0 0 .106-.699'/>"
-						   "</svg>"
-						   "</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-forward-fill' viewBox='0 0 16 16'>"
-						   "<path d='m9.77 12.11 4.012-2.953a.647.647 0 0 0 0-1.114L9.771 5.09a.644.644 0 0 0-.971.557V6.65H2v3.9h6.8v1.003c0 .505.545.808.97.557'/>"
-						   "</svg>"
-						   "</td> -->"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
-						   "<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
-						   "</svg>"
-						   "</td>"
-						   "</p></td>"
-						   "</tr>"
-						   "<tr>"
-						   "<th scope='row'>Some random subject 3</th>"
-						   "<td colspan='1'>Larry the Bird</td>"
-						   "<td>@twitter</td>"
-						   "<td>@red</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
-						   "<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
-						   "<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
-						   "</svg>"
-						   "</td>"
-						   "<!-- <td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-reply-all' viewBox='0 0 16 16'>"
-						   "<path d='M8.098 5.013a.144.144 0 0 1 .202.134V6.3a.5.5 0 0 0 .5.5c.667 0 2.013.005 3.3.822.984.624 1.99 1.76 2.595 3.876-1.02-.983-2.185-1.516-3.205-1.799a8.7 8.7 0 0 0-1.921-.306 7 7 0 0 0-.798.008h-.013l-.005.001h-.001L8.8 9.9l-.05-.498a.5.5 0 0 0-.45.498v1.153c0 .108-.11.176-.202.134L4.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028zM9.3 10.386q.102 0 .223.006c.434.02 1.034.086 1.7.271 1.326.368 2.896 1.202 3.94 3.08a.5.5 0 0 0 .933-.305c-.464-3.71-1.886-5.662-3.46-6.66-1.245-.79-2.527-.942-3.336-.971v-.66a1.144 1.144 0 0 0-1.767-.96l-3.994 2.94a1.147 1.147 0 0 0 0 1.946l3.994 2.94a1.144 1.144 0 0 0 1.767-.96z'/>"
-						   "<path d='M5.232 4.293a.5.5 0 0 0-.7-.106L.54 7.127a1.147 1.147 0 0 0 0 1.946l3.994 2.94a.5.5 0 1 0 .593-.805L1.114 8.254l-.042-.028a.147.147 0 0 1 0-.252l.042-.028 4.012-2.954a.5.5 0 0 0 .106-.699'/>"
-						   "</svg>"
-						   "</td>"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-forward-fill' viewBox='0 0 16 16'>"
-						   "<path d='m9.77 12.11 4.012-2.953a.647.647 0 0 0 0-1.114L9.771 5.09a.644.644 0 0 0-.971.557V6.65H2v3.9h6.8v1.003c0 .505.545.808.97.557'/>"
-						   "</svg>"
-						   "</td> -->"
-						   "<td class='text-center'>"
-						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
-						   "<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
-						   "</svg>"
-						   "</td>"
-						   "</tr>"
-						   "</tbody>"
-						   "</table>"
-						   "</div>"
-						   "</div>"
+						   "<tbody class='table-group-divider'>" +
+				table_rows +
 
-						   "</div>"
+				"<!--<tr>"
+				"<th scope='row'>Some random subject 1</th>"
+				"<td>Mark</td>"
+				"<td>Otto</td>"
+				"<td>@mdo</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
+				"<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
+				"<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
+				"</svg>"
+				"</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
+				"<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
+				"</svg>"
+				"</td>"
+				"</tr>"
+				"<tr>"
+				"<th scope='row'>Some random subject 2</th>"
+				"<td>Jacob</td>"
+				"<td>Thornton</td>"
+				"<td>@fat</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
+				"<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
+				"<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
+				"</svg>"
+				"</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
+				"<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
+				"</svg>"
+				"</td>"
+				"</p></td>"
+				"</tr>"
+				"<tr>"
+				"<th scope='row'>Some random subject 3</th>"
+				"<td colspan='1'>Larry the Bird</td>"
+				"<td>@twitter</td>"
+				"<td>@red</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-eye' viewBox='0 0 16 16'>"
+				"<path d='M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8M1.173 8a13 13 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13 13 0 0 1 14.828 8q-.086.13-.195.288c-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5s-3.879-1.168-5.168-2.457A13 13 0 0 1 1.172 8z'/>"
+				"<path d='M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5M4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0'/>"
+				"</svg>"
+				"</td>"
+				"<td class='text-center'>"
+				"<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='2em' fill='currentColor' class='bi bi-trash3-fill' viewBox='0 0 16 16'>"
+				"<path d='M11 1.5v1h3.5a.5.5 0 0 1 0 1h-.538l-.853 10.66A2 2 0 0 1 11.115 16h-6.23a2 2 0 0 1-1.994-1.84L2.038 3.5H1.5a.5.5 0 0 1 0-1H5v-1A1.5 1.5 0 0 1 6.5 0h3A1.5 1.5 0 0 1 11 1.5m-5 0v1h4v-1a.5.5 0 0 0-.5-.5h-3a.5.5 0 0 0-.5.5M4.5 5.029l.5 8.5a.5.5 0 1 0 .998-.06l-.5-8.5a.5.5 0 1 0-.998.06m6.53-.528a.5.5 0 0 0-.528.47l-.5 8.5a.5.5 0 0 0 .998.058l.5-8.5a.5.5 0 0 0-.47-.528M8 4.5a.5.5 0 0 0-.5.5v8.5a.5.5 0 0 0 1 0V5a.5.5 0 0 0-.5-.5'></path>"
+				"</svg>"
+				"</td>"
+				"</tr>-->"
 
-						   "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-						   "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-						   "crossorigin='anonymous'></script>"
-						   "<script>"
-						   "$(document).ready(function(){"
-						   "$('#emailTable').dataTable();"
-						   "});"
-						   "</script>"
-						   "<script>"
-						   "$('.delete').on('click', function() {"
-						   "    $('#deleteModal').modal('show');"
-						   "});"
+				"</tbody>"
+				"</table>"
+				"</div>"
+				"</div>"
 
-						   "$('#deleteModal').on('show.bs.modal', function(e) {"
-						   "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-						   "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-						   "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-						   "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-						   "});"
-						   "</script>"
-						   "<script>"
-						   "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-						   "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-						   "document.documentElement.setAttribute('data-bs-theme', 'light');"
-						   "$('#switchLabel').html('Light Mode');"
-						   "sessionStorage.setItem('data-bs-theme', 'light');"
-						   ""
-						   "}"
-						   "else {"
-						   "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-						   "$('#switchLabel').html('Dark Mode');"
-						   "sessionStorage.setItem('data-bs-theme', 'dark');"
-						   "}"
-						   "});"
-						   "</script>"
-						   "<script>"
-						   "function setTheme() {"
-						   "var theme = sessionStorage.getItem('data-bs-theme');"
-						   "if (theme !== null) {"
-						   "if (theme === 'dark') {"
-						   "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-						   "$('#switchLabel').html('Dark Mode');"
-						   "$('#flexSwitchCheckReverse').attr('checked', true);"
-						   "}"
-						   "else {"
-						   "document.documentElement.setAttribute('data-bs-theme', 'light');"
-						   "$('#switchLabel').html('Light Mode');"
-						   "$('#flexSwitchCheckReverse').attr('checked', false);"
-						   "}"
-						   "}"
-						   "};"
-						   "</script>"
-						   "</body>"
-						   "</html>";
+				"</div>"
+
+				"<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+				"integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+				"crossorigin='anonymous'></script>"
+				"<script>"
+				"$(document).ready(function(){"
+				"$('#emailTable').dataTable({"
+				"'oLanguage': {"
+				"'sEmptyTable': 'Your inbox is empty'"
+				"}"
+				"});"
+				"});"
+				"</script>"
+				"<script>"
+				"$('.delete').on('click', function() {"
+				"    $('#deleteModal').modal('show');"
+				"});"
+
+				"$('#deleteModal').on('show.bs.modal', function(e) {"
+				"let item_name = $(e.relatedTarget).attr('data-bs-name');"
+				"let file_path = $(e.relatedTarget).attr('data-bs-path');"
+				"$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+				"$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+				"});"
+				"</script>"
+				"<script>"
+				"document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+				"if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+				"document.documentElement.setAttribute('data-bs-theme', 'light');"
+				"$('#switchLabel').html('Light Mode');"
+				"sessionStorage.setItem('data-bs-theme', 'light');"
+				""
+				"}"
+				"else {"
+				"document.documentElement.setAttribute('data-bs-theme', 'dark');"
+				"$('#switchLabel').html('Dark Mode');"
+				"sessionStorage.setItem('data-bs-theme', 'dark');"
+				"}"
+				"});"
+				"</script>"
+				"<script>"
+				"function setTheme() {"
+				"var theme = sessionStorage.getItem('data-bs-theme');"
+				"if (theme !== null) {"
+				"if (theme === 'dark') {"
+				"document.documentElement.setAttribute('data-bs-theme', 'dark');"
+				"$('#switchLabel').html('Dark Mode');"
+				"$('#flexSwitchCheckReverse').attr('checked', true);"
+				"}"
+				"else {"
+				"document.documentElement.setAttribute('data-bs-theme', 'light');"
+				"$('#switchLabel').html('Light Mode');"
+				"$('#flexSwitchCheckReverse').attr('checked', false);"
+				"}"
+				"}"
+				"};"
+				"</script>"
+				"</body>"
+				"</html>";
 			response.set_code(200);
 			response.append_body_str(page);
 			response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
@@ -909,16 +1208,10 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		}
 		else
 		{
-			// response.append_body_str("-ER Error processing request.");
-			// response.set_code(400); // Bad request
-
-			// @PETER added
 			response.set_code(303);
 			response.set_header("Location", "/400");
 			FeUtils::expire_cookies(response, username, sid);
 		}
-
-		// response.set_header("Content-Type", "text/html");
 		close(kvs_sock);
 	}
 	else
@@ -926,20 +1219,47 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		response.set_code(303);
 		response.set_header("Location", "/401");
 	}
-
-	// end of handler --> http server sends response back to client
 }
 
+/// @brief handler that constructs page for email composition
+/// @param req HttpRequest object
+/// @param res HttpResponse object
 void compose_email(const HttpRequest &request, HttpResponse &response)
 {
-	Logger logger("Compose Email");
-	logger.log("Checking details", LOGGER_INFO);
-
 	// get cookies
 	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
 	if (cookies.count("user") && cookies.count("sid"))
 	{
-		FeUtils::set_cookies(response, cookies["user"], cookies["sid"]);
+		string username = cookies["user"];
+		string sid = cookies["sid"];
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
+		{
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		// otherwise get KVS server address from coordinator
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		// create socket for communication with KVS server
+		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
+
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(kvs_sock);
+			return;
+		}
 
 		std::string page =
 			"<!doctype html>"
@@ -950,7 +1270,7 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 			"<meta name='viewport' content='width=device-width, initial-scale=1'>"
 			"<meta name='description' content='CIS 5050 Spr24'>"
 			"<meta name='keywords' content='SignUp'>"
-			"<title>Sign Up - PennCloud.com</title>"
+			"<title>Compose Email - PennCloud.com</title>"
 			"<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
 			"<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
 			"integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -1010,26 +1330,31 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 							  "</div>"
 							  "<div class='row mt-2 mx-2'>"
 							  "<div class='col-2'></div>"
-							  "<div class='col-8'>"
-							  "<form id='sendEmailForm' action='' method='POST' enctype='multipart/form-data'>"
+							  "<div class='col-8 mb-4'>"
+							  "<form id='sendEmailForm' action='/api/" +
+			cookies["user"] + "/mbox/send' method='POST' enctype='multipart/form-data'>"
 							  "<div class='form-group'>"
 							  "<div class='mb-3'>"
-							  "<div class='form-floating mb-2'>"
-							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='emails' required multiple placeholder=''>"
+							  "<div><input type='hidden' class='form-control' id='from' name='from' value='" +
+			cookies["user"] + "@penncloud.com'></div>"
+							  "<div><input type='hidden' class='form-control' id='time' name='time' value=''></div>"
+							  "<div class='form-floating mb-3'>"
+							  "<input type='email' class='form-control' id='to' aria-describedby='emailHelp' name='to' required multiple placeholder=''>"
 							  "<label for='to' class='form-label'>To:</label>"
 							  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
 							  "</div>"
-							  "<div class='form-floating mb-2'>"
+							  "<div class='form-floating mb-3'>"
 							  "<input type='text' class='form-control' id='subject' name='subject' required placeholder=''>"
 							  "<label for='subject' class='form-label'>Subject:</label>"
 							  "</div>"
 							  "<div class='form-floating'>"
 							  "<textarea id='body' name='body' class='form-control' placeholder='' form='sendEmailForm' rows='15' style='height:100%;' required></textarea>"
-							  "<label for='body'>Body:</label>"
+							  "<label for='body' class='form-label'>Body:</label>"
 							  "</div>"
+							  "<div><input type='hidden' class='form-control' id='oldBody' name='oldBody' value=''></div>"
 							  "</div>"
 							  "<div class='col-12'>"
-							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit'>Send</button>"
+							  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#sendEmailForm\").submit();'>Send</button>"
 							  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
 			cookies["user"] + "/mbox\"'>Back</button>"
 							  "</div>"
@@ -1083,6 +1408,7 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 		response.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
 		response.set_header("Pragma", "no-cache");
 		response.set_header("Expires", "0");
+		FeUtils::set_cookies(response, username, valid_session_id);
 	}
 	// unauthorized
 	else
@@ -1090,4 +1416,40 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 		response.set_code(303);
 		response.set_header("Location", "/401");
 	}
+}
+
+/// @brief helper function that parses email body after retrieval from KVS
+/// @param kvs_response response from retrieving a valid email from KVS
+/// @return reutrns an unordered map of email components
+std::unordered_map<std::string, std::string> parseEmailBody(std::vector<char> kvs_response)
+{
+	string email(kvs_response.data() + 4);
+	string time, from, to, subject, body, oldBody;
+	int time_idx, from_idx, to_idx, subject_idx, body_idx, oldBody_idx;
+	time_idx = email.find("time:");
+	from_idx = email.find("from:");
+	to_idx = email.find("to:");
+	subject_idx = email.find("subject:");
+	body_idx = email.find("body:");
+	oldBody_idx = email.find("oldBody:");
+	time = Utils::split_on_first_delim(email.substr(time_idx, from_idx), ":")[1].substr(1);
+	from = Utils::split(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
+	to = Utils::split(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
+	subject = Utils::split(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
+	body = Utils::split(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
+	oldBody = Utils::split(email.substr(oldBody_idx), ":")[1].substr(1);
+	time.pop_back();
+	from.pop_back();
+	to.pop_back();
+	subject.pop_back();
+	body.pop_back();
+	oldBody.pop_back();
+
+	return unordered_map<string, string>{
+		{"time", time},
+		{"from", from},
+		{"to", to},
+		{"subject", subject},
+		{"body", body},
+		{"oldBody", oldBody}};
 }
