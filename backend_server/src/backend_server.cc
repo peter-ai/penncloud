@@ -667,6 +667,7 @@ void BackendServer::admin_kill()
     group_server_connections.clear(); // clear map of active group server connections
     primary_port = 0;                 // clear current primary
     secondary_ports.clear();          // clear all secondaries
+    is_primary = false;               // clear primary flag
 }
 
 /// @brief restarts server after pseudo kill from admin
@@ -737,7 +738,6 @@ void BackendServer::admin_live()
     seq_num_lock.lock();
     uint32_t max_seq_num_from_replay = seq_num;
     seq_num_lock.unlock();
-    be_logger.log("Sequence number before log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
 
     // loop through the number of tablets. For each one, you can expect the following:
     // Log - First 4 bytes are a number, and the next x bytes are the number of corresponding bytes
@@ -798,7 +798,6 @@ void BackendServer::admin_live()
     seq_num_lock.lock();
     seq_num = std::max(seq_num, max_seq_num_from_replay);
     seq_num_lock.unlock();
-    be_logger.log("Sequence number after log replay - " + std::to_string(max_seq_num_from_replay), LOGGER_INFO);
 
     // set flag to false to indicate server is now alive
     is_recovering = false;

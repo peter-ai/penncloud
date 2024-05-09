@@ -1071,6 +1071,8 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         string key = "name=";
         vector<string> elements = Utils::split_on_first_delim(req_body, key);
 
+        logger.log("request body - " + req_body, LOGGER_DEBUG);
+
         // if key doesn't exist, return 400
         if (elements.size() < 1)
         {
@@ -1083,6 +1085,9 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         vector<char> folder_name(elements[0].begin(), elements[0].end());
         folder_name.push_back('/');
         vector<char> row_name(parentpath_str.begin(), parentpath_str.end());
+
+        logger.log("name of row - " + std::string(row_name.begin(), row_name.end()), LOGGER_DEBUG);
+        logger.log("name of folder - " + std::string(folder_name.begin(), folder_name.end()), LOGGER_DEBUG);
 
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_name);
 
