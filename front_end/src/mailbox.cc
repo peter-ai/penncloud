@@ -142,15 +142,6 @@ EmailData parseEmailFromMailForm(const HttpRequest &req)
 	return emailData;
 }
 
-/**
- * Helper functions
- */
-
-// takes the a path's request and parses it to user mailbox key "user1-mailbox/"
-// needs to parse both:
-// /api/peter/mbox/delete?
-// /peter/mbox?
-
 string parseMailboxPathToRowKey(const string &path)
 {
 	std::regex pattern("/(?:api/)?([^/]+)/"); // Optionally skip 'api/' and capture the username
@@ -171,81 +162,165 @@ string parseMailboxPathToRowKey(const string &path)
  * HANDLERS
  */
 
-void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
+void forwardEmail_handler(const HttpRequest &request, HttpResponse &response) 
 {
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
-	{
-		response.set_code(501);
-		response.append_body_str("Failed to open socket.");
-		return;
-	}
-	bool all_forwards_sent = true;
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
 
-	EmailData emailToForward = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
-	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
-	for (string recipientEmail : recipientsEmails)
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
-		// handle local client
-		if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
+
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
+
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
 		{
-			string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
-			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
-			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = FeUtils::charifyEmailContent(emailToForward);
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
-
-			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to forward email.");
-				all_forwards_sent = false;
-				continue; // if one recipient fails, try to forward email to remaining recipients
-			}
+			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
+		// otherwise get KVS server address from coordinator
 		else
 		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+		bool all_forwards_sent = true;
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
+
+		EmailData emailToForward = parseEmailFromMailForm(request);
+		string recipients = Utils::split_on_first_delim(emailToForward.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
+		vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
+		for (string recipientEmail : recipientsEmails)
+		{
+			string recipientDomain = FeUtils::extractDomain(recipientEmail); // extract domain from recipient email
+			// handle local client
+			if (FeUtils::isLocalDomain(recipientDomain)) // local domain either @penncloud.com OR @localhost
 			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to reply to email externally.");
-				all_forwards_sent = false;
-				continue;
+				string colKey = emailToForward.time + "\r" + emailToForward.from + "\r" + emailToForward.to + "\r" + emailToForward.subject;
+				colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
+				vector<char> col(colKey.begin(), colKey.end());
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> value = FeUtils::charifyEmailContent(emailToForward);
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				if (FeUtils::kv_success(kvsResponse))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_forwards_sent = false;
+					continue;
+				}
+			}
+			else
+			{
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailToForward))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_forwards_sent = false;
+					continue;
+				}
+			}
+			// check if all emails were sent
+			if (all_forwards_sent)
+			{
+				response.set_code(303); // Success
+				response.set_header("Location", "/" + username + "/mbox");
+				FeUtils::set_cookies(response, username, valid_session_id);
 			}
 		}
-		// check if all emails were sent
-		if (all_forwards_sent)
-		{
-			response.set_code(200); // Success
-			response.append_body_str("+OK Email sent successfully.");
-		}
+		response.set_header("Content-Type", "text/html");
+		close(socket_fd);
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
+	else {
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
 }
 
 // responds to an email
 void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 {
 	Logger logger("Reply");
-	logger.log(request.body_as_bytes().data(), LOGGER_DEBUG);
-	int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-	if (socket_fd < 0)
+
+	// parse cookies
+	std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(request);
+
+	// check cookies - if no cookies, automatically invalidate user and do not complete request
+	if (cookies.count("user") && cookies.count("sid"))
 	{
-		response.set_code(501);
-		response.append_body_str("-ER Failed to open socket.");
-		return;
-	}
-	bool all_responses_sent = true;
+
+		std::string username = cookies["user"];
+		std::string sid = cookies["sid"];
+
+		bool present = HttpServer::check_kvs_addr(username);
+		std::vector<std::string> kvs_addr;
+
+		// check if we know already know the KVS server address for user
+		if (present)
+		{
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		// otherwise get KVS server address from coordinator
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		if (socket_fd < 0)
+		{
+			response.set_code(303);
+			response.set_header("Location", "/500");
+			return;
+		}
+		bool all_responses_sent = true;
+
+		// validate session id
+		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
+
+		// redirect to login if invalid sid
+		if (valid_session_id.empty())
+		{
+			// for now, returning code for check on postman
+			response.set_code(303);
+			response.set_header("Location", "/401");
+			FeUtils::expire_cookies(response, username, sid);
+			close(socket_fd);
+			return;
+		}
 
 	EmailData emailResponse = parseEmailFromMailForm(request);
-	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:user@penncloud.com --> user@penncloud.com
+	string recipients = Utils::split_on_first_delim(emailResponse.to, ":")[1]; // parse to:peter@penncloud.com --> peter@penncloud.com
 	vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
 
 	for (string recipientEmail : recipientsEmails)
@@ -258,40 +333,51 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 			string colKey = emailResponse.time + "\r" + emailResponse.from + "\r" + emailResponse.to + "\r" + emailResponse.subject;
 			colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
 
-			vector<char> col(colKey.begin(), colKey.end());
-			string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
-			vector<char> row(rowKey.begin(), rowKey.end());
-			vector<char> value = FeUtils::charifyEmailContent(emailResponse);
-			vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
-			if (kvsResponse.empty() && !FeUtils::startsWith(kvsResponse, "+OK"))
+				vector<char> col(colKey.begin(), colKey.end());
+				string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+				vector<char> row(rowKey.begin(), rowKey.end());
+				vector<char> value = FeUtils::charifyEmailContent(emailResponse);
+				
+				logger.log(value.data(), LOGGER_DEBUG);
+
+				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+				if (!FeUtils::kv_success(kvsResponse))
+				{
+					response.set_code(303); // Internal Server Error
+					response.set_header("Location", "/500");
+					all_responses_sent = false;
+					continue; // if one recipient fails, try to send response to remaining recipients
+				}
+			}
+			else
 			{
-				response.set_code(501); // Internal Server Error
-				response.append_body_str("-ER Failed to reply to email internally.");
-				all_responses_sent = false;
-				continue; // if one recipient fails, try to send response to remaining recipients
+				// handle external client
+				// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
+				if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
+				{
+					response.set_code(303); // Bad Gateway
+					response.set_header("Location", "/502");
+					all_responses_sent = false;
+					continue;
+				}
+			}
+			// check if all emails were sent
+			if (all_responses_sent)
+			{
+				response.set_code(303); // Success
+				response.set_header("Location", "/" + username + "/mbox");
+				FeUtils::set_cookies(response, username, valid_session_id);
 			}
 		}
-		else
-		{
-			// handle external client
-			// establishes a connection to the resolved IP and port, sends SMTP commands, and handles responses dynamically.
-			if (!SMTPClient::sendEmail(recipientEmail, recipientDomain, emailResponse))
-			{
-				response.set_code(502); // Bad Gateway
-				response.append_body_str("-ER Failed to reply to email externally.");
-				all_responses_sent = false;
-				continue;
-			}
-		}
-		// check if all emails were sent
-		if (all_responses_sent)
-		{
-			response.set_code(200); // Success
-			response.append_body_str("+OK Email sent successfully.");
-		}
+		response.set_header("Content-Type", "text/html");
+		close(socket_fd);
 	}
-	response.set_header("Content-Type", "text/html");
-	close(socket_fd);
+	else
+	{
+		// set response status code
+		response.set_code(303);
+		response.set_header("Location", "/401");
+	}
 }
 
 // deletes an email
@@ -445,7 +531,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 				vector<char> col(colKey.begin(), colKey.end());
 				vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
 
-				if (kvsResponse.empty() && !startsWith(kvsResponse, "+OK"))
+				if (!FeUtils::kv_success(kvsResponse))
 				{
 					response.set_code(303); // Internal Server Error
 					response.set_header("Location", "/500");
@@ -578,218 +664,233 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				"<a class='nav-link' href='/home'>Home</a>"
 				"<a class='nav-link' href='/drive/" +
 				username + "/'>Drive</a>"
-								  "<a class='nav-link active' aria-current='page' href='/" +
+						   "<a class='nav-link active' aria-current='page' href='/" +
 				username + "/mbox'>Email</a>"
-								  "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
-								  "<a class='nav-link' href='/account'>Account</a>"
-								  "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-								  "<input type='hidden' />"
-								  "<button class='btn nav-link' type='submit'>Logout</button>"
-								  "</form>"
-								  "</div>"
-								  "</div>"
-								  "<div class='form-check form-switch form-check-reverse'>"
-								  "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
-								  "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
-								  "</div>"
-								  "</div>"
-								  "</nav>"
+						   "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+						   "<a class='nav-link' href='/account'>Account</a>"
+						   "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+						   "<input type='hidden' />"
+						   "<button class='btn nav-link' type='submit'>Logout</button>"
+						   "</form>"
+						   "</div>"
+						   "</div>"
+						   "<div class='form-check form-switch form-check-reverse'>"
+						   "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+						   "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+						   "</div>"
+						   "</div>"
+						   "</nav>"
 
-								  "<div class='container-fluid'>"
-								  "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
-								  "<div class='col-6'>"
-								  "<h1 class='display-6'>"
-								  "Email"
-								  "</h1>"
-								  "</div>"
-								  "<div class='col-2'>"
-								  "<button id='reply' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
-								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
-  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
-  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
-								  "</svg> Reply"
-								  "</button>"
-								  "</div>"
-								  "<!--<div class='col-2'>"
-								  "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
-								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
-  								  "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
-  								  "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
-								  "</svg> Reply All"
-								  "</button>"
-								  "</div>-->"
-								  "<div class='col-2'>"
-								  "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
-								  "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
-  								  "<path d='M5.921 11.9 1.353 8.62a.72.72 0 0 1 0-1.238L5.921 4.1A.716.716 0 0 1 7 4.719V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
-								  "</svg> Forward"
-								  "</button>"
-								  "</div>"
-								  "<div class='col-2'></div>"
-								  "</div>"
-								  "<div class='row mt-2 mx-2'>"
-								  "<div class='col-2'></div>"
-								  "<div class='col-8 mb-4'>"
-								  "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
-								  "<div class='form-group mb-3'>"
-								  "<div class='mb-3'>"
-									
-								  "<div class='mb-3'>"
-								  "<label for='time' class='form-label'>Received:</label>"
-								  "<input type='text' class='form-control' id='time' name='time' value='"+email["time"]+"' required readonly>"
-								  "</div>"
-								  "<div class='mb-3'>"
-								  "<label for='from' class='form-label'>From:</label>"
-								  "<input type='email' class='form-control' id='from' name='from' value='"+email["from"]+"' multiple required readonly>"
-								  "</div>"
-								  "<div class='mb-3'>"
-								  "<label for='to' class='form-label'>Recipients:</label>"
-								  "<input type='email' class='form-control' id='to' name='to' value='"+email["to"]+"' multiple required readonly>"
-								  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
-								  "</div>"
-								  "<div class='mb-3'>"
-								  "<label for='subject' class='form-label'>Subject:</label>"
-								  "<input type='text' class='form-control' id='subject' name='subject' value='"+email["subject"]+"' required readonly>"
-								  "</div>"
-								  "<div>"
-								  "<label for='body' class='form-label'>Body:</label>"
-								  "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required readonly>"+email["body"]+"</textarea>"
-								  "</div>"
-								  "<div>"
-								  "<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
-								  "-------------------------------------------------------------------------------------------------\n"
-								  "Time: "+email["time"]+"\nFrom: "+email["from"]+"\nTo: "+email["to"]+"\nSubject: "+email["subject"]+"\n" //+email["body"]+
-								  "</textarea>"
-								  "</div>"
-								  "</div>"
-								  "<div class='col-12 mb-2'>"
-								  "<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
-								  "<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
+						   "<div class='container-fluid'>"
+						   "<div class='row mx-2 mt-3 mb-4 align-items-center'>"
+						   "<div class='col-6'>"
+						   "<h1 class='display-6'>"
+						   "Email"
+						   "</h1>"
+						   "</div>"
+						   "<div class='col-2'>"
+						   "<button id='reply' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+						   "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+						   "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+						   "</svg> Reply"
+						   "</button>"
+						   "</div>"
+						   "<!--<div class='col-2'>"
+						   "<button id='replyall' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-all-fill' viewBox='0 0 16 16'>"
+						   "<path d='M8.021 11.9 3.453 8.62a.72.72 0 0 1 0-1.238L8.021 4.1a.716.716 0 0 1 1.079.619V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+						   "<path d='M5.232 4.293a.5.5 0 0 1-.106.7L1.114 7.945l-.042.028a.147.147 0 0 0 0 .252l.042.028 4.012 2.954a.5.5 0 1 1-.593.805L.539 9.073a1.147 1.147 0 0 1 0-1.946l3.994-2.94a.5.5 0 0 1 .699.106'/>"
+						   "</svg> Reply All"
+						   "</button>"
+						   "</div>-->"
+						   "<div class='col-2'>"
+						   "<button id='forward' class='mx-auto btn d-flex align-items-center justify-content-evenly' data-bs-toggle='button' type='button' style='width:80%' aria-pressed='false'>"
+						   "<svg xmlns='http://www.w3.org/2000/svg' width='1.5em' height='1.5em' fill='currentColor' class='bi bi-reply-fill' viewBox='0 0 16 16' style='    transform: scaleX(-1);-moz-transform: scaleX(-1);-webkit-transform: scaleX(-1);-ms-transform: scaleX(-1);'>"
+						   "<path d='M5.921 11.9 1.353 8.62a.72.72 0 0 1 0-1.238L5.921 4.1A.716.716 0 0 1 7 4.719V6c1.5 0 6 0 7 8-2.5-4.5-7-4-7-4v1.281c0 .56-.606.898-1.079.62z'/>"
+						   "</svg> Forward"
+						   "</button>"
+						   "</div>"
+						   "<div class='col-2'></div>"
+						   "</div>"
+						   "<div class='row mt-2 mx-2'>"
+						   "<div class='col-2'></div>"
+						   "<div class='col-8 mb-4'>"
+						   "<form id='emailForm' action='' method='POST' enctype='multipart/form-data'>"
+						   "<div class='form-group mb-3'>"
+						   "<div class='mb-3'>"
+
+						   "<div class='mb-3'>"
+						   "<label for='time' class='form-label'>Received:</label>"
+						   "<input type='text' class='form-control' id='time' name='time' value='" +
+				email["time"] + "' required readonly>"
+								"</div>"
+								"<div class='mb-3'>"
+								"<label for='from' class='form-label'>From:</label>"
+								"<input type='email' class='form-control' id='from' name='from' value='" +
+				email["from"] + "' multiple required readonly>"
+								"</div>"
+								"<div class='mb-3'>"
+								"<label for='to' class='form-label'>Recipients:</label>"
+								"<input type='email' class='form-control' id='to' name='to' value='" +
+				email["to"] + "' multiple required readonly>"
+							  "<div id='emailHelp' class='form-text'>Separate recipients using commas</div>"
+							  "</div>"
+							  "<div class='mb-3'>"
+							  "<label for='subject' class='form-label'>Subject:</label>"
+							  "<input type='text' class='form-control' id='subject' name='subject' value='" +
+				email["subject"] + "' required readonly>"
+								   "</div>"
+								   "<div>"
+								   "<label for='body' class='form-label'>Body:</label>"
+								   "<textarea id='body' name='body' class='form-control' form='emailForm' rows='10' style='height:100%;' required readonly>" +
+				email["body"] + "</textarea>"
+								"</div>"
+								"<div>"
+								"<textarea style='display:none;' class='form-control' id='oldBody' name='oldBody'form='emailForm' rows='10' style='height:100%;' required readonly>"
+								"Time: " +
+				email["time"] + "\nFrom: " + email["from"] + "\nTo: " + email["to"] + "\nSubject: " + email["subject"] + "\n" + email["body"] +
+				"</textarea>"
+				"</div>"
+				"</div>"
+				"<div class='col-12 mb-2'>"
+				"<button class='btn btn-primary text-center' style='float:right; width:15%' type='submit' onclick='$(\"#time\").attr(\"value\", Date().toString()); $(\"#emailForm\").submit();'>Send</button>"
+				"<button class='btn btn-secondary text-center' style='float:left; width:15%' type='button' onclick='location.href=\"../" +
 				username + "/mbox\"'>Back</button>"
-								  "</div>"
-								  "</div>"
-								  "</form>"
-								  "</div>"
-								  "<div class='col-2'></div>"
-								  "</div>"
-								  "</div>"
+						   "</div>"
+						   "</div>"
+						   "</form>"
+						   "</div>"
+						   "<div class='col-2'></div>"
+						   "</div>"
+						   "</div>"
 
-								  "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-								  "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-								  "crossorigin='anonymous'></script>"
-								"<script>"
-								"var body=`"+email["body"]+"`;"
-								"var from='"+email["from"]+"';"
-								"var to='"+email["to"]+"';"
-								"var subject='"+email["subject"]+"';"
-								"var uidl='"+colKey+"';"
-								"$('#reply').on('click', function(){"
-									"if ($(this).hasClass('active')) {"
-										"if ($('#forward').hasClass('active'))"
-										"{"
-											"$('#forward').removeClass('active');"
-											"$('#forward').attr('aria-pressed', 'false');"
-											"$('#subject').val($('#subject').val().replace('FWD: ', ''));"
-										"}"
+						   "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+						   "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+						   "crossorigin='anonymous'></script>"
+						   "<script>"
+						   "var body=`" +
+				email["body"] + "`;"
+								"var from='" +
+				email["from"] + "';"
+								"var to='" +
+				email["to"] + "';"
+							  "var subject='" +
+				email["subject"] + "';"
+								   "var uidl='" +
+				colKey + "';"
+						 "$('#reply').on('click', function () {"
+						 "if ($(this).hasClass('active')) {"
+						 "if ($('#forward').hasClass('active')) {"
+						 "$('#forward').removeClass('active');"
+						 "$('#forward').attr('aria-pressed', 'false');"
+						 "$('#subject').val($('#subject').val().replace('FWD: ', ''));"
+						 "}"
 
-										"$('label[for=time], input#time').hide();"
-										"$('#to').attr('readonly', false);"
-										"$('#to').val(from);"
-										"$('#subject').val('RE: '+$('#subject').val());"
-										"$('#subject').attr('readonly', false);"
-										"$('label[for=from], input#from').hide();"
-										"$('#body').attr('readonly', false);"
-										"$('#body').text('');"
-										"$('#body').addClass('mb-3');"
-										"$('#oldBody').css('display', '');"
-										"$('#emailForm').attr('action', '/api/"+username+"/mbox/reply?uidl='+uidl);"
-									"}"
-									"else"
-									"{"
-										"$('label[for=time], input#time').show();"
-										"$('#to').attr('readonly', true);"
-										"$('#to').val(to);"
-										"$('#subject').val(subject);"
-										"$('#subject').attr('readonly', true);"
-										"$('label[for=from], input#from').show();"
-										"$('#body').attr('readonly', true);"
-										"$('#body').text(body);"
-										"$('#body').removeClass('mb-3');"
-										"$('#oldBody').css('display', 'none');"
-									"}"
-								"});"
+						 "$('label[for=time], input#time').hide();"
+						 "$('#to').attr('readonly', false);"
+						 "$('#to').val(from);"
+						 "$('#subject').val('RE: ' + $('#subject').val());"
+						 "$('#subject').attr('readonly', false);"
+						 "$('#from').val('" +
+				username + "@penncloud.com');"
+						   "$('label[for=from], input#from').hide();"
+						   "$('#body').attr('readonly', false);"
+						   "$('#body').text('');"
+						   "$('#body').addClass('mb-3');"
+						   "$('#oldBody').css('display', '');"
+						   "$('#emailForm').attr('action', '/api/" +
+				username + "/mbox/reply?uidl=' + uidl);"
+						   "}"
+						   "else {"
+						   "$('label[for=time], input#time').show();"
+						   "$('#to').attr('readonly', true);"
+						   "$('#to').val(to);"
+						   "$('#subject').val(subject);"
+						   "$('#subject').attr('readonly', true);"
+						   "$('#from').val(from);"
+						   "$('label[for=from], input#from').show();"
+						   "$('#body').attr('readonly', true);"
+						   "$('#body').text(body);"
+						   "$('#body').removeClass('mb-3');"
+						   "$('#oldBody').css('display', 'none');"
+						   "$('#emailForm').attr('action', '');"
+						   "}"
+						   "});"
 
-								"$('#forward').on('click', function(){"
-									"if ($(this).hasClass('active')) {"
-										"if ($('#reply').hasClass('active'))"
-										"if ($('#reply').hasClass('active'))"
-										"{"
-											"$('#reply').removeClass('active');"
-											"$('#reply').attr('aria-pressed', 'false');"
-											"$('#subject').val($('#subject').val().replace('RE: ', ''));"
-										"}"
+						   "$('#forward').on('click', function () {"
+						   "if ($(this).hasClass('active')) {"
+						   "if ($('#reply').hasClass('active')) {"
+						   "$('#reply').removeClass('active');"
+						   "$('#reply').attr('aria-pressed', 'false');"
+						   "$('#subject').val($('#subject').val().replace('RE: ', ''));"
+						   "}"
 
-										"$('label[for=time], input#time').hide();"
-										"$('#to').attr('readonly', false);"
-										"$('#to').val('');"
-										"$('#subject').val('FWD: '+$('#subject').val());"
-										"$('#subject').prop('readonly', false);"
-										"$('label[for=from], input#from').hide();"
-										"$('#body').attr('readonly', false);"
-										"$('#body').text('');"
-										"$('#body').addClass('mb-3');"
-										"$('#oldBody').css('display', '');"
-										"$('#emailForm').attr('action', '/api/"+username+"/mbox/forward?uidl='+uidl);"
-									"}"
-									"else"
-									"{"
-										"$('label[for=time], input#time').show();"
-										"$('#to').attr('readonly', true);"
-										"$('#to').val(to);"
-										"$('#subject').val(subject);"
-										"$('#subject').attr('readonly', true);"
-										"$('label[for=from], input#from').show();"
-										"$('#body').attr('readonly', true);"
-										"$('#body').text(body);"
-										"$('#body').removeClass('mb-3');"
-										"$('#oldBody').css('display', 'none');"
-									"}"
-								"});"
-								"</script>"
+						   "$('label[for=time], input#time').hide();"
+						   "$('#to').attr('readonly', false);"
+						   "$('#to').val('');"
+						   "$('#subject').val('FWD: ' + $('#subject').val());"
+						   "$('#subject').attr('readonly', false);"
+						   "$('#from').val('" +
+				username + "@penncloud.com');"
+						   "$('label[for=from], input#from').hide();"
+						   "$('#body').attr('readonly', false);"
+						   "$('#body').text('');"
+						   "$('#body').addClass('mb-3');"
+						   "$('#oldBody').css('display', '');"
+						   "$('#emailForm').attr('action', '/api/" +
+				username + "/mbox/forward?uidl=' + uidl);"
+						   "}"
+						   "else {"
+						   "$('label[for=time], input#time').show();"
+						   "$('#to').attr('readonly', true);"
+						   "$('#to').val(to);"
+						   "$('#subject').val(subject);"
+						   "$('#subject').attr('readonly', true);"
+						   "$('#from').val(from);"
+						   "$('label[for=from], input#from').show();"
+						   "$('#body').attr('readonly', true);"
+						   "$('#body').text(body);"
+						   "$('#body').removeClass('mb-3');"
+						   "$('#oldBody').css('display', 'none');"
+						   "$('#emailForm').attr('action', '');"
+						   "}"
+						   "});"
+						   "</script>"
 
-								  "<script>"
-								  "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-								  "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
-								  "$('#switchLabel').html('Light Mode');"
-								  "sessionStorage.setItem('data-bs-theme', 'light');"
-								  ""
-								  "}"
-								  "else {"
-								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-								  "$('#switchLabel').html('Dark Mode');"
-								  "sessionStorage.setItem('data-bs-theme', 'dark');"
-								  "}"
-								  "});"
-								  "</script>"
-								  "<script>"
-								  "function setTheme() {"
-								  "var theme = sessionStorage.getItem('data-bs-theme');"
-								  "if (theme !== null) {"
-								  "if (theme === 'dark') {"
-								  "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-								  "$('#switchLabel').html('Dark Mode');"
-								  "$('#flexSwitchCheckReverse').attr('checked', true);"
-								  "}"
-								  "else {"
-								  "document.documentElement.setAttribute('data-bs-theme', 'light');"
-								  "$('#switchLabel').html('Light Mode');"
-								  "$('#flexSwitchCheckReverse').attr('checked', false);"
-								  "}"
-								  "}"
-								  "};"
-								  "</script>"
-								  "</body>";
+						   "<script>"
+						   "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+						   "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+						   "document.documentElement.setAttribute('data-bs-theme', 'light');"
+						   "$('#switchLabel').html('Light Mode');"
+						   "sessionStorage.setItem('data-bs-theme', 'light');"
+						   ""
+						   "}"
+						   "else {"
+						   "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+						   "$('#switchLabel').html('Dark Mode');"
+						   "sessionStorage.setItem('data-bs-theme', 'dark');"
+						   "}"
+						   "});"
+						   "</script>"
+						   "<script>"
+						   "function setTheme() {"
+						   "var theme = sessionStorage.getItem('data-bs-theme');"
+						   "if (theme !== null) {"
+						   "if (theme === 'dark') {"
+						   "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+						   "$('#switchLabel').html('Dark Mode');"
+						   "$('#flexSwitchCheckReverse').attr('checked', true);"
+						   "}"
+						   "else {"
+						   "document.documentElement.setAttribute('data-bs-theme', 'light');"
+						   "$('#switchLabel').html('Light Mode');"
+						   "$('#flexSwitchCheckReverse').attr('checked', false);"
+						   "}"
+						   "}"
+						   "};"
+						   "</script>"
+						   "</body>";
 
 			response.set_code(200);
 			response.append_body_str(page);
@@ -1358,11 +1459,11 @@ std::unordered_map<std::string, std::string> parseEmailBody(std::vector<char> kv
 	body_idx = email.find("body:");
 	oldBody_idx = email.find("oldBody:");
 	time = Utils::split_on_first_delim(email.substr(time_idx, from_idx), ":")[1].substr(1);
-	from = Utils::split(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
-	to = Utils::split(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
-	subject = Utils::split(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
-	body = Utils::split(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
-	oldBody = Utils::split(email.substr(oldBody_idx), ":")[1].substr(1);
+	from = Utils::split_on_first_delim(email.substr(from_idx, to_idx - from_idx), ":")[1].substr(1);
+	to = Utils::split_on_first_delim(email.substr(to_idx, subject_idx - to_idx), ":")[1].substr(1);
+	subject = Utils::split_on_first_delim(email.substr(subject_idx, body_idx - subject_idx), ":")[1].substr(1);
+	body = Utils::split_on_first_delim(email.substr(body_idx, oldBody_idx - body_idx), ":")[1].substr(1);
+	oldBody = Utils::split_on_first_delim(email.substr(oldBody_idx), ":")[1].substr(1);
 	time.pop_back();
 	from.pop_back();
 	to.pop_back();
