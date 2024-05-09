@@ -142,7 +142,7 @@ void error_500_page(const HttpRequest &req, HttpResponse &res)
         "<h1 class='display-1'>"
         "500 - Internal server error!"
         "</h1>"
-        "<p class='lead'>The server had trouble fulfilling your request, redirecting to home page in <span id='counter'>5</span>...</p>"
+        "<p class='lead'>The server had trouble fulfilling your request as one or more email addresses are not valid, redirecting to home page in <span id='counter'>5</span>...</p>"
         "</div>"
         "</div>"
         "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
