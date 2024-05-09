@@ -237,6 +237,8 @@ bool SMTPClient::sendEmail(const std::string &recipientEmail, const std::string 
     }
 
     // HELO command
+    // TODO: @PA Added - Antispam techniques 
+    // ****** Use the same dom
     send_data("HELO localhost\r\n");
     if (receive_data().find("250") != 0)
     {

@@ -362,15 +362,25 @@ int main(int argc, char *argv[])
             {
                 // get kvs associated with this connection
                 intranet_mutex.lock_shared();
-                // retrieve reference to kvs from map, since we're updating its fd (and this should be retained in the map)
-                kvs_args &kvs = kvs_intranet.at(source);
+                kvs_args &kvs = kvs_intranet.at(source); // retrieve reference to kvs from map, since we're updating its fd (and this should be retained in the map)
                 intranet_mutex.unlock_shared();
-                // save fd for further communication
-                kvs.fd = comm_fd;
+
+                cluster_mutex.lock();
+                for (size_t i = 0; i < kvs_clusters[kvs.kvs_group].size(); i++)
+                {
+                    if (kvs_clusters[kvs.kvs_group][i].server_addr.compare(kvs.server_addr) == 0)
+                    {
+                        kvs.fd = comm_fd;
+                        kvs_clusters[kvs.kvs_group][i].fd = comm_fd;
+                        break;
+                    }
+                }
+                cluster_mutex.unlock();
 
                 // send init response to kvs
                 if (send_kvs_init(kvs, request))
                 {
+
                     // create thread to service long-running connection with kvs
                     if (pthread_create(&thid, NULL, kvs_thread, (void *)&kvs) != 0)
                     {
@@ -468,8 +478,9 @@ void *kvs_thread(void *arg)
     int timeout_msecs = 3000; // timeout 4000 milliseconds = 4 seconds
     int ret;
 
-    while ((ret = poll(fds.data(), fds.size(), timeout_msecs)))
+    while (true)
     {
+        ret = poll(fds.data(), fds.size(), timeout_msecs);
         // logger.log("Poll stopped <" + kvs->server_addr + "> " + std::to_string(ret), LOGGER_WARN);
         if (ret > 0) // socket is ready to be read
         {
@@ -554,8 +565,6 @@ void *kvs_thread(void *arg)
                     }
                     else
                     {
-                        // kvs is alive - send recovery message
-                        kvs->alive = true;
                         send_kvs_reco(*kvs);
                     }
                 }
@@ -729,26 +738,60 @@ std::string get_kvs_message(struct kvs_args &kvs)
     return response;
 }
 
+/// @brief constructs a specialized message for the given kvs
+/// @param kvs an address of a kvs_args struct
+/// @return a message to be sent back to the kvs
+std::string get_kvs_broadcast_message(struct kvs_args &kvs)
+{
+    // construct message
+    std::string response = "";
+    std::string secondaries = "";
+
+    cluster_mutex.lock_shared();
+    for (auto &server : kvs_clusters[kvs.kvs_group])
+    {
+        if (server.primary)
+            response += server.server_addr + " "; // add primary to message
+        else
+            secondaries += server.server_addr + " "; // create list of secondaries
+    }
+    cluster_mutex.unlock_shared();
+
+    // secondaries in message
+    if (!secondaries.empty())
+    {
+        secondaries.pop_back(); // remove final trailing whitespace from message
+    }
+    else
+    {
+        response.pop_back(); // remove final trailing whitespace from primary
+    }
+    response += secondaries + "\r\n"; // add potential secondaries to message with terminating CRLF
+
+    return response;
+}
+
 /// @brief broadcasts a specialized message to each member of the cluster specified by group number
 /// @param group the cluster number of the calling kvs
 void broadcast_to_cluster(int group)
 {
     cluster_mutex.lock_shared();
-    std::string message = get_kvs_message(kvs_clusters[group][0]);
+    std::string message = get_kvs_broadcast_message(kvs_clusters[group][0]);
+
     for (auto &kvs : kvs_clusters[group])
     {
-        std::string response = (kvs.primary ? "P " : "S ") + message;                                                       // construct message for this kvs
-        int idx = kvs.server_addr.find(':');                                                                                // split address
-        int kv_sock = FeUtils::open_socket(kvs.server_addr.substr(0, idx - 1), std::stoi(kvs.server_addr.substr(idx + 1))); // open socket for message
-
-        int sent = 0;
-        if ((sent = send(kvs.fd, &response[0], response.size(), 0)) == -1)
+        int bytes_sent = send(kvs.fd, (char *)message.c_str(), message.length(), 0);
+        while (bytes_sent != message.length())
         {
-            logger.log("Failed to send data (" + std::string(strerror(errno)) + ")", LOGGER_CRITICAL);
+            if (bytes_sent < 0)
+            {
+                logger.log("Unable to send message", 40);
+                break;
+            }
+            bytes_sent += send(kvs.fd, (char *)message.c_str(), message.length(), 0);
         }
 
         logger.log("Message broadcasted to <" + kvs.server_addr + ">", LOGGER_INFO);
-        close(kv_sock);
     }
     cluster_mutex.unlock_shared();
 }

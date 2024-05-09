@@ -39,6 +39,14 @@
 // Parses a path to extract the mailbox row key in the format "user1-mbox/"
 std::string parseMailboxPathToRowKey(const std::string& path);
 
+// Checks if the vector starts with the given prefix
+bool startsWith(const std::vector<char>& vec, const std::string& prefix);
+
+/// @brief helper function that parses email body after retrieval from KVS
+/// @param kvs_response response from retrieving a valid email from KVS
+/// @return reutrns an unordered map of email components 
+std::unordered_map<std::string, std::string> parseEmailBody(std::vector<char> kvs_response);
+
 // Handlers for different email operations
 void forwardEmail_handler(const HttpRequest& request, HttpResponse& response);
 void replyEmail_handler(const HttpRequest& request, HttpResponse& response);

@@ -72,13 +72,13 @@ void broadcast_to_cluster(int group);
 /// @return a specialized message to admin
 std::string get_admin_message();
 
-/// @brief function to construct and send init message 
+/// @brief function to construct and send init message
 /// @param kvs - kvs to send init to
 /// @param request - request message
 /// @return true is successful, false otherwise
 bool send_kvs_init(struct kvs_args &kvs, std::string &request);
 
-/// @brief function to construct and send reco message 
+/// @brief function to construct and send reco message
 /// @param kvs - kvs to send reco to
 /// @param request - request message
 /// @return true is successful, false otherwise
@@ -102,7 +102,7 @@ struct kvs_args
     bool primary;            // primary or not
     bool alive;              // alive or not
     int kvs_group;           // kvs cluser number
-    int fd;                  // file descriptor for coordinator-kvs communication
+    int fd = -1;             // file descriptor for coordinator-kvs communication
 };
 
 #endif

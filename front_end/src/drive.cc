@@ -53,55 +53,6 @@ bool is_folder(const vector<char> &vec)
     return vec.back() == '/';
 }
 
-bool kv_successful(const vector<char> &vec)
-{
-    // Check if the vector has at least 3 characters
-    if (vec.size() < 3)
-    {
-        return false;
-    }
-
-    // Define the expected prefix
-    vector<char> prefix = {'+', 'O', 'K'};
-
-    // Check if the first three characters match the prefix
-    return equal(prefix.begin(), prefix.end(), vec.begin());
-}
-
-// // Function to split a vector<char> based on a vector<char> delimiter
-// vector<vector<char>> FeUtils::split_vector(const vector<char> &data, const vector<char> &delimiter)
-// {
-//     vector<vector<char>> result;
-//     size_t start = 0;
-//     size_t end = data.size();
-
-//     if (data.size() == 0)
-//     {
-//         return {{}};
-//     }
-
-//     while (start < end)
-//     {
-//         // Find the next occurrence of delimiter starting from 'start'
-//         auto pos = search(data.begin() + start, data.end(), delimiter.begin(), delimiter.end());
-
-//         if (pos == data.end())
-//         {
-//             // No delimiter found, copy the rest of the vector
-//             result.emplace_back(data.begin() + start, data.end());
-//             break;
-//         }
-//         else
-//         {
-//             // Delimiter found, copy up to the delimiter and move 'start' past the delimiter
-//             result.emplace_back(data.begin() + start, pos);
-//             start = distance(data.begin(), pos) + delimiter.size();
-//         }
-//     }
-
-//     return result;
-// }
-
 // Function to split a vector<char> based on the first occurrence of a vector<char> delimiter
 vector<vector<char>> split_vec_first_delim(const vector<char> &data, const vector<char> &delimiter)
 {
@@ -175,7 +126,6 @@ bool delete_folder(int fd, vector<char> parent_folder)
 
     if (!contents.empty())
     {
-        logger.log("Parent folder " + string(parent_folder.begin(), parent_folder.end()) + " not empty", LOGGER_INFO);
         // Iterate through each element in the formatted contents
         for (auto col_name : contents)
         {
@@ -187,7 +137,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
             if (!is_folder(col_name))
             {
                 // If it's a file, delete it
-                if (kv_successful(FeUtils::kv_del(fd, parent_folder, col_name)))
+                if (FeUtils::kv_success(FeUtils::kv_del(fd, parent_folder, col_name)))
                 {
                     logger.log("Deleted file: " + string(col_name.begin(), col_name.end()), LOGGER_INFO);
                 }
@@ -208,7 +158,7 @@ bool delete_folder(int fd, vector<char> parent_folder)
     }
 
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_del_row(fd, parent_folder)))
+    if (FeUtils::kv_success(FeUtils::kv_del_row(fd, parent_folder)))
     {
         return true;
     }
@@ -269,7 +219,7 @@ bool move_subfolders(int fd, vector<char> parent_folder, vector<char> new_folder
 
     logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()) + " to " + new_parent_str, LOGGER_INFO);
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
+    if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_rowname)))
     {
         logger.log("Renamed parent folder " + pfolder + " to: " + new_parent_str, LOGGER_INFO);
         return true;
@@ -324,7 +274,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
     }
     logger.log("Renaming parent folder: " + string(parent_folder.begin(), parent_folder.end()), LOGGER_INFO);
     // After deleting all contents, delete the folder itself
-    if (kv_successful(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
+    if (FeUtils::kv_success(FeUtils::kv_rename_row(fd, parent_folder, new_foldername)))
     {
         logger.log("Renamed parent folder " + pfolder + " to: " + string(new_foldername.begin(), new_foldername.end()), LOGGER_INFO);
         return true;
@@ -341,9 +291,7 @@ bool rename_subfolders(int fd, vector<char> parent_folder, vector<char> new_fold
 // there are no other get requests
 void open_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    // @PETER ADDED
     std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
-    // TODO: @PETER ADDED - EVERY HANDLER MUST CHECK COOKIES TO MAKE SURE USER IS VALID
 
     if (cookies.count("user") && cookies.count("sid"))
     {
@@ -375,8 +323,8 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
         // validate session id
         string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-        // if invalid, return an error?
-        // @todo :: redirect to login page?
+
+        // redirect to login if invalid sid
         if (valid_session_id.empty())
         {
             // for now, returning code for check on postman
@@ -393,7 +341,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-            if (kv_successful(folder_content))
+            if (FeUtils::kv_success(folder_content))
             {
                 // content list, remove '+OK<sp>'
                 std::vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
@@ -415,6 +363,44 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 std::string option_close = "</option>";
                 std::string options = "";
 
+                std::string blacklist = "[";
+
+                string move_options = "";
+                // get parent
+                std::string curr_folder;
+
+                vector<string> path_pieces = Utils::split(childpath_str, "/");
+                std::string grandparent_path = split_parent_filename(path_pieces, curr_folder);
+
+                logger.log("path oeices = " + to_string(path_pieces.size()), 20);
+                logger.log("child path = " + childpath_str, 20);
+                logger.log("grandparent path = " + grandparent_path, 20);
+
+                if (path_pieces.size() > 1)
+                {
+                    
+
+                    vector<char> grandparent_vec(grandparent_path.begin(), grandparent_path.end());
+
+                    vector<char> grandparent_folder = FeUtils::kv_get_row(sockfd, grandparent_vec);
+                    if (FeUtils::kv_success(grandparent_folder))
+                    {
+                        grandparent_folder.erase(grandparent_folder.begin(), grandparent_folder.begin() + 4);
+                        std::vector<std::vector<char>> aunts = FeUtils::split_vector(grandparent_folder, {'\b'});
+                        std::vector<char> aunt_items = format_folder_contents(aunts);
+
+                        // folder processing
+                        std::string grandparent_contents(aunt_items.begin(), aunt_items.end());
+                        std::vector<std::string> grandparent_items = Utils::split(grandparent_contents, ", ");
+
+                        for (auto colname : grandparent_items)
+                        {
+                            blacklist += "\"" + colname + "\",";
+                        }
+                        move_options += option_open + grandparent_path + option_close;
+                    }
+                }
+
                 while (item_iter < folder_items.size())
                 {
                     std::string item = folder_items[item_iter];
@@ -422,6 +408,37 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     {
                         // options for rename list
                         options += option_open + item + option_close;
+                        if (item.back() == '/')
+                        {
+                            vector<char> item_vec(item.begin(), item.end());
+                            vector<char> item_path = child_path;
+                            item_path.insert(item_path.end(), item_vec.begin(), item_vec.end());
+                            vector<char> sibling_items = FeUtils::kv_get_row(sockfd, item_path);
+                            if (FeUtils::kv_success(sibling_items))
+                            {
+                                sibling_items.erase(sibling_items.begin(), sibling_items.begin() + 4);
+                                std::vector<std::vector<char>> nieces = FeUtils::split_vector(sibling_items, {'\b'});
+                                std::vector<char> neice_items = format_folder_contents(nieces);
+
+                                // folder processing
+                                std::string sibling_contents(neice_items.begin(), neice_items.end());
+                                std::vector<std::string> sibling_cols = Utils::split(sibling_contents, ", ");
+
+                                for (auto colname : sibling_cols)
+                                {
+                                    blacklist += "\"" + colname + "\",";
+                                }
+                                move_options += option_open + item + option_close;
+                            }
+                        }
+
+                        if (blacklist.size() > 1)
+                        {
+                            blacklist.pop_back();
+                        }
+                        blacklist += ']';
+                        logger.log("Blacklist is:" + blacklist, 20);
+                        logger.log("Move items is:" + move_options, 20);
 
                         // start row
                         if (row_count % 9 == 0)
@@ -537,7 +554,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "<meta name='viewport' content='width=device-width, initial-scale=1'>"
                     "<meta name='description' content='CIS 5050 Spr24'>"
                     "<meta name='keywords' content='Home'>"
-                    "<title>Home - PennCloud.com</title>"
+                    "<title>Drive - PennCloud.com</title>"
                     "<script src='https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js'></script>"
                     "<link href='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css' rel='stylesheet'"
                     "integrity='sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH' crossorigin='anonymous'>"
@@ -596,7 +613,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                     "</button>"
                     "</div>"
                     "<div class='col-1 text-center'>"
-                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#moveModal' disabled>"
+                    "<button type='button' class='btn btn-primary text-center' data-bs-toggle='modal' data-bs-target='#moveModal'>"
                     "<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='currentColor' class='bi bi-arrows-move' viewBox='0 0 16 16'>"
                     "<path fill-rule='evenodd' d='M7.646.146a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1-.708.708L8.5 1.707V5.5a.5.5 0 0 1-1 0V1.707L6.354 2.854a.5.5 0 1 1-.708-.708zM8 10a.5.5 0 0 1 .5.5v3.793l1.146-1.147a.5.5 0 0 1 .708.708l-2 2a.5.5 0 0 1-.708 0l-2-2a.5.5 0 0 1 .708-.708L7.5 14.293V10.5A.5.5 0 0 1 8 10M.146 8.354a.5.5 0 0 1 0-.708l2-2a.5.5 0 1 1 .708.708L1.707 7.5H5.5a.5.5 0 0 1 0 1H1.707l1.147 1.146a.5.5 0 0 1-.708.708zM10 8a.5.5 0 0 1 .5-.5h3.793l-1.147-1.146a.5.5 0 0 1 .708-.708l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L14.293 8.5H10.5A.5.5 0 0 1 10 8'/>"
                     "</svg><br/>"
@@ -704,73 +721,120 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                                                          "</div>"
                                                          "</div>"
 
-                                                         "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                                                         "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                                                         "crossorigin='anonymous'></script>"
-                                                         "<script>"
-                                                         "$('.delete').on('click', function() {"
-                                                         "    $('#deleteModal').modal('show');"
-                                                         "});"
+                                                         // WIPPPPPP
+                                                         "<div class='modal fade' id='moveModal' tabindex='-1' aria-labelledby='moveModalLabel' aria-hidden='true'>"
+                                                         "<div class='modal-dialog modal-dialog-centered'>"
+                                                         "<div class='modal-content'>"
+                                                         "<div class='modal-header'>"
+                                                         "<h1 class='modal-title fs-5' id='moveModalLabel'>Rename an item</h1>"
+                                                         "<button type='button' class='btn-close' data-bs-dismiss='modal' aria-label='Close'></button>"
+                                                         "</div>"
+                                                         "<div class='modal-body'>"
+                                                         "<form id='moveItemForm' method='POST' action='/api/drive/move/" +
+                    childpath_str + "'>"
+                                    "<div class='mb-3'>"
+                                    "<label for='item-chosen' class='col-form-label'>Item:</label>"
+                                    "<select name='moving' class='form-select' aria-label='Default select example' id='item-chosen' form='moveItemForm' required>"
+                                    "<option hidden disabled selected value> Select an item </option>" +
+                    options +
+                    "</select>"
+                    "<label for='moving-to' class='col-form-label'>Item:</label>"
+                    "<select name='newparent' class='form-select' aria-label='Default select example' id='moving-to' form='moveItemForm' required>"
+                    "<option hidden disabled selected value> Select the folder to move to </option>" +
+                    move_options +
+                    "</select>"
+                    "</div>"
+                    "</form>"
+                    "</div>"
+                    "<div class='modal-footer'>"
+                    "<button type='button' class='btn btn-secondary' data-bs-dismiss='modal'>Close</button>"
+                    "<button type='submit' class='btn btn-primary' onclick='var blacklist = " +
+                    blacklist + "; if ($(\"#moveItemForm\")[0].checkValidity()) {"
+                                "var firstItemValue = $(\"#moveItemForm\")[0][0].value;"
+                                "var secondItemValue = $(\"#moveItemForm\")[0][1].value;"
+                                "var gparent = \"" + grandparent_path +"\";"
+                                "var childpath = \"" + childpath_str +"\";"
+                                "if (firstItemValue == secondItemValue || blacklist.includes(firstItemValue)) {"
+                                "$(\"#moveItemForm\")[0][1].setCustomValidity(\"Item already exists.\");"
+                                "$(\"#moveItemForm\")[0].reportValidity();"
+                                "} else {"
+                                    "if (secondItemValue != gparent) {"
+                                    "$(\"#moveItemForm\")[0][1].value = childpath + secondItemValue;"
+                                    "}"
+                                " $(\"#moveItemForm\").submit();"
+                                "}}'>Move</button>"
+                                "</div>"
+                                "</div>"
+                                "</div>"
+                                "</div>"
 
-                                                         "$('#deleteModal').on('show.bs.modal', function(e) {"
-                                                         "let item_name = $(e.relatedTarget).attr('data-bs-name');"
-                                                         "let file_path = $(e.relatedTarget).attr('data-bs-path');"
-                                                         "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
-                                                         "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
-                                                         "});"
-                                                         "</script>"
-                                                         "<script>"
-                                                         "$('#item-old-name').on('change', function (e) {"
-                                                         "var selection = $(this).find('option:selected').text();"
+                                "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                                "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                                "crossorigin='anonymous'></script>"
+                                "<script>"
+                                "$('.delete').on('click', function() {"
+                                "    $('#deleteModal').modal('show');"
+                                "});"
 
-                                                         "if (selection.slice(-1)=== '/') {"
-                                                         "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
-                                                         "if($('#renameHelp').length==0) {"
-                                                         "console.log(selection);"
-                                                         "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
-                                                         "}"
-                                                         "}"
-                                                         "else {"
-                                                         "$('#renameHelp').remove();"
-                                                         "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
-                                                         "}"
-                                                         "})"
-                                                         "</script>"
+                                "$('#deleteModal').on('show.bs.modal', function(e) {"
+                                "let item_name = $(e.relatedTarget).attr('data-bs-name');"
+                                "let file_path = $(e.relatedTarget).attr('data-bs-path');"
+                                "$('#deleteModalLabel').html('Are you sure you want to delete ' + item_name + '?');"
+                                "$('#deleteForm').attr('action', '/api/drive/delete/' + file_path + item_name);"
+                                "});"
+                                "</script>"
+                                "<script>"
+                                "$('#item-old-name').on('change', function (e) {"
+                                "var selection = $(this).find('option:selected').text();"
 
-                                                         "<script>"
-                                                         "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                                                         "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                                                         "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                                         "$('#switchLabel').html('Light Mode');"
-                                                         "sessionStorage.setItem('data-bs-theme', 'light');"
-                                                         ""
-                                                         "}"
-                                                         "else {"
-                                                         "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                                         "$('#switchLabel').html('Dark Mode');"
-                                                         "sessionStorage.setItem('data-bs-theme', 'dark');"
-                                                         "}"
-                                                         "});"
-                                                         "</script>"
-                                                         "<script>"
-                                                         "function setTheme() {"
-                                                         "var theme = sessionStorage.getItem('data-bs-theme');"
-                                                         "if (theme !== null) {"
-                                                         "if (theme === 'dark') {"
-                                                         "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                                                         "$('#switchLabel').html('Dark Mode');"
-                                                         "$('#flexSwitchCheckReverse').attr('checked', true);"
-                                                         "}"
-                                                         "else {"
-                                                         "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                                                         "$('#switchLabel').html('Light Mode');"
-                                                         "$('#flexSwitchCheckReverse').attr('checked', false);"
-                                                         "}"
-                                                         "}"
-                                                         "};"
-                                                         "</script>"
-                                                         "</body>"
-                                                         "</html>";
+                                "if (selection.slice(-1)=== '/') {"
+                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\-]+$');"
+                                "if($('#renameHelp').length==0) {"
+                                "console.log(selection);"
+                                "$('<div>', {id: 'renameHelp', class: 'form-text', text: 'Names can contain letters, numbers, hyphens, and underscores'}).insertAfter('#new-item-name');"
+                                "}"
+                                "}"
+                                "else {"
+                                "$('#renameHelp').remove();"
+                                "$('#new-item-name').attr('pattern', '^[\\\\w\\\\- \\\\!\\\\$\\\\&\\\\(\\\\)\\\\[\\\\]\\\\.\\\\@\\\\~\\\\{\\\\}\\\\|\\\\<\\\\>]+$');"
+                                "}"
+                                "})"
+                                "</script>"
+
+                                "<script>"
+                                "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                                "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                "$('#switchLabel').html('Light Mode');"
+                                "sessionStorage.setItem('data-bs-theme', 'light');"
+                                ""
+                                "}"
+                                "else {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                "$('#switchLabel').html('Dark Mode');"
+                                "sessionStorage.setItem('data-bs-theme', 'dark');"
+                                "}"
+                                "});"
+                                "</script>"
+                                "<script>"
+                                "function setTheme() {"
+                                "var theme = sessionStorage.getItem('data-bs-theme');"
+                                "if (theme !== null) {"
+                                "if (theme === 'dark') {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                                "$('#switchLabel').html('Dark Mode');"
+                                "$('#flexSwitchCheckReverse').attr('checked', true);"
+                                "}"
+                                "else {"
+                                "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                                "$('#switchLabel').html('Light Mode');"
+                                "$('#flexSwitchCheckReverse').attr('checked', false);"
+                                "}"
+                                "}"
+                                "};"
+                                "</script>"
+                                "</body>"
+                                "</html>";
 
                 // @PETER ADDED - reset cookies of user
                 res.append_body_str(page);
@@ -802,7 +866,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
             // get file content
             std::vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
-            if (kv_successful(file_content))
+            if (FeUtils::kv_success(file_content))
             {
                 // get binary from 4th char onward (ignore +OK<sp>)
                 std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
@@ -846,6 +910,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
     }
 }
 
+// uploads a new file
 void upload_file(const HttpRequest &req, HttpResponse &res)
 {
 
@@ -939,7 +1004,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
 
         vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
 
-        if (kv_successful(kvs_resp))
+        if (FeUtils::kv_success(kvs_resp))
         {
             // @todo should we instead get row for the page they are on?
             res.set_code(303); // OK
@@ -1050,7 +1115,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         {
             vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
 
-            if (kv_successful(response))
+            if (FeUtils::kv_success(response))
             {
                 // create new column for row
                 vector<char> folder_row = row_name;
@@ -1091,7 +1156,6 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
 }
 
 // deletes file or folder
-// @todo is this a post or a get? I think post with no body?
 void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     logger.log("In delete filefolder", LOGGER_DEBUG);
@@ -1142,7 +1206,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         filename = FeUtils::urlDecode(filename);
         vector<char> filename_vec(filename.begin(), filename.end());
 
-        if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+        if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
 
             res.set_code(303);
@@ -1163,7 +1227,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
             // recursively delete the folders children
             if (delete_folder(sockfd, child_path))
@@ -1181,7 +1245,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
                 vector<char> folder_name_vec(foldername.begin(), foldername.end());
 
                 // dleete the folder from the parent folder
-                if (kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
                     // redirect
                     res.set_code(303);
@@ -1209,7 +1273,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 }
 
 // renames file or folder
-// post with form attribtue
 void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 {
     // of type /api/drive/rename/* where child directory is being served
@@ -1287,7 +1350,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
         vector<char> filename_vec(oldname.begin(), oldname.end());
 
-        if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
+        if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
         {
 
             res.set_code(303);
@@ -1306,7 +1369,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
 
             newname += '/';
@@ -1324,7 +1387,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
             if (rename_subfolders(sockfd, child_path, new_folderpath))
             {
                 // dleete the folder from the parent folder
-                if (kv_successful(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
+                if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
                 {
                     // redirect
                     res.set_code(303);
@@ -1358,8 +1421,8 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
     logger.log("In rename filefolder", LOGGER_DEBUG);
     // of type /api/drive/move/* where child directory is being served
-    string childpath_str = req.path.substr(16);
-    string username = get_username(childpath_str);
+    string parentpath_str = req.path.substr(16);
+    string username = get_username(parentpath_str);
     bool present = HttpServer::check_kvs_addr(username);
     std::vector<std::string> kvs_addr;
 
@@ -1390,7 +1453,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         return;
     }
 
-    vector<char> child_path(childpath_str.begin(), childpath_str.end());
+    vector<char> parent_path(parentpath_str.begin(), parentpath_str.end());
 
     // get new name using parameters
     // Extract form parameters (status and component id) from the HTTP request body
@@ -1416,8 +1479,15 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
     // get new name
     string newparent = formParams["newparent"];
+    string item_tomove = formParams["moving"];
 
     replace_substring(newparent, "%2F", "/");
+    item_tomove = FeUtils::urlDecode(item_tomove);
+    
+
+
+    string childpath_str = parentpath_str + item_tomove;
+    vector<char> child_path(childpath_str.begin(), childpath_str.end());
 
     vector<char> newparent_vec(newparent.begin(), newparent.end());
 
@@ -1438,7 +1508,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
 
         // if error, return
-        if (!kv_successful(file_content))
+        if (!FeUtils::kv_success(file_content))
         {
             logger.log("1378 setting 400", LOGGER_DEBUG);
             res.set_code(303);
@@ -1449,7 +1519,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
 
         // delete file from old parent
-        if (!kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+        if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
         {
             logger.log("Could not delete file " + filename + " from old parent " + parentpath_str, LOGGER_WARN);
             res.set_code(303);
@@ -1463,7 +1533,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         }
 
         // put file into new parent
-        if (!kv_successful(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
+        if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
         {
             logger.log("Could not add file " + filename + " to new parent " + newparent, LOGGER_WARN);
             res.set_code(303);
@@ -1493,7 +1563,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
         logger.log("Child path is " + childpath_str, LOGGER_DEBUG);
 
-        if (kv_successful(folder_content))
+        if (FeUtils::kv_success(folder_content))
         {
 
             // move folder from parent
@@ -1521,7 +1591,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 logger.log("Rename recursion success", LOGGER_DEBUG);
 
                 // Delete folder from old parent
-                if (!kv_successful(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
                 {
                     logger.log("Could not delete file " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
                     res.set_code(303);
@@ -1530,7 +1600,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 }
 
                 // put file into new parent
-                if (!kv_successful(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
+                if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
                 {
                     logger.log("Could not add file " + foldername + " to new parent " + newparent, LOGGER_WARN);
                     res.set_code(303);

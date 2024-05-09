@@ -540,7 +540,7 @@ void Tablet::deserialize_from_stream(std::vector<char> &stream)
 // TABLET LOG REPLAY
 // *********************************************
 
-void Tablet::replay_log_from_file(const std::string &file_name)
+uint32_t Tablet::replay_log_from_file(const std::string &file_name)
 {
     // open file in binary mode for reading
     std::ifstream file;
@@ -551,11 +551,11 @@ void Tablet::replay_log_from_file(const std::string &file_name)
     {
         tablet_logger.log("Error opening file for log replay", 40);
         file.close();
-        return;
+        return -1;
     }
 
     // tracks transaction status across set of operations
-    uint32_t transaction_num;
+    uint32_t transaction_num = 0;
     bool transaction_complete;
     bool is_primary_during_transaction;
     // tracks if an abort operation already occurred in this transaction as a secondary (don't want to release locks twice)
@@ -590,7 +590,6 @@ void Tablet::replay_log_from_file(const std::string &file_name)
             std::string server_type(server_type_vec.begin(), server_type_vec.end());
 
             server_type == "P" ? is_primary_during_transaction = true : is_primary_during_transaction = false; // set server type for transaction
-            transaction_num = operation_seq_num;                                                               // set global transaction number for operation
             transaction_complete = false;                                                                      // set flag indicating this transaction is in progress
         }
         else if (operation == "PREP")
@@ -678,17 +677,22 @@ void Tablet::replay_log_from_file(const std::string &file_name)
         else if (operation == "ENDT")
         {
             // reset necessaray transaction related fields
-            bool prepare_seen = false;
+            prepare_seen = false;
+            transaction_complete = true;         // set flag indicating this transaction is in progress
+            transaction_num = operation_seq_num; // set global transaction number for operation
         }
     }
 
     file.close();
+
+    // return transaction number in case this is the max seq number
+    return transaction_num;
 }
 
-void Tablet::replay_log_from_stream(std::vector<char> &stream)
+uint32_t Tablet::replay_log_from_stream(std::vector<char> &stream)
 {
     // tracks transaction status across set of operations
-    uint32_t transaction_num;
+    uint32_t transaction_num = 0;
     bool transaction_complete;
     bool is_primary_during_transaction;
     // tracks if an abort operation already occurred in this transaction as a secondary (don't want to release locks twice)
@@ -714,7 +718,6 @@ void Tablet::replay_log_from_stream(std::vector<char> &stream)
             stream.erase(stream.begin());
 
             server_type == "P" ? is_primary_during_transaction = true : is_primary_during_transaction = false; // set server type for transaction
-            transaction_num = operation_seq_num;                                                               // set global transaction number for operation
             transaction_complete = false;                                                                      // set flag indicating this transaction is in progress
         }
         else if (operation == "PREP")
@@ -798,9 +801,14 @@ void Tablet::replay_log_from_stream(std::vector<char> &stream)
         else if (operation == "ENDT")
         {
             // reset necessaray transaction related fields
-            bool prepare_seen = false;
+            prepare_seen = false;
+            transaction_complete = true;         // set flag indicating this transaction is in progress
+            transaction_num = operation_seq_num; // set global transaction number for operation
         }
     }
+
+    // return transaction number in case this is the max seq number
+    return transaction_num;
 }
 
 // *********************************************
