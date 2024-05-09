@@ -6,7 +6,7 @@ TARGETS = admin_main
 
 all: $(TARGETS)
 
-admin_main: ./src/admin_main.cc ../front_end/utils/src/fe_utils.cc ../http_server/libhttp_server.a
+admin_main: ./src/admin_main.cc ../front_end/utils/src/fe_utils.cc
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	rm -f *o
 

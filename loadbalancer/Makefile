@@ -6,7 +6,7 @@ TARGETS = loadbalancer_main
 
 all: $(TARGETS)
 
-loadbalancer_main: ./src/loadbalancer_main.cc ./src/loadbalancer.cc ../utils/src/utils.cc ../http_server/libhttp_server.a
+loadbalancer_main: ./src/loadbalancer_main.cc ./src/loadbalancer.cc ../utils/src/utils.cc
 	$(CXX) $(CXXFLAGS) $^ -o $@ $(LDFLAGS)
 	rm -f *o
 

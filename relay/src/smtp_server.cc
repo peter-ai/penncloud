@@ -78,14 +78,6 @@ void SMTPServer::store_external_email(EmailData &email)
     email.body = "body: " + email.body;
     email.oldBody = "oldBody: " + email.oldBody;
 
-    int socket_fd = FeUtils::open_socket(SERVADDR, SERVPORT);
-    if (socket_fd < 0)
-    {
-        smtp_server_logger.log("Could not create KVS socket.", 40);
-        close(socket_fd);
-        return;
-    }
-
     string recipients = Utils::split_on_first_delim(email.to, ":")[1]; // parse to:user@penncloud.com --> user@penncloud.com
     vector<string> recipientsEmails = FeUtils::parseRecipients(recipients);
     bool all_emails_sent = true;
@@ -101,18 +93,22 @@ void SMTPServer::store_external_email(EmailData &email)
             string colKey = email.time + "\r" + email.from + "\r" + email.to + "\r" + email.subject;
             colKey = FeUtils::urlEncode(colKey); // encode UIDL in URL format for col value
             string rowKey = FeUtils::extractUsernameFromEmailAddress(recipientEmail) + "-mailbox/";
+
+            std::vector<std::string> recipient_ip = FeUtils::query_coordinator(rowKey);
+            int recipient_fd = FeUtils::open_socket(recipient_ip[0], std::stoi(recipient_ip[1]));
+
             vector<char> value = FeUtils::charifyEmailContent(email);
             vector<char> row(rowKey.begin(), rowKey.end());
             vector<char> col(colKey.begin(), colKey.end());
 
             // check if row exists using get row to prevent from storing emails of users that don't exist
-            std::vector<char> rowCheck = FeUtils::kv_get_row(socket_fd, row);
+            std::vector<char> rowCheck = FeUtils::kv_get_row(recipient_fd, row);
 
             std::string rowCheckMsg = std::string(rowCheck.begin(), rowCheck.end());
 
             smtp_server_logger.log("Response from KVS: " + rowCheckMsg, 10);
 
-            if (FeUtils::kv_success(rowCheck))
+            if (!FeUtils::kv_success(rowCheck))
             {
                 smtp_server_logger.log("User " + recipientEmail + " does not exist in the PennCloud system.", 40);
                 all_emails_sent = false;
@@ -121,21 +117,21 @@ void SMTPServer::store_external_email(EmailData &email)
 
             smtp_server_logger.log("Storing external email in KVS for row: " + rowKey, 20);
 
-            vector<char> kvsResponse = FeUtils::kv_put(socket_fd, row, col, value);
+            vector<char> kvsResponse = FeUtils::kv_put(recipient_fd, row, col, value);
 
-            if (FeUtils::kv_success(kvsResponse))
+            if (!FeUtils::kv_success(kvsResponse))
             {
                 smtp_server_logger.log("Failed to store external email in KVS for row: " + rowKey, 40);
                 all_emails_sent = false;
                 continue;
             }
+            close(recipient_fd);
         }
     }
     if (all_emails_sent)
     {
         smtp_server_logger.log("All received emails stored in KVS successfully.", 20);
     }
-    close(socket_fd);
 }
 
 /**

@@ -79,7 +79,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
     std::string command(byte_stream.begin(), byte_stream.begin() + 4);
     command = Utils::to_lowercase(command);
 
-    // checkpointing and recovery commands
+        // checkpointing and recovery commands
     if (command == "ckpt")
     {
         checkpoint(byte_stream);
@@ -117,7 +117,7 @@ void KVSGroupServer::handle_command(std::vector<char> &byte_stream)
         else
         {
             // log and send error message
-            send_error_response("Unrecognized command - this should NOT occur");
+            send_error_response("Unrecognized command <" + command + "> - this should NOT occur");
             return;
         }
     }

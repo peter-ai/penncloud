@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # compile http server
-cd ../http_server
+cd http_server
 make clean
 make 
 cd ..

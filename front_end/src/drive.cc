@@ -861,6 +861,9 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 // res.set_header(content_header, content_value);
 
                 // @PETER ADDED - reset cookies of user
+                std::string content_disposition_val = "attachment; filename=\"" + filename + "\"";
+                res.set_header("Content-Disposition", content_disposition_val);
+
                 FeUtils::set_cookies(res, username, sid);
 
                 // set code
