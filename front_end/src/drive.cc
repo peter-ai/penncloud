@@ -1172,8 +1172,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
     // validate session id
     string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    // if invalid, return an error?
-    // @todo :: redirect to login page?
     if (valid_session_id.empty())
     {
         // for now, returning code for check on postman
@@ -1201,6 +1199,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
 
             res.set_code(303);
             res.set_header("Location", "/drive/" + parentpath_str);
+            FeUtils::set_cookies(res, username, valid_session_id);
         }
         else
         {
@@ -1210,7 +1209,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
@@ -1237,6 +1235,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/drive/" + parentpath_str);
+                    FeUtils::set_cookies(res, username, valid_session_id);
                 }
                 else
                 {
@@ -1252,9 +1251,6 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
             res.set_header("Location", "/400");
         }
     }
-
-    // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
 
     close(sockfd);
 }
@@ -1342,6 +1338,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 
             res.set_code(303);
             res.set_header("Location", "/drive/" + parent_path_str);
+            FeUtils::set_cookies(res, username, valid_session_id);
         }
         else
         {
@@ -1351,7 +1348,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     }
     else
     {
-
         // get row
         vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
@@ -1378,6 +1374,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
                     // redirect
                     res.set_code(303);
                     res.set_header("Location", "/drive/" + parent_path_str);
+                    FeUtils::set_cookies(res, username, valid_session_id);
                 }
                 else
                 {
@@ -1395,8 +1392,6 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
     }
 
     // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
-
     close(sockfd);
 }
 
@@ -1496,6 +1491,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         {
             res.set_code(303);
             res.set_header("Location", "/400");
+            close(sockfd);
             return;
         }
         // get binary from 4th char onward (ignore +OK<sp>)
@@ -1510,7 +1506,6 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
 
             // set cookies on response
             FeUtils::set_cookies(res, username, valid_session_id);
-
             close(sockfd);
             return;
         }
@@ -1518,21 +1513,16 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         // put file into new parent
         if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
         {
-            logger.log("Could not add file " + filename + " to new parent " + newparent, LOGGER_WARN);
+            logger.log("Could not move file " + filename + " to new parent " + newparent, LOGGER_WARN);
             res.set_code(303);
             res.set_header("Location", "/400");
-
-            // set cookies on response
             FeUtils::set_cookies(res, username, valid_session_id);
-
             close(sockfd);
             return;
         }
         else
         {
             logger.log("File " + filename + " successfully moved to new parent " + newparent, LOGGER_INFO);
-            // redirect
-            // @todo: redirect to new parent or current?
             res.set_code(303);
             res.set_header("Location", "/drive/" + parentpath_str);
         }
@@ -1567,26 +1557,23 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                     logger.log("Could not delete folder " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
                     res.set_code(303);
                     res.set_header("Location", "/400");
+                    close(sockfd);
                     return;
                 }
 
                 // put file into new parent
                 if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
                 {
-                    logger.log("Could not add folder " + foldername + " to new parent " + newparent, LOGGER_WARN);
+                    logger.log("Could not move folder " + foldername + " to new parent " + newparent, LOGGER_WARN);
                     res.set_code(303);
                     res.set_header("Location", "/400");
-                    // set cookies on response
                     FeUtils::set_cookies(res, username, valid_session_id);
-
                     close(sockfd);
                     return;
                 }
                 else
                 {
                     logger.log("Folder " + foldername + " successfully moved to new parent " + newparent, LOGGER_INFO);
-                    // redirect
-                    // @todo: redirect to new parent or current?
                     res.set_code(303);
                     res.set_header("Location", "/drive/" + parentpath_str);
                 }
