@@ -354,9 +354,6 @@ int main(int argc, char *argv[])
                 source = std::string(inet_ntoa(src.sin_addr)) + ":" + std::to_string(ntohs(src.sin_port));
             }
 
-            // log message source
-            logger.log(source, LOGGER_DEBUG);
-
             // if connection is from a kvs
             if (present)
             {
