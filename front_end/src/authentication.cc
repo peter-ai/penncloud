@@ -190,7 +190,9 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
         // query the coordinator for the KVS server address
         kvs_addr = FeUtils::query_coordinator(username);
     }
-
+    logger.log("IP="+kvs_addr[0], LOGGER_DEBUG);
+    logger.log("PORT="+kvs_addr[1], LOGGER_DEBUG);
+    
     // create socket for communication with KVS server
     int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 

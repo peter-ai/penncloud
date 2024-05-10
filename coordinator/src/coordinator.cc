@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
             std::string admin_ip = ip_addr + ":12" + std::to_string(groups) + std::to_string(servers) + "0";
 
             kvs_args kv;
-            kv.alive = false;                           // server is not alive yet
+            kv.alive = true;                           // server is not alive yet
             kv.kvs_group = groups;                      // set the group number of this server
             kv.primary = (servers == 0 ? true : false); // if server is 0 then make it primary, otherwise secondary
             kv.client_addr = client_ip;                 // set the client-facing ip:port address
@@ -554,6 +554,10 @@ void *kvs_thread(void *arg)
                         broadcast_to_cluster(kvs->kvs_group);
                         kvs->alive = true;
                     }
+                    else
+                    {
+                        kvs->alive = true;
+                    }
                 }
                 // Received RECO from KVS
                 else if (command.compare("RECO") == 0)
@@ -668,13 +672,31 @@ void *client_thread(void *arg)
 
     if ((client->request).length() > 0)
     {
-        // assign appropriate kvs for given request by randomly sampling vector
+        // get request and key
         char key = client->request[0];
-        client_map_mutex.lock_shared();
+        std::string kvs_server;
+
+
+        client_map_mutex.lock_shared(); // lock map
+
+        // assign appropriate kvs for given request by randomly sampling vector
+        if (client_map.count(key))
+        {
+            kvs_server = (client_map[key].empty() ? ":" : client_map[key][0].client_addr);
+        }
+        else 
+        {
+            kvs_server = "-ERR First character non-alphabetical";
+        }
+        
         // std::string kvs_server = (client_map.count(key) ? client_map[key][sample_index(client_map[key].size())].client_addr : "-ERR First character non-alphabetical"); // TODO: UNCOMMENT THIS AND TEST
-        std::string kvs_server = (client_map.count(key) ? client_map[key][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
-        client_map_mutex.unlock_shared();
-        logger.log("KVS choice for " + std::string(1, key) + " is " + kvs_server, LOGGER_INFO);
+        // std::string kvs_server = (client_map.count(key) ? client_map[key][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
+        
+        
+        client_map_mutex.unlock_shared(); // unlock map
+
+
+        logger.log("KVS choice for " + client->request + " is " + kvs_server, LOGGER_INFO);
 
         // send response
         if ((sent = send(client->fd, &kvs_server[0], kvs_server.size(), 0)) == -1)
