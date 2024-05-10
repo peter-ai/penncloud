@@ -29,18 +29,21 @@ int main(int argc, char *argv[])
 			return 1;
 		}
 	}
-
-	/* Public GET API */
-	HttpServer::get("/home", home_page);
-	HttpServer::get("/compose", compose_email);
-	HttpServer::get("/account", update_password_page);
-	HttpServer::get("/update_success", update_password_success_page);
+	/* Public Error Codes */
+	HttpServer::get("/503", error_503_page); // Bad gateway
 	HttpServer::get("/502", error_502_page); // Bad gateway
 	HttpServer::get("/500", error_500_page); // Internal server error
 	HttpServer::get("/409", error_409_page); // Conflict
 	HttpServer::get("/404", error_404_page); // Not Found
 	HttpServer::get("/401", error_401_page); // Unauthorized
 	HttpServer::get("/400", error_400_page); // Bad API request
+
+	/* Public GET API */
+	HttpServer::get("/home", home_page);
+	HttpServer::get("/compose", compose_email);
+	HttpServer::get("/account", update_password_page);
+	HttpServer::get("/update_success", update_password_success_page);
+
 
 	/* Mail Routes */
 	HttpServer::post("/api/:user/mbox/send", sendEmail_handler);		// send an email

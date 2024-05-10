@@ -1,6 +1,11 @@
 #include "../utils/include/fe_utils.h"
 #include "../../http_server/include/http_server.h"
 
+/// @brief 503 service unavailable
+/// @param req HttpRequest object
+/// @param res HttpResponse object
+void error_503_page(const HttpRequest &req, HttpResponse &res);
+
 /// @brief 502 internal server error
 /// @param req HttpRequest object
 /// @param res HttpResponse object
