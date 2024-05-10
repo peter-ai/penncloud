@@ -16,7 +16,7 @@ tmux split-window -v
 
 # Run scripts in each pane
 tmux send-keys -t 0 'bash ./run_backend_G1_P.sh' C-m
-sleep 5
+sleep 6
 tmux send-keys -t 1 'bash ./run_backend_G1_S1.sh' C-m
 tmux send-keys -t 2 'bash ./run_backend_G1_S2.sh' C-m
 tmux send-keys -t 3 'bash ./run_backend_G1_S3.sh' C-m
