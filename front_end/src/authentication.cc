@@ -9,8 +9,6 @@
 
 #include "../include/authentication.h"
 
-// https://www.w3schools.com/tags/att_form_enctype.asp may be important once we are building upload fields for files
-
 /// @brief handles new user signup requests on /api/signup route
 /// @param req HttpRequest object
 /// @param res HttpResponse object
@@ -204,8 +202,6 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
 
         // create socket for communication with KVS server
         kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-
-
     }
 
     // check password
@@ -281,8 +277,20 @@ void home_page(const HttpRequest &req, HttpResponse &res)
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // open socket for kvs communication
-        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int kvs_sock;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // validate session id
         std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
@@ -439,8 +447,20 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // open socket for kvs communication
-        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int kvs_sock;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // validate session id
         std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
@@ -489,85 +509,85 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
             "<a class='nav-link' href='/home'>Home</a>"
             "<a class='nav-link' href='/drive/" +
             username + "/'>Drive</a>"
-                              "<a class='nav-link' href='/" +
+                       "<a class='nav-link' href='/" +
             username + "/mbox'>Email</a>"
-                              "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
-                              "<a class='nav-link active' aria-current='page' href='/account'>Account</a>"
-                              "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-                              "<input type='hidden' />"
-                              "<button class='btn nav-link' type='submit'>Logout</button>"
-                              "</form>"
-                              "</div>"
-                              "</div>"
-                              "<div class='form-check form-switch form-check-reverse'>"
-                              "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
-                              "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
-                              "</div>"
-                              "</div>"
-                              "</nav>"
-                              "<div class='container-fluid'>"
-                              "<div class='row mx-2 mt-3 mb-4'>"
-                              "<h1 class='display-6'>"
-                              "Update Password"
-                              "</h1>"
-                              "</div>"
-                              "<div class='row mt-2 mx-2'>"
-                              "<div class='col-3'></div>"
-                              "<div class='col-6'>"
-                              "<form action='/api/update_password' method='POST'>"
-                              "<div class='form-group'>"
-                              "<div class='mb-3'>"
-                              "<label for='inputPassword' class='form-label'>New Password</label>"
-                              "<input type='password' class='form-control' id='inputPassword' aria-describedby='passHelp'"
-                              "name='password' required maxlength='20' minlength='4'>"
-                              "<div id='passHelp' class='form-text'>Must be 4-20 characters long</div>"
-                              "</div>"
-                              "<div class='col-12'>"
-                              "<button class='btn btn-primary' type='submit'>Update</button>"
-                              "</div>"
-                              "</div>"
-                              "</form>"
-                              "</div>"
-                              "<div class='col-3'></div>"
-                              "</div>"
-                              "</div>"
+                       "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+                       "<a class='nav-link active' aria-current='page' href='/account'>Account</a>"
+                       "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+                       "<input type='hidden' />"
+                       "<button class='btn nav-link' type='submit'>Logout</button>"
+                       "</form>"
+                       "</div>"
+                       "</div>"
+                       "<div class='form-check form-switch form-check-reverse'>"
+                       "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+                       "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+                       "</div>"
+                       "</div>"
+                       "</nav>"
+                       "<div class='container-fluid'>"
+                       "<div class='row mx-2 mt-3 mb-4'>"
+                       "<h1 class='display-6'>"
+                       "Update Password"
+                       "</h1>"
+                       "</div>"
+                       "<div class='row mt-2 mx-2'>"
+                       "<div class='col-3'></div>"
+                       "<div class='col-6'>"
+                       "<form action='/api/update_password' method='POST'>"
+                       "<div class='form-group'>"
+                       "<div class='mb-3'>"
+                       "<label for='inputPassword' class='form-label'>New Password</label>"
+                       "<input type='password' class='form-control' id='inputPassword' aria-describedby='passHelp'"
+                       "name='password' required maxlength='20' minlength='4'>"
+                       "<div id='passHelp' class='form-text'>Must be 4-20 characters long</div>"
+                       "</div>"
+                       "<div class='col-12'>"
+                       "<button class='btn btn-primary' type='submit'>Update</button>"
+                       "</div>"
+                       "</div>"
+                       "</form>"
+                       "</div>"
+                       "<div class='col-3'></div>"
+                       "</div>"
+                       "</div>"
 
-                              "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                              "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                              "crossorigin='anonymous'></script>"
-                              "<script>"
-                              "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                              "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'light');"
-                              ""
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'dark');"
-                              "}"
-                              "});"
-                              "</script>"
-                              "<script>"
-                              "function setTheme() {"
-                              "var theme = sessionStorage.getItem('data-bs-theme');"
-                              "if (theme !== null) {"
-                              "if (theme === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', true);"
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', false);"
-                              "}"
-                              "}"
-                              "};"
-                              "</script>"
-                              "</body>";
+                       "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                       "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                       "crossorigin='anonymous'></script>"
+                       "<script>"
+                       "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                       "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                       "$('#switchLabel').html('Light Mode');"
+                       "sessionStorage.setItem('data-bs-theme', 'light');"
+                       ""
+                       "}"
+                       "else {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                       "$('#switchLabel').html('Dark Mode');"
+                       "sessionStorage.setItem('data-bs-theme', 'dark');"
+                       "}"
+                       "});"
+                       "</script>"
+                       "<script>"
+                       "function setTheme() {"
+                       "var theme = sessionStorage.getItem('data-bs-theme');"
+                       "if (theme !== null) {"
+                       "if (theme === 'dark') {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                       "$('#switchLabel').html('Dark Mode');"
+                       "$('#flexSwitchCheckReverse').attr('checked', true);"
+                       "}"
+                       "else {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                       "$('#switchLabel').html('Light Mode');"
+                       "$('#flexSwitchCheckReverse').attr('checked', false);"
+                       "}"
+                       "}"
+                       "};"
+                       "</script>"
+                       "</body>";
 
         res.set_code(200);
         res.append_body_str(page);
@@ -615,8 +635,20 @@ void update_password_success_page(const HttpRequest &req, HttpResponse &res)
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // open socket for kvs communication
-        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int kvs_sock;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // validate session id
         std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
@@ -665,101 +697,101 @@ void update_password_success_page(const HttpRequest &req, HttpResponse &res)
             "<a class='nav-link' href='/home'>Home</a>"
             "<a class='nav-link' href='/drive/+" +
             username + "/'>Drive</a>"
-                              "<a class='nav-link' href='/" +
+                       "<a class='nav-link' href='/" +
             username + "/mbox'>Email</a>"
-                              "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
-                              "<a class='nav-link active' aria-current='page' href='/account'>Account</a>"
-                              "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
-                              "<input type='hidden' />"
-                              "<button class='btn nav-link' type='submit'>Logout</button>"
-                              "</form>"
-                              "</div>"
-                              "</div>"
-                              "<div class='form-check form-switch form-check-reverse'>"
-                              "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
-                              "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
-                              "</div>"
-                              "</div>"
-                              "</nav>"
-                              "<div class='container-fluid'>"
-                              "<div class='row mx-2 mt-3 mb-4'>"
-                              "<div class='col-9'>"
-                              "<h1 class='display-6'>"
-                              "Update Password - Successful!"
-                              "</h1>"
-                              "</div>"
-                              "<div class='col-3'>"
-                              "<h1 class='display-6'>"
-                              "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' fill='currentColor' class='bi bi-check2-circle' viewBox='0 0 16 16'>"
-                              "<path d='M2.5 8a5.5 5.5 0 0 1 8.25-4.764.5.5 0 0 0 .5-.866A6.5 6.5 0 1 0 14.5 8a.5.5 0 0 0-1 0 5.5 5.5 0 1 1-11 0'/>"
-                              "<path d='M15.354 3.354a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0z'/>"
-                              "</svg>"
-                              "</h1>"
-                              "</div>"
-                              "</div>"
-                              "<div class='row mt-2 mx-2'>"
-                              "<div class='col-3'></div>"
-                              "<div class='col-6'>"
-                              "<form action='/api/update_password' method='POST'>"
-                              "<div class='form-group'>"
-                              "<div class='mb-3'>"
-                              "<label for='inputPassword' class='form-label'>New Password</label>"
-                              "<input type='password' class='form-control' id='inputPassword' aria-describedby='passHelp'"
-                              "name='password' required maxlength='20' minlength='4'>"
-                              "<div id='passHelp' class='form-text'>Must be 4-20 characters long</div>"
-                              "</div>"
-                              "<div class='col-12'>"
-                              "<button class='btn btn-primary' type='submit'>Update</button>"
-                              "</div>"
-                              "</div>"
-                              "</form>"
-                              "</div>"
-                              "<div class='col-3'></div>"
-                              "</div>"
-                              "</div>"
-                              "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
-                              "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
-                              "crossorigin='anonymous'></script>"
-                              "<script>"
-                              "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
-                              "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'light');"
-                              ""
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "sessionStorage.setItem('data-bs-theme', 'dark');"
-                              "}"
-                              "});"
-                              "</script>"
-                              "<script>"
-                              "function setTheme() {"
-                              "var theme = sessionStorage.getItem('data-bs-theme');"
-                              "if (theme !== null) {"
-                              "if (theme === 'dark') {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'dark');"
-                              "$('#switchLabel').html('Dark Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', true);"
-                              "}"
-                              "else {"
-                              "document.documentElement.setAttribute('data-bs-theme', 'light');"
-                              "$('#switchLabel').html('Light Mode');"
-                              "$('#flexSwitchCheckReverse').attr('checked', false);"
-                              "}"
-                              "}"
-                              "};"
-                              "</script>"
-                              "</body>";
+                       "<a class='nav-link disabled' aria-disabled='true'>Games</a>"
+                       "<a class='nav-link active' aria-current='page' href='/account'>Account</a>"
+                       "<form class='d-flex' role='form' method='POST' action='/api/logout'>"
+                       "<input type='hidden' />"
+                       "<button class='btn nav-link' type='submit'>Logout</button>"
+                       "</form>"
+                       "</div>"
+                       "</div>"
+                       "<div class='form-check form-switch form-check-reverse'>"
+                       "<input class='form-check-input' type='checkbox' id='flexSwitchCheckReverse' checked>"
+                       "<label class='form-check-label' for='flexSwitchCheckReverse' id='switchLabel'>Dark Mode</label>"
+                       "</div>"
+                       "</div>"
+                       "</nav>"
+                       "<div class='container-fluid'>"
+                       "<div class='row mx-2 mt-3 mb-4'>"
+                       "<div class='col-9'>"
+                       "<h1 class='display-6'>"
+                       "Update Password - Successful!"
+                       "</h1>"
+                       "</div>"
+                       "<div class='col-3'>"
+                       "<h1 class='display-6'>"
+                       "<svg xmlns='http://www.w3.org/2000/svg' width='1em' height='1em' fill='currentColor' class='bi bi-check2-circle' viewBox='0 0 16 16'>"
+                       "<path d='M2.5 8a5.5 5.5 0 0 1 8.25-4.764.5.5 0 0 0 .5-.866A6.5 6.5 0 1 0 14.5 8a.5.5 0 0 0-1 0 5.5 5.5 0 1 1-11 0'/>"
+                       "<path d='M15.354 3.354a.5.5 0 0 0-.708-.708L8 9.293 5.354 6.646a.5.5 0 1 0-.708.708l3 3a.5.5 0 0 0 .708 0z'/>"
+                       "</svg>"
+                       "</h1>"
+                       "</div>"
+                       "</div>"
+                       "<div class='row mt-2 mx-2'>"
+                       "<div class='col-3'></div>"
+                       "<div class='col-6'>"
+                       "<form action='/api/update_password' method='POST'>"
+                       "<div class='form-group'>"
+                       "<div class='mb-3'>"
+                       "<label for='inputPassword' class='form-label'>New Password</label>"
+                       "<input type='password' class='form-control' id='inputPassword' aria-describedby='passHelp'"
+                       "name='password' required maxlength='20' minlength='4'>"
+                       "<div id='passHelp' class='form-text'>Must be 4-20 characters long</div>"
+                       "</div>"
+                       "<div class='col-12'>"
+                       "<button class='btn btn-primary' type='submit'>Update</button>"
+                       "</div>"
+                       "</div>"
+                       "</form>"
+                       "</div>"
+                       "<div class='col-3'></div>"
+                       "</div>"
+                       "</div>"
+                       "<script src='https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'"
+                       "integrity='sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz'"
+                       "crossorigin='anonymous'></script>"
+                       "<script>"
+                       "document.getElementById('flexSwitchCheckReverse').addEventListener('change', () => {"
+                       "if (document.documentElement.getAttribute('data-bs-theme') === 'dark') {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                       "$('#switchLabel').html('Light Mode');"
+                       "sessionStorage.setItem('data-bs-theme', 'light');"
+                       ""
+                       "}"
+                       "else {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                       "$('#switchLabel').html('Dark Mode');"
+                       "sessionStorage.setItem('data-bs-theme', 'dark');"
+                       "}"
+                       "});"
+                       "</script>"
+                       "<script>"
+                       "function setTheme() {"
+                       "var theme = sessionStorage.getItem('data-bs-theme');"
+                       "if (theme !== null) {"
+                       "if (theme === 'dark') {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'dark');"
+                       "$('#switchLabel').html('Dark Mode');"
+                       "$('#flexSwitchCheckReverse').attr('checked', true);"
+                       "}"
+                       "else {"
+                       "document.documentElement.setAttribute('data-bs-theme', 'light');"
+                       "$('#switchLabel').html('Light Mode');"
+                       "$('#flexSwitchCheckReverse').attr('checked', false);"
+                       "}"
+                       "}"
+                       "};"
+                       "</script>"
+                       "</body>";
 
         res.set_code(200);
         res.append_body_str(page);
         res.set_header("Content-Type", "text/html");
         res.set_header("Cache-Control", "no-cache, no-store, must-revalidate");
         res.set_header("Pragma", "no-cache");
-        res.set_header("Expires", "0");        
+        res.set_header("Expires", "0");
         FeUtils::set_cookies(res, cookies["user"], cookies["sid"]);
     }
     // unauthorized
@@ -805,8 +837,20 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // create socket for communication with KVS server
-        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int kvs_sock;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // delete associated sid from kvs server
         std::vector<char> row_key(username.begin(), username.end());
@@ -876,8 +920,20 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // create socket for communication with KVS server
-        int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int kvs_sock;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // validate session id
         std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, req);
