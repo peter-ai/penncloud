@@ -322,7 +322,6 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
             // for now, returning code for check on postman
             res.set_code(303);
             res.set_header("Location", "/401");
-            FeUtils::expire_cookies(res, username, sid);
             close(sockfd);
             return;
         }
