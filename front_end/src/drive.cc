@@ -287,31 +287,42 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 
     if (cookies.count("user") && cookies.count("sid"))
     {
-        std::string username = cookies["user"];
-        std::string sid = cookies["sid"];
-
-        // check req method
-
         // path is drive/:childpath where parent dir is the page that is being displayed
         string childpath_str = req.path.substr(7);
         vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+        // get relevant cookies
+        std::string username = cookies["user"];
+        std::string sid = cookies["sid"];
         bool present = HttpServer::check_kvs_addr(username);
         std::vector<std::string> kvs_addr;
 
-        // check if we know already know the KVS server address for user
+        // get the KVS server address for user associated with the request
         if (present)
         {
+            // get address from cache
             kvs_addr = HttpServer::get_kvs_addr(username);
         }
-        // otherwise get KVS server address from coordinator
         else
         {
             // query the coordinator for the KVS server address
             kvs_addr = FeUtils::query_coordinator(username);
         }
 
-        // create socket for communication with KVS server
-        int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
         // validate session id
         string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
@@ -897,697 +908,823 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
 // uploads a new file
 void upload_file(const HttpRequest &req, HttpResponse &res)
 {
-
-    // Get path of parent directory where we are appending
-
-    // path is /api/drive/upload/:parentpath where parent dir is the page that is being displayed
-    string parentpath_str = req.path.substr(18);
-    string username = get_username(parentpath_str);
-    bool present = HttpServer::check_kvs_addr(username);
-    std::vector<std::string> kvs_addr;
-
-    // check if we know already know the KVS server address for user
-    if (present)
+    // get cookies
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+    if (cookies.count("user") && cookies.count("sid"))
     {
-        kvs_addr = HttpServer::get_kvs_addr(username);
-    }
-    // otherwise get KVS server address from coordinator
-    else
-    {
-        // query the coordinator for the KVS server address
-        kvs_addr = FeUtils::query_coordinator(username);
-    }
+        // Get path of parent directory where we are appending
 
-    // create socket for communication with KVS server
-    int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        // path is /api/drive/upload/:parentpath where parent dir is the page that is being displayed
+        string parentpath_str = req.path.substr(18);
+        string username = get_username(parentpath_str);
 
-    // validate session id
-    string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    // if invalid, return an error?
-    // @todo :: redirect to login page?
-    if (valid_session_id.empty())
-    {
-        // for now, returning code for check on postman
+        // get relevant cookies
+        string sid = cookies["sid"];
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
 
-        res.set_code(303);
-        res.set_header("Location", "/401");
-
-        close(sockfd);
-        return;
-    }
-
-    // Check if the request contains a body
-    if (!req.body_as_bytes().empty())
-    {
-        // ------- Get file name and clean up to get file binary ----
-        // Get the single file uploaded
-        vector<string> headers;
-
-        // Find form boundary
-        headers = req.get_header("Content-Type");
-        string header_str(headers[0]);
-        // boundary provided by form
-        vector<string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
-        vector<char> bound_vec(find_boundary.back().begin(), find_boundary.back().end());
-
-        vector<char> line_feed = {'\r', '\n'};
-
-        // split body on boundary
-        vector<vector<char>> elements = FeUtils::split_vector(req.body_as_bytes(), bound_vec);
-        vector<char> elem1 = elements[1];
-
-        // @note: assuming we only upload 1 file at a time?
-        vector<char> file_data = split_vec_first_delim(elem1, line_feed)[1];
-
-        // split file data to separate file metadata from binary values
-        vector<vector<char>> body_elems = split_vec_first_delim(file_data, line_feed);
-
-        // parse file headers to get name of file
-        string file_headers(body_elems[0].begin(), body_elems[0].end());
-        string content_disp = Utils::split_on_first_delim(file_headers, "\n")[0];
-        string filename_toparse = Utils::split_on_first_delim(file_headers, "filename=").back();
-
-        // file name string
-        string filename = Utils::split(filename_toparse, "\"")[0];
-
-        // get file binary
-        vector<char> file_binary = split_vec_first_delim(body_elems[1], line_feed)[1];
-        file_binary = split_vec_first_delim(file_binary, line_feed)[1];
-
-        if (parentpath_str.back() != '/')
+        // get the KVS server address for user associated with the request
+        if (present)
         {
-            res.set_code(303);
-            // set cookies on response
-            res.set_header("Location", "/400");
-            FeUtils::expire_cookies(res, username, valid_session_id);
-            close(sockfd);
-            return;
-        }
-        vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
-        vector<char> col_vec(filename.begin(), filename.end());
-
-        vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
-
-        if (FeUtils::kv_success(kvs_resp))
-        {
-            // @todo should we instead get row for the page they are on?
-            res.set_code(303); // OK
-            res.set_header("Location", "/drive/" + parentpath_str);
-            // vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
         }
         else
         {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
+
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        // if invalid, return an error?
+        // @todo :: redirect to login page?
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+
+            res.set_code(303);
+            res.set_header("Location", "/401");
+
+            close(sockfd);
+            return;
+        }
+
+        // Check if the request contains a body
+        if (!req.body_as_bytes().empty())
+        {
+            // ------- Get file name and clean up to get file binary ----
+            // Get the single file uploaded
+            vector<string> headers;
+
+            // Find form boundary
+            headers = req.get_header("Content-Type");
+            string header_str(headers[0]);
+            // boundary provided by form
+            vector<string> find_boundary = Utils::split_on_first_delim(header_str, "boundary=");
+            vector<char> bound_vec(find_boundary.back().begin(), find_boundary.back().end());
+
+            vector<char> line_feed = {'\r', '\n'};
+
+            // split body on boundary
+            vector<vector<char>> elements = FeUtils::split_vector(req.body_as_bytes(), bound_vec);
+            vector<char> elem1 = elements[1];
+
+            // @note: assuming we only upload 1 file at a time?
+            vector<char> file_data = split_vec_first_delim(elem1, line_feed)[1];
+
+            // split file data to separate file metadata from binary values
+            vector<vector<char>> body_elems = split_vec_first_delim(file_data, line_feed);
+
+            // parse file headers to get name of file
+            string file_headers(body_elems[0].begin(), body_elems[0].end());
+            string content_disp = Utils::split_on_first_delim(file_headers, "\n")[0];
+            string filename_toparse = Utils::split_on_first_delim(file_headers, "filename=").back();
+
+            // file name string
+            string filename = Utils::split(filename_toparse, "\"")[0];
+
+            // get file binary
+            vector<char> file_binary = split_vec_first_delim(body_elems[1], line_feed)[1];
+            file_binary = split_vec_first_delim(file_binary, line_feed)[1];
+
+            if (parentpath_str.back() != '/')
+            {
+                res.set_code(303);
+                // set cookies on response
+                res.set_header("Location", "/400");
+                FeUtils::expire_cookies(res, username, valid_session_id);
+                close(sockfd);
+                return;
+            }
+            vector<char> row_vec(parentpath_str.begin(), parentpath_str.end());
+            vector<char> col_vec(filename.begin(), filename.end());
+
+            vector<char> kvs_resp = FeUtils::kv_put(sockfd, row_vec, col_vec, file_binary);
+
+            if (FeUtils::kv_success(kvs_resp))
+            {
+                // @todo should we instead get row for the page they are on?
+                res.set_code(303); // OK
+                res.set_header("Location", "/drive/" + parentpath_str);
+                // vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_vec);
+            }
+            else
+            {
+                res.set_code(303); // Bad Request
+                res.set_header("Location", "/400");
+                FeUtils::expire_cookies(res, username, valid_session_id);
+                // maybe retry? tbd
+            }
+        }
+        else
+        {
+            // No body found in the request
             res.set_code(303); // Bad Request
             res.set_header("Location", "/400");
-            FeUtils::expire_cookies(res, username, valid_session_id);
-            // maybe retry? tbd
         }
+
+        // set cookies on response
+        FeUtils::set_cookies(res, username, valid_session_id);
+
+        close(sockfd);
     }
     else
     {
-        // No body found in the request
-        res.set_code(303); // Bad Request
-        res.set_header("Location", "/400");
+        // set response status code
+        res.set_code(303);
+
+        // set response headers / redirect to 401 error
+        res.set_header("Location", "/401");
     }
-
-    // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
-
-    close(sockfd);
 }
 
 // creates a new folder
 void create_folder(const HttpRequest &req, HttpResponse &res)
 {
-    // uses a post request to add a new folder to the current parent directory.
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
 
-    // path is /api/drive/create/:parentpath where parent dir is the page that is being displayed
-    string parentpath_str = req.path.substr(18);
-
-    string username = get_username(parentpath_str);
-    bool present = HttpServer::check_kvs_addr(username);
-    std::vector<std::string> kvs_addr;
-
-    // check if we know already know the KVS server address for user
-    if (present)
+    if (cookies.count("user") && cookies.count("sid"))
     {
-        kvs_addr = HttpServer::get_kvs_addr(username);
-    }
-    // otherwise get KVS server address from coordinator
-    else
-    {
-        // query the coordinator for the KVS server address
-        kvs_addr = FeUtils::query_coordinator(username);
-    }
 
-    // create socket for communication with KVS server
-    int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        // uses a post request to add a new folder to the current parent directory.
 
-    // validate session id
-    string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    // if invalid, return an error?
-    // @todo :: redirect to login page?
-    if (valid_session_id.empty())
-    {
-        // for now, returning code for check on postman
-        res.set_code(303);
-        res.set_header("Location", "/401");
-        // res.set_code(401);
-        close(sockfd);
-        return;
-    }
+        // path is /api/drive/create/:parentpath where parent dir is the page that is being displayed
+        string parentpath_str = req.path.substr(18);
 
-    string req_body = req.body_as_string();
+        string username = get_username(parentpath_str);
+        string sid = cookies["sid"];
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
 
-    // check that ody is not empty
-    if (!req_body.empty())
-    {
-        // get name of folder
-        string key = "name=";
-        vector<string> elements = Utils::split_on_first_delim(req_body, key);
-
-        logger.log("request body - " + req_body, LOGGER_DEBUG);
-
-        // if key doesn't exist, return 400
-        if (elements.size() < 1)
+        // get the KVS server address for user associated with the request
+        if (present)
         {
-            res.set_code(303);
-            res.set_header("Location", "/400");
-            // res.set_code(400);
-            return;
-        }
-
-        vector<char> folder_name(elements[0].begin(), elements[0].end());
-        folder_name.push_back('/');
-        vector<char> row_name(parentpath_str.begin(), parentpath_str.end());
-
-        logger.log("name of row - " + std::string(row_name.begin(), row_name.end()), LOGGER_DEBUG);
-        logger.log("name of folder - " + std::string(folder_name.begin(), folder_name.end()), LOGGER_DEBUG);
-
-        vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_name);
-
-        // content list, remove '+OK<sp>'
-        vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-        // split on delim
-        vector<vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
-        vector<char> formatted_content = format_folder_contents(contents);
-
-        // if folder name in use - @PETER add a front-end validation check for this
-        if (contains_subseq(formatted_content, folder_name))
-        {
-            // currently returning 400 but not sure what behavior should be
-            res.set_code(303);
-            res.set_header("Location", "/400");
-            // res.set_code(400);
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
         }
         else
         {
-            vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
 
-            if (FeUtils::kv_success(response))
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
+
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        // if invalid, return an error?
+        // @todo :: redirect to login page?
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+            res.set_code(303);
+            res.set_header("Location", "/401");
+            // res.set_code(401);
+            close(sockfd);
+            return;
+        }
+
+        string req_body = req.body_as_string();
+
+        // check that ody is not empty
+        if (!req_body.empty())
+        {
+            // get name of folder
+            string key = "name=";
+            vector<string> elements = Utils::split_on_first_delim(req_body, key);
+
+            logger.log("request body - " + req_body, LOGGER_DEBUG);
+
+            // if key doesn't exist, return 400
+            if (elements.size() < 1)
             {
-                // create new column for row
-                vector<char> folder_row = row_name;
-                folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
-                vector<char> kvs_resp = FeUtils::kv_put(sockfd, folder_row, {}, {});
+                res.set_code(303);
+                res.set_header("Location", "/400");
+                // res.set_code(400);
+                return;
+            }
 
-                // get parent folder to show that this folder has been nested
-                // folder_content = FeUtils::kv_get_row(sockfd, row_name);
+            vector<char> folder_name(elements[0].begin(), elements[0].end());
+            folder_name.push_back('/');
+            vector<char> row_name(parentpath_str.begin(), parentpath_str.end());
 
-                // content list, remove '+OK<sp>'
-                // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
-                // contents = FeUtils::split_vector(folder_elements, {'\b'});
-                // formatted_content = format_folder_contents(contents);
-                // res.append_body_bytes(formatted_content.data(), formatted_content.size());
-                // res.set_code(200);
+            logger.log("name of row - " + std::string(row_name.begin(), row_name.end()), LOGGER_DEBUG);
+            logger.log("name of folder - " + std::string(folder_name.begin(), folder_name.end()), LOGGER_DEBUG);
+
+            vector<char> folder_content = FeUtils::kv_get_row(sockfd, row_name);
+
+            // content list, remove '+OK<sp>'
+            vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+            // split on delim
+            vector<vector<char>> contents = FeUtils::split_vector(folder_elements, {'\b'});
+            vector<char> formatted_content = format_folder_contents(contents);
+
+            // if folder name in use - @PETER add a front-end validation check for this
+            if (contains_subseq(formatted_content, folder_name))
+            {
+                // currently returning 400 but not sure what behavior should be
+                res.set_code(303);
+                res.set_header("Location", "/400");
+                // res.set_code(400);
+            }
+            else
+            {
+                vector<char> response = FeUtils::kv_put(sockfd, row_name, folder_name, {});
+
+                if (FeUtils::kv_success(response))
+                {
+                    // create new column for row
+                    vector<char> folder_row = row_name;
+                    folder_row.insert(folder_row.end(), folder_name.begin(), folder_name.end());
+                    vector<char> kvs_resp = FeUtils::kv_put(sockfd, folder_row, {}, {});
+
+                    // get parent folder to show that this folder has been nested
+                    // folder_content = FeUtils::kv_get_row(sockfd, row_name);
+
+                    // content list, remove '+OK<sp>'
+                    // vector<char> folder_elements(folder_content.begin() + 4, folder_content.end());
+                    // contents = FeUtils::split_vector(folder_elements, {'\b'});
+                    // formatted_content = format_folder_contents(contents);
+                    // res.append_body_bytes(formatted_content.data(), formatted_content.size());
+                    // res.set_code(200);
+
+                    res.set_code(303);
+                    res.set_header("Location", "/drive/" + std::string(row_name.begin(), row_name.end()));
+
+                    // set cookies on response
+                    FeUtils::set_cookies(res, username, valid_session_id);
+                }
+                else
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/400");
+                    // res.set_code(400);
+                }
+            }
+        }
+        else
+        {
+            res.set_code(303);
+            res.set_header("Location", "/400");
+        }
+
+        close(sockfd);
+    }
+    else
+    {
+        // set response status code
+        res.set_code(303);
+
+        // set response headers / redirect to 401 error
+        res.set_header("Location", "/401");
+    }
+}
+
+// deletes file or folder
+void delete_filefolder(const HttpRequest &req, HttpResponse &res)
+{
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+
+    if (cookies.count("user") && cookies.count("sid"))
+    {
+        // of type /api/drive/delete/* where child directory is being served
+        string childpath_str = req.path.substr(18);
+        string username = get_username(childpath_str);
+        string sid = cookies["sid"];
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
+
+        // get the KVS server address for user associated with the request
+        if (present)
+        {
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
+        }
+        else
+        {
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
+        }
+
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+        {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
+
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
+
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+            res.set_code(401);
+            close(sockfd);
+            return;
+        }
+
+        vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+        // if we are trying to delete a file
+        if (!is_folder(child_path))
+        {
+            // get file name
+            string filename;
+            string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
+
+            // comver tto vector<char>
+            vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+            filename = FeUtils::urlDecode(filename);
+            vector<char> filename_vec(filename.begin(), filename.end());
+
+            if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+            {
 
                 res.set_code(303);
-                res.set_header("Location", "/drive/" + std::string(row_name.begin(), row_name.end()));
-
-                // set cookies on response
+                res.set_header("Location", "/drive/" + parentpath_str);
                 FeUtils::set_cookies(res, username, valid_session_id);
             }
             else
             {
                 res.set_code(303);
                 res.set_header("Location", "/400");
-                // res.set_code(400);
             }
-        }
-    }
-    else
-    {
-        res.set_code(303);
-        res.set_header("Location", "/400");
-    }
-
-    close(sockfd);
-}
-
-// deletes file or folder
-void delete_filefolder(const HttpRequest &req, HttpResponse &res)
-{
-
-    // of type /api/drive/delete/* where child directory is being served
-    string childpath_str = req.path.substr(18);
-    string username = get_username(childpath_str);
-    bool present = HttpServer::check_kvs_addr(username);
-    std::vector<std::string> kvs_addr;
-
-    // check if we know already know the KVS server address for user
-    if (present)
-    {
-        kvs_addr = HttpServer::get_kvs_addr(username);
-    }
-    // otherwise get KVS server address from coordinator
-    else
-    {
-        // query the coordinator for the KVS server address
-        kvs_addr = FeUtils::query_coordinator(username);
-    }
-
-    // create socket for communication with KVS server
-    int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-
-    // validate session id
-    string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    if (valid_session_id.empty())
-    {
-        // for now, returning code for check on postman
-        res.set_code(401);
-        close(sockfd);
-        return;
-    }
-
-    vector<char> child_path(childpath_str.begin(), childpath_str.end());
-
-    // if we are trying to delete a file
-    if (!is_folder(child_path))
-    {
-        // get file name
-        string filename;
-        string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-
-        // comver tto vector<char>
-        vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-        filename = FeUtils::urlDecode(filename);
-        vector<char> filename_vec(filename.begin(), filename.end());
-
-        if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
-        {
-
-            res.set_code(303);
-            res.set_header("Location", "/drive/" + parentpath_str);
-            FeUtils::set_cookies(res, username, valid_session_id);
         }
         else
         {
-            res.set_code(303);
-            res.set_header("Location", "/400");
-        }
-    }
-    else
-    {
-        // get row
-        vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
+            // get row
+            vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        if (FeUtils::kv_success(folder_content))
-        {
-            // recursively delete the folders children
-            if (delete_folder(sockfd, child_path))
+            if (FeUtils::kv_success(folder_content))
             {
-
-                // delete folder from parent
-                // get parent path
-                // get folder name
-                string foldername;
-                vector<string> split_filepath = Utils::split(childpath_str, "/");
-                string parentpath_str = split_parent_filename(split_filepath, foldername);
-
-                foldername += '/';
-                vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-                vector<char> folder_name_vec(foldername.begin(), foldername.end());
-
-                // dleete the folder from the parent folder
-                if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                // recursively delete the folders children
+                if (delete_folder(sockfd, child_path))
                 {
-                    // redirect
-                    res.set_code(303);
-                    res.set_header("Location", "/drive/" + parentpath_str);
-                    FeUtils::set_cookies(res, username, valid_session_id);
-                }
-                else
-                {
-                    // redirect
-                    res.set_code(303);
-                    res.set_header("Location", "/400");
+
+                    // delete folder from parent
+                    // get parent path
+                    // get folder name
+                    string foldername;
+                    vector<string> split_filepath = Utils::split(childpath_str, "/");
+                    string parentpath_str = split_parent_filename(split_filepath, foldername);
+
+                    foldername += '/';
+                    vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+                    vector<char> folder_name_vec(foldername.begin(), foldername.end());
+
+                    // dleete the folder from the parent folder
+                    if (FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                    {
+                        // redirect
+                        res.set_code(303);
+                        res.set_header("Location", "/drive/" + parentpath_str);
+                        FeUtils::set_cookies(res, username, valid_session_id);
+                    }
+                    else
+                    {
+                        // redirect
+                        res.set_code(303);
+                        res.set_header("Location", "/400");
+                    }
                 }
             }
+            else
+            {
+                res.set_code(303);
+                res.set_header("Location", "/400");
+            }
         }
-        else
-        {
-            res.set_code(303);
-            res.set_header("Location", "/400");
-        }
-    }
 
-    close(sockfd);
+        close(sockfd);
+    }
+    else
+    {
+        // set response status code
+        res.set_code(303);
+
+        // set response headers / redirect to 401 error
+        res.set_header("Location", "/401");
+    }
 }
 
 // renames file or folder
 void rename_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    // of type /api/drive/rename/* where child directory is being served
-    string parent_path_str = req.path.substr(18);
-    string username = get_username(parent_path_str);
-    bool present = HttpServer::check_kvs_addr(username);
-    std::vector<std::string> kvs_addr;
-
-    // check if we know already know the KVS server address for user
-    if (present)
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+    if (cookies.count("user") && cookies.count("sid"))
     {
-        kvs_addr = HttpServer::get_kvs_addr(username);
-    }
-    // otherwise get KVS server address from coordinator
-    else
-    {
-        // query the coordinator for the KVS server address
-        kvs_addr = FeUtils::query_coordinator(username);
-    }
+        // of type /api/drive/rename/* where child directory is being served
+        string parent_path_str = req.path.substr(18);
+        string username = get_username(parent_path_str);
+        std::string sid = cookies["sid"];
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
 
-    // create socket for communication with KVS server
-    int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-
-    // validate session id
-    string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    // if invalid, return an error?
-    // @todo :: redirect to login page?
-    if (valid_session_id.empty())
-    {
-        // for now, returning code for check on postman
-        res.set_header("Location", "/401");
-        res.set_code(303);
-        close(sockfd);
-        return;
-    }
-
-    vector<char> parent_path_vec(parent_path_str.begin(), parent_path_str.end());
-
-    // get new name using parameters
-    // Extract form parameters (status and component id) from the HTTP request body
-    std::string requestBody = req.body_as_string();
-    std::unordered_map<std::string, std::string> formParams;
-
-    // Parse the request body to extract form parameters
-    size_t pos = 0;
-    while ((pos = requestBody.find('&')) != std::string::npos)
-    {
-        std::string token = requestBody.substr(0, pos);
-        size_t equalPos = token.find('=');
-        std::string key = token.substr(0, equalPos);
-        std::string value = token.substr(equalPos + 1);
-        formParams[key] = value;
-        requestBody.erase(0, pos + 1);
-    }
-    // Handle the last parameter
-    size_t equalPos = requestBody.find('=');
-    std::string key = requestBody.substr(0, equalPos);
-    std::string value = requestBody.substr(equalPos + 1);
-    formParams[key] = value;
-
-    // get new name
-    string oldname = FeUtils::urlDecode(formParams["old-name"]);
-    string newname = FeUtils::urlDecode(formParams["new-name"]);
-    vector<char> newname_vec(newname.begin(), newname.end());
-
-    // construct child path
-    string childpath_str = parent_path_str + oldname;
-
-    vector<char> child_path(childpath_str.begin(), childpath_str.end());
-
-    // if we are trying to rename a file
-    if (oldname.back() != '/')
-    {
-        // this works with UI - @PA
-
-        vector<char> filename_vec(oldname.begin(), oldname.end());
-
-        if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
+        // get the KVS server address for user associated with the request
+        if (present)
         {
-
-            res.set_code(303);
-            res.set_header("Location", "/drive/" + parent_path_str);
-            FeUtils::set_cookies(res, username, valid_session_id);
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
         }
         else
         {
-            res.set_code(303);
-            res.set_header("Location", "/400");
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
         }
-    }
-    else
-    {
-        // get row
-        vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        if (FeUtils::kv_success(folder_content))
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
         {
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
 
-            newname += '/';
-            string foldername = oldname;
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
-            vector<string> split_filepath = Utils::split(childpath_str, "/");
-            vector<char> folder_name_vec(foldername.begin(), foldername.end());
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+            res.set_header("Location", "/401");
+            res.set_code(303);
+            close(sockfd);
+            return;
+        }
 
-            newname_vec.push_back('/');
+        vector<char> parent_path_vec(parent_path_str.begin(), parent_path_str.end());
 
-            vector<char> new_folderpath = parent_path_vec;
-            new_folderpath.insert(new_folderpath.end(), newname_vec.begin(), newname_vec.end());
+        // get new name using parameters
+        // Extract form parameters (status and component id) from the HTTP request body
+        std::string requestBody = req.body_as_string();
+        std::unordered_map<std::string, std::string> formParams;
 
-            // recursively delete the folders children
-            if (rename_subfolders(sockfd, child_path, new_folderpath))
+        // Parse the request body to extract form parameters
+        size_t pos = 0;
+        while ((pos = requestBody.find('&')) != std::string::npos)
+        {
+            std::string token = requestBody.substr(0, pos);
+            size_t equalPos = token.find('=');
+            std::string key = token.substr(0, equalPos);
+            std::string value = token.substr(equalPos + 1);
+            formParams[key] = value;
+            requestBody.erase(0, pos + 1);
+        }
+        // Handle the last parameter
+        size_t equalPos = requestBody.find('=');
+        std::string key = requestBody.substr(0, equalPos);
+        std::string value = requestBody.substr(equalPos + 1);
+        formParams[key] = value;
+
+        // get new name
+        string oldname = FeUtils::urlDecode(formParams["old-name"]);
+        string newname = FeUtils::urlDecode(formParams["new-name"]);
+        vector<char> newname_vec(newname.begin(), newname.end());
+
+        // construct child path
+        string childpath_str = parent_path_str + oldname;
+
+        vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+        // if we are trying to rename a file
+        if (oldname.back() != '/')
+        {
+            // this works with UI - @PA
+
+            vector<char> filename_vec(oldname.begin(), oldname.end());
+
+            if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, filename_vec, newname_vec)))
             {
-                // dleete the folder from the parent folder
-                if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
-                {
-                    // redirect
-                    res.set_code(303);
-                    res.set_header("Location", "/drive/" + parent_path_str);
-                    FeUtils::set_cookies(res, username, valid_session_id);
-                }
-                else
-                {
-                    // redirect
-                    res.set_code(303);
-                    res.set_header("Location", "/400");
-                }
+
+                res.set_code(303);
+                res.set_header("Location", "/drive/" + parent_path_str);
+                FeUtils::set_cookies(res, username, valid_session_id);
+            }
+            else
+            {
+                res.set_code(303);
+                res.set_header("Location", "/400");
             }
         }
         else
         {
-            res.set_code(303);
-            res.set_header("Location", "/400");
-        }
-    }
+            // get row
+            vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-    // set cookies on response
-    close(sockfd);
+            if (FeUtils::kv_success(folder_content))
+            {
+
+                newname += '/';
+                string foldername = oldname;
+
+                vector<string> split_filepath = Utils::split(childpath_str, "/");
+                vector<char> folder_name_vec(foldername.begin(), foldername.end());
+
+                newname_vec.push_back('/');
+
+                vector<char> new_folderpath = parent_path_vec;
+                new_folderpath.insert(new_folderpath.end(), newname_vec.begin(), newname_vec.end());
+
+                // recursively delete the folders children
+                if (rename_subfolders(sockfd, child_path, new_folderpath))
+                {
+                    // dleete the folder from the parent folder
+                    if (FeUtils::kv_success(FeUtils::kv_rename_col(sockfd, parent_path_vec, folder_name_vec, newname_vec)))
+                    {
+                        // redirect
+                        res.set_code(303);
+                        res.set_header("Location", "/drive/" + parent_path_str);
+                        FeUtils::set_cookies(res, username, valid_session_id);
+                    }
+                    else
+                    {
+                        // redirect
+                        res.set_code(303);
+                        res.set_header("Location", "/400");
+                    }
+                }
+            }
+            else
+            {
+                res.set_code(303);
+                res.set_header("Location", "/400");
+            }
+        }
+
+        // set cookies on response
+        close(sockfd);
+    }
+    else
+    {
+        // set response status code
+        res.set_code(303);
+
+        // set response headers / redirect to 401 error
+        res.set_header("Location", "/401");
+    }
 }
 
 // Moves file or folder to new location
 // post with form attribtue newparent
 void move_filefolder(const HttpRequest &req, HttpResponse &res)
 {
-    // of type /api/drive/move/* where child directory is being served
-    string parentpath_str = req.path.substr(16);
-    string username = get_username(parentpath_str);
-    bool present = HttpServer::check_kvs_addr(username);
-    std::vector<std::string> kvs_addr;
-
-    // check if we know already know the KVS server address for user
-    if (present)
+    std::unordered_map<std::string, std::string> cookies = FeUtils::parse_cookies(req);
+    if (cookies.count("user") && cookies.count("sid"))
     {
-        kvs_addr = HttpServer::get_kvs_addr(username);
-    }
-    // otherwise get KVS server address from coordinator
-    else
-    {
-        // query the coordinator for the KVS server address
-        kvs_addr = FeUtils::query_coordinator(username);
-    }
 
-    // create socket for communication with KVS server
-    int sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        // of type /api/drive/move/* where child directory is being served
+        string parentpath_str = req.path.substr(16);
+        string username = get_username(parentpath_str);
+        std::string sid = cookies["sid"];
+        bool present = HttpServer::check_kvs_addr(username);
+        std::vector<std::string> kvs_addr;
 
-    // validate session id
-    string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
-    // if invalid, return an error?
-    // @todo :: redirect to login page?
-    if (valid_session_id.empty())
-    {
-        // for now, returning code for check on postman
-        res.set_code(401);
-        close(sockfd);
-        return;
-    }
-
-    vector<char> parent_path(parentpath_str.begin(), parentpath_str.end());
-
-    // get new name using parameters
-    // Extract form parameters (status and component id) from the HTTP request body
-    std::string requestBody = req.body_as_string();
-    std::unordered_map<std::string, std::string> formParams;
-
-    // Parse the request body to extract form parameters
-    size_t pos = 0;
-    while ((pos = requestBody.find('&')) != std::string::npos)
-    {
-        std::string token = requestBody.substr(0, pos);
-        size_t equalPos = token.find('=');
-        std::string key = token.substr(0, equalPos);
-        std::string value = token.substr(equalPos + 1);
-        formParams[key] = value;
-        requestBody.erase(0, pos + 1);
-    }
-    // Handle the last parameter
-    size_t equalPos = requestBody.find('=');
-    std::string key = requestBody.substr(0, equalPos);
-    std::string value = requestBody.substr(equalPos + 1);
-    formParams[key] = value;
-
-    // get new name
-    string newparent = formParams["newparent"];
-    string item_tomove = formParams["moving"];
-
-    // replace_substring(newparent, "%2F", "/");
-    newparent = FeUtils::urlDecode(newparent);
-    item_tomove = FeUtils::urlDecode(item_tomove);
-
-    logger.log("New parent - " + newparent, LOGGER_DEBUG);
-    logger.log("Item to move - " + item_tomove, LOGGER_DEBUG);
-
-    string childpath_str = parentpath_str + item_tomove;
-    vector<char> child_path(childpath_str.begin(), childpath_str.end());
-
-    vector<char> newparent_vec(newparent.begin(), newparent.end());
-
-    // if we are trying to move a filde
-    if (!is_folder(child_path))
-    {
-        // get file name
-        string filename;
-        string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
-
-        // comver tto vector<char>
-        vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-        vector<char> filename_vec(filename.begin(), filename.end());
-
-        // get file content
-        vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
-
-        // if error, return
-        if (!FeUtils::kv_success(file_content))
+        // get the KVS server address for user associated with the request
+        if (present)
         {
-            res.set_code(303);
-            res.set_header("Location", "/400");
-            close(sockfd);
-            return;
-        }
-        // get binary from 4th char onward (ignore +OK<sp>)
-        std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
-
-        // delete file from old parent
-        if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
-        {
-            logger.log("Could not delete file " + filename + " from old parent " + parentpath_str, LOGGER_WARN);
-            res.set_code(303);
-            res.set_header("Location", "/400");
-
-            // set cookies on response
-            FeUtils::set_cookies(res, username, valid_session_id);
-            close(sockfd);
-            return;
-        }
-
-        // put file into new parent
-        if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
-        {
-            logger.log("Could not move file " + filename + " to new parent " + newparent, LOGGER_WARN);
-            res.set_code(303);
-            res.set_header("Location", "/400");
-            FeUtils::set_cookies(res, username, valid_session_id);
-            close(sockfd);
-            return;
+            // get address from cache
+            kvs_addr = HttpServer::get_kvs_addr(username);
         }
         else
         {
-            logger.log("File " + filename + " successfully moved to new parent " + newparent, LOGGER_INFO);
-            res.set_code(303);
-            res.set_header("Location", "/drive/" + parentpath_str);
+            // query the coordinator for the KVS server address
+            kvs_addr = FeUtils::query_coordinator(username);
         }
-    }
-    else
-    {
-        // get row
-        vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
 
-        if (FeUtils::kv_success(folder_content))
+        int sockfd;
+        if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
         {
-            // move folder from parent
-            // get parent path
-            // get folder name
-            string foldername;
+            res.set_code(303);
+            res.set_header("Location", "/503");
+            return;
+        }
+        else // try open socket
+        {
+            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
 
-            vector<string> split_filepath = Utils::split(childpath_str, "/");
-            string parentpath_str = split_parent_filename(split_filepath, foldername);
+            // create socket for communication with KVS server
+            sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+        }
 
-            foldername += '/';
+        // validate session id
+        string valid_session_id = FeUtils::validate_session_id(sockfd, username, req);
+        if (valid_session_id.empty())
+        {
+            // for now, returning code for check on postman
+            res.set_code(401);
+            close(sockfd);
+            return;
+        }
 
+        vector<char> parent_path(parentpath_str.begin(), parentpath_str.end());
+
+        // get new name using parameters
+        // Extract form parameters (status and component id) from the HTTP request body
+        std::string requestBody = req.body_as_string();
+        std::unordered_map<std::string, std::string> formParams;
+
+        // Parse the request body to extract form parameters
+        size_t pos = 0;
+        while ((pos = requestBody.find('&')) != std::string::npos)
+        {
+            std::string token = requestBody.substr(0, pos);
+            size_t equalPos = token.find('=');
+            std::string key = token.substr(0, equalPos);
+            std::string value = token.substr(equalPos + 1);
+            formParams[key] = value;
+            requestBody.erase(0, pos + 1);
+        }
+        // Handle the last parameter
+        size_t equalPos = requestBody.find('=');
+        std::string key = requestBody.substr(0, equalPos);
+        std::string value = requestBody.substr(equalPos + 1);
+        formParams[key] = value;
+
+        // get new name
+        string newparent = formParams["newparent"];
+        string item_tomove = formParams["moving"];
+
+        // replace_substring(newparent, "%2F", "/");
+        newparent = FeUtils::urlDecode(newparent);
+        item_tomove = FeUtils::urlDecode(item_tomove);
+
+        logger.log("New parent - " + newparent, LOGGER_DEBUG);
+        logger.log("Item to move - " + item_tomove, LOGGER_DEBUG);
+
+        string childpath_str = parentpath_str + item_tomove;
+        vector<char> child_path(childpath_str.begin(), childpath_str.end());
+
+        vector<char> newparent_vec(newparent.begin(), newparent.end());
+
+        // if we are trying to move a filde
+        if (!is_folder(child_path))
+        {
+            // get file name
+            string filename;
+            string parentpath_str = split_parent_filename(Utils::split(childpath_str, "/"), filename);
+
+            // comver tto vector<char>
             vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
-            vector<char> folder_name_vec(foldername.begin(), foldername.end());
+            vector<char> filename_vec(filename.begin(), filename.end());
 
-            // recursively delete the folders children
-            if (move_subfolders(sockfd, child_path, newparent_vec, folder_name_vec))
+            // get file content
+            vector<char> file_content = FeUtils::kv_get(sockfd, parent_path_vec, filename_vec);
+
+            // if error, return
+            if (!FeUtils::kv_success(file_content))
             {
+                res.set_code(303);
+                res.set_header("Location", "/400");
+                close(sockfd);
+                return;
+            }
+            // get binary from 4th char onward (ignore +OK<sp>)
+            std::vector<char> file_binary(file_content.begin() + 4, file_content.end());
 
-                // Delete folder from old parent
-                if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
-                {
-                    logger.log("Could not delete folder " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
-                    res.set_code(303);
-                    res.set_header("Location", "/400");
-                    close(sockfd);
-                    return;
-                }
+            // delete file from old parent
+            if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, filename_vec)))
+            {
+                logger.log("Could not delete file " + filename + " from old parent " + parentpath_str, LOGGER_WARN);
+                res.set_code(303);
+                res.set_header("Location", "/400");
 
-                // put file into new parent
-                if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
-                {
-                    logger.log("Could not move folder " + foldername + " to new parent " + newparent, LOGGER_WARN);
-                    res.set_code(303);
-                    res.set_header("Location", "/400");
-                    FeUtils::set_cookies(res, username, valid_session_id);
-                    close(sockfd);
-                    return;
-                }
-                else
-                {
-                    logger.log("Folder " + foldername + " successfully moved to new parent " + newparent, LOGGER_INFO);
-                    res.set_code(303);
-                    res.set_header("Location", "/drive/" + parentpath_str);
-                }
+                // set cookies on response
+                FeUtils::set_cookies(res, username, valid_session_id);
+                close(sockfd);
+                return;
+            }
+
+            // put file into new parent
+            if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, filename_vec, file_binary)))
+            {
+                logger.log("Could not move file " + filename + " to new parent " + newparent, LOGGER_WARN);
+                res.set_code(303);
+                res.set_header("Location", "/400");
+                FeUtils::set_cookies(res, username, valid_session_id);
+                close(sockfd);
+                return;
+            }
+            else
+            {
+                logger.log("File " + filename + " successfully moved to new parent " + newparent, LOGGER_INFO);
+                res.set_code(303);
+                res.set_header("Location", "/drive/" + parentpath_str);
             }
         }
         else
         {
-            logger.log("Retreiving folder " + childpath_str + " failed.", LOGGER_WARN);
-            res.set_code(303);
-            res.set_header("Location", "/400");
+            // get row
+            vector<char> folder_content = FeUtils::kv_get_row(sockfd, child_path);
+
+            if (FeUtils::kv_success(folder_content))
+            {
+                // move folder from parent
+                // get parent path
+                // get folder name
+                string foldername;
+
+                vector<string> split_filepath = Utils::split(childpath_str, "/");
+                string parentpath_str = split_parent_filename(split_filepath, foldername);
+
+                foldername += '/';
+
+                vector<char> parent_path_vec(parentpath_str.begin(), parentpath_str.end());
+                vector<char> folder_name_vec(foldername.begin(), foldername.end());
+
+                // recursively delete the folders children
+                if (move_subfolders(sockfd, child_path, newparent_vec, folder_name_vec))
+                {
+
+                    // Delete folder from old parent
+                    if (!FeUtils::kv_success(FeUtils::kv_del(sockfd, parent_path_vec, folder_name_vec)))
+                    {
+                        logger.log("Could not delete folder " + foldername + " from old parent " + parentpath_str, LOGGER_WARN);
+                        res.set_code(303);
+                        res.set_header("Location", "/400");
+                        close(sockfd);
+                        return;
+                    }
+
+                    // put file into new parent
+                    if (!FeUtils::kv_success(FeUtils::kv_put(sockfd, newparent_vec, folder_name_vec, {})))
+                    {
+                        logger.log("Could not move folder " + foldername + " to new parent " + newparent, LOGGER_WARN);
+                        res.set_code(303);
+                        res.set_header("Location", "/400");
+                        FeUtils::set_cookies(res, username, valid_session_id);
+                        close(sockfd);
+                        return;
+                    }
+                    else
+                    {
+                        logger.log("Folder " + foldername + " successfully moved to new parent " + newparent, LOGGER_INFO);
+                        res.set_code(303);
+                        res.set_header("Location", "/drive/" + parentpath_str);
+                    }
+                }
+            }
+            else
+            {
+                logger.log("Retreiving folder " + childpath_str + " failed.", LOGGER_WARN);
+                res.set_code(303);
+                res.set_header("Location", "/400");
+            }
         }
+
+        // set cookies on response
+        FeUtils::set_cookies(res, username, valid_session_id);
+
+        close(sockfd);
     }
+    else
+    {
+        // set response status code
+        res.set_code(303);
 
-    // set cookies on response
-    FeUtils::set_cookies(res, username, valid_session_id);
-
-    close(sockfd);
+        // set response headers / redirect to 401 error
+        res.set_header("Location", "/401");
+    }
 }
