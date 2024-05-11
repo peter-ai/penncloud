@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
             std::string admin_ip = ip_addr + ":12" + std::to_string(groups) + std::to_string(servers) + "0";
 
             kvs_args kv;
-            kv.alive = true;                           // server is not alive yet
+            kv.alive = true;                            // server is not alive yet
             kv.kvs_group = groups;                      // set the group number of this server
             kv.primary = (servers == 0 ? true : false); // if server is 0 then make it primary, otherwise secondary
             kv.client_addr = client_ip;                 // set the client-facing ip:port address
@@ -530,6 +530,10 @@ void *kvs_thread(void *arg)
                     logger.log("Received PING from " + kvs->server_addr, LOGGER_INFO);
                     if (!kvs->alive)
                     {
+                        // if cluster group is empty - no primary is set currently - assign this server as primary
+                        if (kvs_clusters[kvs->kvs_group].empty())
+                            kvs->primary = true;
+
                         // add alive server to client map
                         client_map_mutex.lock();
                         for (auto &key : kvs->kv_range)
@@ -537,10 +541,6 @@ void *kvs_thread(void *arg)
                             client_map[key].push_back(*kvs);
                         }
                         client_map_mutex.unlock();
-
-                        // if cluster group is empty - no primary is set currently - assign this server as primary
-                        if (kvs_clusters[kvs->kvs_group].empty())
-                            kvs->primary = true;
 
                         // add alive server to cluster group
                         cluster_mutex.lock();
@@ -619,15 +619,18 @@ void *kvs_thread(void *arg)
             }
             kvs_clusters[kvs->kvs_group].erase(position);
 
-            // if current server was primary select a new primary
-            if (kvs->primary && !kvs_clusters[kvs->kvs_group].empty())
+            // if current server was primary set it to no longer be primary
+            if (kvs->primary)
             {
-                // no longer primary
                 kvs->primary = false;
 
-                // assign new primary at random
-                size_t candidate = sample_index(kvs_clusters[kvs->kvs_group].size());
-                kvs_clusters[kvs->kvs_group][candidate].primary = true;
+                // if kvs clusters not empty then assign a new primary
+                if (!kvs_clusters[kvs->kvs_group].empty())
+                {
+                    // assign new primary at random
+                    size_t candidate = sample_index(kvs_clusters[kvs->kvs_group].size());
+                    kvs_clusters[kvs->kvs_group][candidate].primary = true;
+                }
             }
             cluster_mutex.unlock();
 
@@ -673,7 +676,6 @@ void *client_thread(void *arg)
         char key = client->request[0];
         std::string kvs_server;
 
-
         client_map_mutex.lock_shared(); // lock map
 
         // assign appropriate kvs for given request by randomly sampling vector
@@ -681,17 +683,15 @@ void *client_thread(void *arg)
         {
             kvs_server = (client_map[key].empty() ? ":" : client_map[key][0].client_addr);
         }
-        else 
+        else
         {
             kvs_server = "-ERR First character non-alphabetical";
         }
-        
+
         // std::string kvs_server = (client_map.count(key) ? client_map[key][sample_index(client_map[key].size())].client_addr : "-ERR First character non-alphabetical"); // TODO: UNCOMMENT THIS AND TEST
         // std::string kvs_server = (client_map.count(key) ? client_map[key][0].client_addr : "-ERR First character non-alphabetical"); // just select first kvs in vector
-        
-        
-        client_map_mutex.unlock_shared(); // unlock map
 
+        client_map_mutex.unlock_shared(); // unlock map
 
         logger.log("KVS choice for " + client->request + " is " + kvs_server, LOGGER_INFO);
 
@@ -901,10 +901,12 @@ bool send_kvs_reco(struct kvs_args &kvs)
 
     if (kvs_clusters[kvs.kvs_group].empty())
     {
+        logger.log("HERE", LOGGER_DEBUG);
         response = kvs.server_addr + "\r\n";
     }
     else
     {
+        logger.log("NOT IN HERE", LOGGER_DEBUG);
         // construct message
         for (auto &server : kvs_clusters[kvs.kvs_group])
         {

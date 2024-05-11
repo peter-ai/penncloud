@@ -49,6 +49,7 @@ public:
     static std::atomic<bool> is_dead;                           // tracks if the server is currently dead (from an admin kill command)
     static std::atomic<bool> is_recovering;                     // tracks if the server is currently recovering (after an admin live command)
     static int coord_sock_fd;                                   // fd to contact coordinator on
+    static int client_comm_sock_fd;
     static std::unordered_set<int> ports_in_recovery;           // list of servers currently in recovery - tracked by primary since these servers will still need to receive write requests
 
     // active connection fields (clients)

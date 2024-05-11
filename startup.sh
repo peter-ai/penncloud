@@ -16,7 +16,7 @@ tmux split-window -v
 
 # Run scripts in each pane
 tmux send-keys -t 0 'bash ./admin_console/run_admin.sh' C-m
-sleep 1
+sleep 3
 tmux send-keys -t 1 'bash ./coordinator/run_coordinator.sh' C-m
 tmux send-keys -t 2 'bash ./loadbalancer/run_loadbalancer.sh' C-m
 tmux send-keys -t 3 'bash ./relay/run_relay.sh' C-m

@@ -172,24 +172,47 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-		if (socket_fd < 0)
+		int socket_fd;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
 		{
 			response.set_code(303);
-			response.set_header("Location", "/500");
+			response.set_header("Location", "/503");
 			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (socket_fd == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
 		}
 		bool all_forwards_sent = true;
 
@@ -308,12 +331,47 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-		if (socket_fd < 0)
+		// get the KVS server address for user associated with the request
+		if (present)
+		{
+			// get address from cache
+			kvs_addr = HttpServer::get_kvs_addr(username);
+		}
+		else
+		{
+			// query the coordinator for the KVS server address
+			kvs_addr = FeUtils::query_coordinator(username);
+		}
+
+		int socket_fd;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
 		{
 			response.set_code(303);
-			response.set_header("Location", "/500");
+			response.set_header("Location", "/503");
 			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (socket_fd == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
 		}
 		bool all_responses_sent = true;
 
@@ -421,24 +479,47 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-		if (socket_fd < 0)
+		int socket_fd;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
 		{
 			response.set_code(303);
-			response.set_header("Location", "/500");
+			response.set_header("Location", "/503");
 			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (socket_fd == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
 		}
 
 		// validate session id
@@ -502,24 +583,47 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-		if (socket_fd < 0)
+		int socket_fd;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
 		{
 			response.set_code(303);
-			response.set_header("Location", "/500");
+			response.set_header("Location", "/503");
 			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (socket_fd == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
 		}
 
 		// validate session id
@@ -629,20 +733,48 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		// create socket for communication with KVS server
-		int socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		int socket_fd;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+		{
+			response.set_code(303);
+			response.set_header("Location", "/503");
+			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (socket_fd == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
+		}
 
 		string valid_session_id = FeUtils::validate_session_id(socket_fd, username, request);
 		if (valid_session_id.empty())
@@ -968,20 +1100,48 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		// create socket for communication with KVS server
-		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+		int kvs_sock;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+		{
+			response.set_code(303);
+			response.set_header("Location", "/503");
+			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (kvs_sock == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
+		}
 
 		string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
 		if (valid_session_id.empty())
@@ -1298,22 +1458,50 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 		bool present = HttpServer::check_kvs_addr(username);
 		std::vector<std::string> kvs_addr;
 
-		// check if we know already know the KVS server address for user
+		// get the KVS server address for user associated with the request
 		if (present)
 		{
+			// get address from cache
 			kvs_addr = HttpServer::get_kvs_addr(username);
 		}
-		// otherwise get KVS server address from coordinator
 		else
 		{
 			// query the coordinator for the KVS server address
 			kvs_addr = FeUtils::query_coordinator(username);
 		}
 
-		// create socket for communication with KVS server
-		int kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
-		std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
+		int kvs_sock;
+		if (kvs_addr.empty()) // entire cluster servicing user is dead, 503 service unavailable
+		{
+			response.set_code(303);
+			response.set_header("Location", "/503");
+			return;
+		}
+		else // try open socket
+		{
+			// create socket for communication with KVS server
+			kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
+			// if the socket connection is invalid, kvs server has died and is not accepting connections
+			while (kvs_sock == -1) // while server is dead
+			{
+				kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+				if (kvs_addr.empty() || kvs_addr[0][0] == '-')	 // if cluster is dead or error
+				{
+					response.set_code(303);
+					response.set_header("Location", "/503");
+					return;
+				}
+
+				// otherwise attempt to open connection to new kvs server
+				kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+				// cache new kvs address for user
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+			}
+		}
+
+		std::string valid_session_id = FeUtils::validate_session_id(kvs_sock, username, request);
 		if (valid_session_id.empty())
 		{
 			// for now, returning code for check on postman

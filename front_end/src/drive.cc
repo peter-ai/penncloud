@@ -318,10 +318,26 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id
@@ -944,10 +960,26 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id
@@ -1093,10 +1125,26 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id
@@ -1244,10 +1292,26 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id
@@ -1378,10 +1442,26 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id
@@ -1543,10 +1623,26 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
         }
         else // try open socket
         {
-            logger.log("Assigned KVS=" + kvs_addr[0] + ":" + kvs_addr[1], LOGGER_DEBUG); // TODO: DELETE
-
             // create socket for communication with KVS server
             sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+            // if the socket connection is invalid, kvs server has died and is not accepting connections
+            while (sockfd == -1) // while server is dead
+            {
+                kvs_addr = FeUtils::query_coordinator(username); // query the coordinator for a new kvs server
+                if (kvs_addr.empty() || kvs_addr[0][0] == '-')   // if cluster is dead or error
+                {
+                    res.set_code(303);
+                    res.set_header("Location", "/503");
+                    return;
+                }
+
+                // otherwise attempt to open connection to new kvs server
+                sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
+
+                // cache new kvs address for user
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            }
         }
 
         // validate session id

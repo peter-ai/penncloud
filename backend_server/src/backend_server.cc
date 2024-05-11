@@ -34,6 +34,7 @@ std::string BackendServer::disk_dir;
 std::atomic<bool> BackendServer::is_dead(false);
 std::atomic<bool> BackendServer::is_recovering(false);
 int BackendServer::coord_sock_fd = -1;
+int BackendServer::client_comm_sock_fd = -1;
 std::unordered_set<int> BackendServer::ports_in_recovery;
 
 // active connection fields (clients)
@@ -110,7 +111,7 @@ void BackendServer::run()
 void BackendServer::accept_and_handle_clients()
 {
     // Bind server to client connection port and store fd to accept client connections on socket
-    int client_comm_sock_fd = BeUtils::bind_socket(client_port);
+    client_comm_sock_fd = BeUtils::bind_socket(client_port);
     if (client_comm_sock_fd < 0)
     {
         be_logger.log("Failed to bind server to client port " + std::to_string(client_port) + ". Exiting.", 40);
@@ -668,6 +669,8 @@ void BackendServer::admin_kill()
     primary_port = 0;                 // clear current primary
     secondary_ports.clear();          // clear all secondaries
     is_primary = false;               // clear primary flag
+
+    close(client_comm_sock_fd); // close dispatcher socket and stop accepting connections
 }
 
 /// @brief restarts server after pseudo kill from admin
@@ -711,6 +714,14 @@ void BackendServer::admin_live()
         log_file.open(log_filename, std::ofstream::trunc);
         log_file.close();
         be_logger.log("Cleared " + log_filename + " in preparation for logs during recovery", 20);
+    }
+
+    // open dispatcher socket and begin accepting connections
+    client_comm_sock_fd = BeUtils::bind_socket(client_port);
+    if (client_comm_sock_fd < 0)
+    {
+        be_logger.log("Failed to bind server to client port " + std::to_string(client_port) + ". Exiting.", 40);
+        return;
     }
 
     // Place yourself in recovery mode - allows you to accept group connections, but NOT client connections

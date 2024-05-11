@@ -358,7 +358,7 @@ std::vector<std::string> HttpServer::get_kvs_addr(std::string username)
     std::vector<std::string> kvs_addr;
 
     HttpServer::kvs_mutex.lock_shared();
-    kvs_addr = HttpServer::client_kvs_addresses[username];
+    kvs_addr = HttpServer::client_kvs_addresses.at(username);
     HttpServer::kvs_mutex.unlock_shared();
 
     return kvs_addr;
