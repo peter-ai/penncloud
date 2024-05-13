@@ -211,7 +211,7 @@ void forwardEmail_handler(const HttpRequest &request, HttpResponse &response)
 				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 		bool all_forwards_sent = true;
@@ -370,7 +370,7 @@ void replyEmail_handler(const HttpRequest &request, HttpResponse &response)
 				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 		bool all_responses_sent = true;
@@ -518,7 +518,7 @@ void deleteEmail_handler(const HttpRequest &request, HttpResponse &response)
 				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 
@@ -622,7 +622,7 @@ void sendEmail_handler(const HttpRequest &request, HttpResponse &response)
 				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 
@@ -772,7 +772,7 @@ void email_handler(const HttpRequest &request, HttpResponse &response)
 				socket_fd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 
@@ -1139,7 +1139,7 @@ void mailbox_handler(const HttpRequest &request, HttpResponse &response)
 				kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 
@@ -1497,7 +1497,7 @@ void compose_email(const HttpRequest &request, HttpResponse &response)
 				kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
 				// cache new kvs address for user
-				HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+				HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
 			}
 		}
 

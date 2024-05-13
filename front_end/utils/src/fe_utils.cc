@@ -166,10 +166,6 @@ std::vector<std::string> FeUtils::query_coordinator(std::string &path)
     resp.resize(rlen);
     std::vector<std::string> kvs_addr = Utils::split(resp, ":");
 
-    Logger logger("Query Coord");
-    logger.log("Splitting Adress - " + resp, LOGGER_DEBUG); // TODO: DELETE
-    logger.log("Address after split - #0=" + kvs_addr[0] + " #1="+kvs_addr[1] , LOGGER_DEBUG);
-
     // close socket for coordinator
     close(coord_sock);
 

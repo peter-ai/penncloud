@@ -106,7 +106,7 @@ void signup_handler(const HttpRequest &req, HttpResponse &res)
             kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
             // cache new kvs address for user
-            HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
         }
     }
 
@@ -246,7 +246,7 @@ void login_handler(const HttpRequest &req, HttpResponse &res)
             kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
             // cache new kvs address for user
-            HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+            HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
         }
     }
 
@@ -351,7 +351,7 @@ void home_page(const HttpRequest &req, HttpResponse &res)
                 kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -540,7 +540,7 @@ void update_password_page(const HttpRequest &req, HttpResponse &res)
                 kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -745,7 +745,7 @@ void update_password_success_page(const HttpRequest &req, HttpResponse &res)
                 kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -963,7 +963,7 @@ void logout_handler(const HttpRequest &req, HttpResponse &res)
                 kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -1063,7 +1063,7 @@ void update_password_handler(const HttpRequest &req, HttpResponse &res)
                 kvs_sock = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 

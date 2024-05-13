@@ -336,7 +336,7 @@ void open_filefolder(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -978,7 +978,7 @@ void upload_file(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -1143,7 +1143,7 @@ void create_folder(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -1310,7 +1310,7 @@ void delete_filefolder(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -1460,7 +1460,7 @@ void rename_filefolder(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
@@ -1641,7 +1641,7 @@ void move_filefolder(const HttpRequest &req, HttpResponse &res)
                 sockfd = FeUtils::open_socket(kvs_addr[0], std::stoi(kvs_addr[1]));
 
                 // cache new kvs address for user
-                HttpServer::set_kvs_addr(username, kvs_addr[0] + kvs_addr[1]);
+                HttpServer::set_kvs_addr(username, kvs_addr[0] + ":" + kvs_addr[1]);
             }
         }
 
